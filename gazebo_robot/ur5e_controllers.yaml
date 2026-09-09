@@ -1,0 +1,88 @@
+# UR5e 팔 + Robotiq 2F-85 그리퍼 컨트롤러 설정.
+# 팔 부분(joint_trajectory_controller)은 Phase 1에서 검증된
+# ur_simulation_gz/config/ur_controllers.yaml의 설정을 그대로 가져왔다.
+# 그리퍼(gripper_controller) 스키마는 Panda의 panda_hand_controller
+# (moveit_resources_panda_moveit_config/config/ros2_controllers.yaml)를 그대로 따랐다.
+controller_manager:
+  ros__parameters:
+    update_rate: 500  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    joint_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    gripper_controller:
+      type: parallel_gripper_action_controller/GripperActionController
+
+# [2026-09-09 진단용] position_proportional_gain이 아예 선언 안 돼 있어서
+# gz_ros2_control 기본값(0.1, 사실상 힘 거의 없음)으로 돌고 있었음 — Panda의
+# 가벼운 코봇 팔은 이 기본값으로도 버텼지만(panda_ros2_controllers.yaml 상단
+# 주석 참고), UR5e는 훨씬 무거운 산업용 팔이라 목표 추종에 필요한 힘 자체가
+# 부족해서 GOAL_TOLERANCE_VIOLATED(goal_time 초과)가 나는 게 아닌지 테스트.
+gz_ros_control:
+  ros__parameters:
+    position_proportional_gain: 20.0
+
+
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_joint
+      - wrist_1_joint
+      - wrist_2_joint
+      - wrist_3_joint
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 100.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    # trajectory tolerance(경로 추종 중 순간 오차 검사)를 0.2 -> 0.5로 완화해도
+    # 여전히 간헐적으로 abort됨(시뮬레이션 real-time factor 변동 등 타이밍
+    # 문제로 보임 — 매번 재현되지 않고 같은 요청이 됐다 안 됐다 함). 실제
+    # 위험한 경로 이탈을 걸러내려는 목적인데 데모 환경에서 신뢰도만 떨어뜨려서
+    # -1(무제한, 사실상 비활성화)로 끔. goal tolerance(도착 시 최종 위치
+    # 정확도)는 그대로 검사해서 "엉뚱한 곳에 멈추는" 것까지 막지는 않는다.
+    #
+    # goal_time은 반대로 0.0(=무제한)으로 두면 안 됨을 실측으로 확인함 —
+    # pick의 하강 스텝(avoid_collisions=False + 목표가 물리적으로 도달
+    # 불가능한 경우, 예: 충돌/관절한계)에서 컨트롤러가 goal을 영원히
+    # "실행 중" 상태로 남겨둬서(성공도 abort도 안 남) taskplan_bridge.py
+    # 클라이언트 쪽 타임아웃(duration_sec+15초, 벽시계 기준)에 걸릴 때까지
+    # 그냥 응답 없이 걸림.
+    #
+    # [중요] goal_time은 시뮬레이션 시간(sim time) 기준인데, 이 환경은
+    # real_time_factor가 1.0이 아니라 ~0.6 정도로 느리게 돎(실측:
+    # /clock이 85초 벽시계 동안 51.5초만 진행 — WSL2 물리엔진 부하로 보임).
+    # 그래서 goal_time을 10초로 뒀더니 벽시계로는 약 24초가 걸려서
+    # 클라이언트의 20초(duration_sec 5 + 15) 타임아웃을 이미 넘겨버렸다 —
+    # 서버가 결국 abort는 하지만 클라이언트는 그 전에 이미 포기해버려서
+    # 소용없었음. RTF~0.6을 감안해 클라이언트 예산(sim time 환산 시
+    # (duration_sec+15)*0.6 ≈ 12초, 그중 nominal duration 5초 제외하면
+    # goal_time 몫은 ~7초) 안에 확실히 들어오도록 5초로 낮춤 — 안전 마진
+    # 포함. real_time_factor가 더 나빠지면 이 마진도 다시 깨질 수 있으니,
+    # 근본적으로는 taskplan_bridge.py의 클라이언트 타임아웃을 sim time
+    # 기준으로 맞추거나 RTF를 감안해 늘리는 게 맞음(미착수).
+    constraints:
+      stopped_velocity_tolerance: 0.2
+      goal_time: 5.0
+      shoulder_pan_joint: { trajectory: -1.0, goal: 0.1 }
+      shoulder_lift_joint: { trajectory: -1.0, goal: 0.1 }
+      elbow_joint: { trajectory: -1.0, goal: 0.1 }
+      wrist_1_joint: { trajectory: -1.0, goal: 0.1 }
+      wrist_2_joint: { trajectory: -1.0, goal: 0.1 }
+      wrist_3_joint: { trajectory: -1.0, goal: 0.1 }
+
+gripper_controller:
+  ros__parameters:
+    joint: robotiq_85_left_knuckle_joint
+    state_interfaces: ["position", "velocity"]
+    allow_stalling: true
+    stall_timeout: 0.05
+    goal_tolerance: 0.02

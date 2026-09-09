@@ -1,0 +1,12 @@
+venv/
+venv_ros/
+__pycache__/
+*.pyc
+.run/
+logs/
+*.log
+*.txt
+*:Zone.Identifier
+*.deb*
+audio1.mp3
+새 폴더/

@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:macro name="panda_hand_ros2_control" params="name ros2_control_hardware_type">
+        <ros2_control name="${name}" type="system">
+            <hardware>
+                <xacro:if value="${ros2_control_hardware_type == 'mock_components'}">
+                    <plugin>mock_components/GenericSystem</plugin>
+                </xacro:if>
+                <xacro:if value="${ros2_control_hardware_type == 'isaac'}">
+                    <plugin>topic_based_ros2_control/TopicBasedSystem</plugin>
+                    <param name="joint_commands_topic">/isaac_joint_commands</param>
+                    <param name="joint_states_topic">/isaac_joint_states</param>
+                </xacro:if>
+                <xacro:if value="${ros2_control_hardware_type == 'gazebo'}">
+                    <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+                </xacro:if>
+            </hardware>
+            <!-- [2026-09-09] effort 커맨드 인터페이스로 바꿔보는 시도를 했다가
+                 되돌림 — dartsim에서는 힘은 잘 걸리는데 실제 물체 접촉을 전혀
+                 못 잡고 그냥 통과해버렸고(화면 캡처로 직접 확인), 원래 쓰던
+                 bullet-featherstone에서는 반대로 완전열림(0.04)에서 닫는
+                 방향으로 아예 안 움직이는 등(-4N, -9N 다 시도) 물리엔진마다
+                 다른 방식으로 고장남 — 하루 더 파봐야 할 물리엔진 호환성
+                 문제로 보여서 일단 원래 방식(position)으로 복구함. 그리퍼
+                 힘 부족 문제 자체는 아직 미해결(CLAUDE.md 참고). -->
+            <joint name="panda_finger_joint1">
+                <command_interface name="position" />
+                <state_interface name="position">
+                  <param name="initial_value">0.0</param>
+                </state_interface>
+                <state_interface name="velocity">
+                    <param name="initial_value">0.0</param>
+                </state_interface>
+            </joint>
+            <joint name="panda_finger_joint2">
+                <state_interface name="position">
+                  <param name="initial_value">0.0</param>
+                </state_interface>
+                <state_interface name="velocity">
+                    <param name="initial_value">0.0</param>
+                </state_interface>
+            </joint>
+        </ros2_control>
+    </xacro:macro>
+</robot>
+

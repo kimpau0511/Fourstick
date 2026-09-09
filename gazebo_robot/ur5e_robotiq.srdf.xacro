@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="$(arg name)">
+
+  <xacro:arg name="name" default="ur"/>
+
+  <!-- 플래닝 그룹(ur_manipulator)은 벤더 SRDF를 그대로 재사용 -->
+  <xacro:include filename="$(find ur_moveit_config)/srdf/ur_macro.srdf.xacro"/>
+  <xacro:ur_srdf/>
+
+  <!-- 벤더 SRDF는 맨 UR 팔 기준이라 Robotiq 2F-85 그리퍼(부착물)의 self-collision을
+       모른다. avoid_collisions=true로 /compute_ik를 호출하면 그리퍼 rest pose에서
+       조인트로 직접 연결된 인접 링크들이 항상 "충돌"로 잡혀서 매번 NO_IK_SOLUTION이
+       났다. 아래 12쌍은 /check_state_validity로 rest pose(전부 0)에서 실제 검출된
+       접촉 쌍을 그대로 옮긴 것 — 전부 정상적으로 맞닿아 있는 인접 링크. -->
+  <disable_collisions link1="wrist_3_link" link2="ur_to_robotiq_link" reason="Adjacent"/>
+  <disable_collisions link1="ur_to_robotiq_link" link2="robotiq_85_base_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_knuckle_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_right_knuckle_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_inner_knuckle_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_right_inner_knuckle_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_left_knuckle_link" link2="robotiq_85_left_finger_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_right_knuckle_link" link2="robotiq_85_right_finger_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_left_finger_tip_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_right_finger_link" link2="robotiq_85_right_finger_tip_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_left_inner_knuckle_link" link2="robotiq_85_left_finger_tip_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_right_inner_knuckle_link" link2="robotiq_85_right_finger_tip_link" reason="Adjacent"/>
+
+  <!-- 충돌 메시를 box로 단순화한 뒤(robotiq_2f_85_macro_simplified.urdf.xacro)
+       실제 메시보다 살짝 커진 박스끼리 새로 겹치게 된 인접 쌍 2개 추가. -->
+  <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_left_inner_knuckle_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_right_finger_link" link2="robotiq_85_right_inner_knuckle_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_left_knuckle_link" link2="robotiq_85_left_inner_knuckle_link" reason="Adjacent"/>
+  <disable_collisions link1="robotiq_85_right_knuckle_link" link2="robotiq_85_right_inner_knuckle_link" reason="Adjacent"/>
+
+</robot>

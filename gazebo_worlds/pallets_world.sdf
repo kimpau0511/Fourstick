@@ -1,0 +1,216 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="pallets_world">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"></plugin>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"></plugin>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"></plugin>
+    <!-- 카메라 센서를 쓰려면 렌더링 시스템 플러그인이 필요함 (없으면 카메라가
+         토픽에 아무것도 안 찍음). WSLg 화면 캡처가 근본적으로 안 되는 문제를
+         우회하기 위해, 화면을 캡처하는 대신 이 카메라가 직접 렌더링한 영상을
+         ROS2 토픽으로 받아서 데모 페이지에 스트리밍한다. -->
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>10 10</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>10 10</size></plane></geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 로봇은 원점(0,0,0)에 panda_link0 기준으로 놓일 예정.
+         팔레트/컨베이어는 그 앞쪽 반경 0.4~0.5m 안쪽(Panda 리치 약 0.855m)에 배치. -->
+
+    <model name="pallet_1">
+      <static>true</static>
+      <pose>0.4 0.3 0.05 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.3 0.3 0.1</size></box></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 0.3 0.1</size></box></geometry>
+          <material>
+            <ambient>0.55 0.35 0.15 1</ambient>
+            <diffuse>0.55 0.35 0.15 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pallet_2">
+      <static>true</static>
+      <pose>0.5 0.0 0.05 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.3 0.3 0.1</size></box></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 0.3 0.1</size></box></geometry>
+          <material>
+            <ambient>0.55 0.35 0.15 1</ambient>
+            <diffuse>0.55 0.35 0.15 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="pallet_3">
+      <static>true</static>
+      <pose>0.4 -0.3 0.05 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.3 0.3 0.1</size></box></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.3 0.3 0.1</size></box></geometry>
+          <material>
+            <ambient>0.55 0.35 0.15 1</ambient>
+            <diffuse>0.55 0.35 0.15 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="conveyor">
+      <static>true</static>
+      <pose>0.0 0.55 0.1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry><box><size>0.6 0.25 0.2</size></box></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.6 0.25 0.2</size></box></geometry>
+          <material>
+            <ambient>0.2 0.2 0.25 1</ambient>
+            <diffuse>0.2 0.2 0.25 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 작업 감시용 고정 카메라. 로봇(원점) + 팔레트 3개(x=0.4~0.5) +
+         컨베이어(y=0.55) 전체가 보이도록 -Y 쪽에서 비스듬히 내려다보게
+         배치. pose의 yaw=1.5708(90도)로 카메라 정면(로컬 X축)이 +Y를
+         향하게 하고, pitch=0.35로 약간 아래를 보게 함.
+         화면 구도가 마음에 안 들면 이 pose만 조정하면 됨. -->
+    <!-- 실제로 그리퍼가 붙잡을 수 있는 물체(자재) — pallet/conveyor와 달리
+         static가 아닌 진짜 강체(rigid body)다. 각 팔레트 위에 하나씩 올려서,
+         taskplan_bridge.py가 해당 팔레트 위치로 내려가 그리퍼를 닫으면
+         마찰로 붙잡아 옮길 수 있게 했다. 물체 중심 높이(0.118)는 팔레트
+         윗면(0.10) + 물체 반높이(0.0175)로 계산한 값 — taskplan_bridge.py의
+         LOCATION_POSES grasp_z를 이 값에 맞춰 같이 조정해야 한다. -->
+    <model name="material_a">
+      <pose>0.4 0.3 0.118 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.08</mass>
+          <inertia><ixx>1.6e-5</ixx><iyy>1.6e-5</iyy><izz>1.6e-5</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry><box><size>0.035 0.035 0.035</size></box></geometry>
+          <surface>
+            <friction><ode><mu>1.8</mu><mu2>1.8</mu2></ode></friction>
+            <contact><ode><min_depth>0.001</min_depth><kp>1e6</kp><kd>1</kd></ode></contact>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.035 0.035 0.035</size></box></geometry>
+          <material><ambient>0.85 0.2 0.2 1</ambient><diffuse>0.85 0.2 0.2 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_b">
+      <pose>0.5 0.0 0.118 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.08</mass>
+          <inertia><ixx>1.6e-5</ixx><iyy>1.6e-5</iyy><izz>1.6e-5</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry><box><size>0.035 0.035 0.035</size></box></geometry>
+          <surface>
+            <friction><ode><mu>1.8</mu><mu2>1.8</mu2></ode></friction>
+            <contact><ode><min_depth>0.001</min_depth><kp>1e6</kp><kd>1</kd></ode></contact>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.035 0.035 0.035</size></box></geometry>
+          <material><ambient>0.2 0.75 0.3 1</ambient><diffuse>0.2 0.75 0.3 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="material_c">
+      <pose>0.4 -0.3 0.118 0 0 0</pose>
+      <link name="link">
+        <inertial>
+          <mass>0.08</mass>
+          <inertia><ixx>1.6e-5</ixx><iyy>1.6e-5</iyy><izz>1.6e-5</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+        </inertial>
+        <collision name="collision">
+          <geometry><box><size>0.035 0.035 0.035</size></box></geometry>
+          <surface>
+            <friction><ode><mu>1.8</mu><mu2>1.8</mu2></ode></friction>
+            <contact><ode><min_depth>0.001</min_depth><kp>1e6</kp><kd>1</kd></ode></contact>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>0.035 0.035 0.035</size></box></geometry>
+          <material><ambient>0.25 0.35 0.85 1</ambient><diffuse>0.25 0.35 0.85 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="scene_camera">
+      <static>true</static>
+      <pose>0.1 -1.0 0.9 0 0.35 1.5708</pose>
+      <link name="link">
+        <sensor name="scene_camera" type="camera">
+          <camera>
+            <horizontal_fov>1.2</horizontal_fov>
+            <image>
+              <width>960</width>
+              <height>540</height>
+            </image>
+            <clip>
+              <near>0.05</near>
+              <far>10</far>
+            </clip>
+          </camera>
+          <always_on>true</always_on>
+          <update_rate>15</update_rate>
+          <visualize>false</visualize>
+          <topic>scene_camera/image</topic>
+        </sensor>
+      </link>
+    </model>
+  </world>
+</sdf>

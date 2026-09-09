@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="panda">
+    <xacro:arg name="initial_positions_file"
+               default="/opt/ros/lyrical/share/moveit_resources_panda_moveit_config/config/initial_positions.yaml" />
+    <xacro:include filename="$(find moveit_resources_panda_description)/urdf/panda.urdf.xacro" />
+    <xacro:include filename="panda.ros2_control.xacro" />
+    <xacro:include filename="panda_hand.ros2_control.xacro" />
+
+    <!-- [수정] panda_link0을 world에 물리적으로 고정.
+         이게 없으면 Gazebo 실제 물리 시뮬레이션에서 로봇 베이스가
+         고정되지 않아 중력에 의해 통째로 넘어짐 (RViz mock 데모에서는
+         중력이 적용 안 돼서 이 문제가 드러나지 않았음). -->
+    <link name="world"/>
+    <joint name="world_to_panda_link0" type="fixed">
+        <parent link="world"/>
+        <child link="panda_link0"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <xacro:panda_ros2_control name="PandaGazeboSystem"
+                               initial_positions_file="$(arg initial_positions_file)"
+                               ros2_control_hardware_type="gazebo"/>
+    <xacro:panda_hand_ros2_control name="PandaHandGazeboSystem"
+                                    ros2_control_hardware_type="gazebo"/>
+    <!-- [2026-09-09] 그리퍼만 별도 gz_ros2_control 플러그인 인스턴스로
+         분리해서 다른 position_proportional_gain을 쓰는 시도를 했었지만
+         되돌림 — 실측해보니 두 번째 plugin 인스턴스도 로봇의 <ros2_control>
+         블록을 전부(팔+그리퍼) 다시 활성화해버려서("Activating component
+         'PandaGazeboSystem'/'PandaHandGazeboSystem'"이 두 controller_manager
+         로그에 모두 찍힘) 같은 그리퍼 관절의 명령 인터페이스를 두 인스턴스가
+         동시에 쓰게 되고, 컨트롤러가 없는 쪽 인스턴스가 매 스텝 기본값(0)을
+         써서 실제 그리퍼 컨트롤러의 명령을 덮어써버림 — 그 결과 그리퍼가
+         아예 안 움직이는(항상 위치 0 근처에 고정, stalled 즉시 보고) 상태가
+         됨. 이 gz_ros2_control 버전엔 플러그인 인스턴스가 관리할
+         <ros2_control> 리소스를 이름으로 제한하는 방법이 없어 보여서, 팔과
+         그리퍼는 계속 하나의 controller_manager/게인을 공유해야 한다. -->
+    <gazebo>
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+            <!-- [수정, 2026-09-08] 원본 외부 패키지 yaml 대신 프로젝트 내
+                 panda_ros2_controllers.yaml(position_proportional_gain 추가된
+                 버전) 사용 — 그리퍼가 실제 힘을 내도록 하기 위함. -->
+            <parameters>/home/asd/forstick/gazebo_robot/panda_ros2_controllers.yaml</parameters>
+        </plugin>
+    </gazebo>
+</robot>

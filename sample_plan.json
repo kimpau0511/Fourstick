@@ -1,0 +1,12 @@
+{
+  "plan_id": "test-001",
+  "intent": "1번 팔레트에서 A자재를 집어 컨베이어로 옮긴다",
+  "steps": [
+    {"skill": "home", "args": {}},
+    {"skill": "move", "args": {"target": "1번 팔레트"}},
+    {"skill": "pick", "args": {"object": "A자재", "from": "1번 팔레트"}},
+    {"skill": "move", "args": {"target": "컨베이어"}},
+    {"skill": "place", "args": {"object": "A자재", "to": "컨베이어"}},
+    {"skill": "home", "args": {}}
+  ]
+}

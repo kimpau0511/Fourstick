@@ -1,0 +1,71 @@
+# This config file is used by ros2_control.
+# [수정, 2026-09-08] moveit_resources_panda_moveit_config의 원본을
+# 프로젝트로 복사해서 position_proportional_gain을 추가함. gz_ros2_control은
+# effort command_interface가 없는 관절의 "position" 명령을, 이 게인이 없으면
+# 내부적으로 그냥 조인트 위치를 직접 세팅(운동학적 텔레포트, 물리적인 힘을
+# 전혀 발생시키지 않음)하는 것으로 실측 확인됨 — panda_finger_joint1이 항상
+# 목표값(0.014)에 오차 없이 정확히 도달하고 물체에 닿아도 절대 멈칫하지
+# 않는 게 그 증거(진짜 접촉력이 있었다면 부딪힌 자리에서 멈춰야 함). 그
+# 결과 손가락이 물체를 "닫았다"고는 하지만 실제로 누르는 힘(N, 수직항력)이
+# 0에 가까워서 마찰력(F=mu*N)도 0이 되고, 아무리 마찰계수가 높아도
+# (pallets_world.sdf의 material_a/b/c는 mu=1.8) 못 들어올렸던 것. 이 게인을
+# 넣으면 위치 오차에 비례한 실제 힘을 관절에 가하게 돼서, 물체에 막히면
+# 그 자리에서 밀어붙이는 힘(정상적인 그립력)이 생긴다.
+#
+# [2026-09-09] 그리퍼를 effort 인터페이스로 옮기는 시도를 했다가 되돌림 —
+# panda_hand.ros2_control.xacro 상단 주석 참고(물리엔진마다 다른 이유로
+# 고장남: dartsim은 물체 접촉을 못 잡고, bullet-featherstone은 완전열림에서
+# 안 닫힘). 그리퍼 힘 부족 문제 자체는 미해결 상태로 남아있음 — 아래
+# gz_ros_control 게인이 여전히 팔+그리퍼 공유값이라 팔이 안 떨리는 낮은
+# 값(2.0)에서는 그립력이 약함.
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    panda_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    # Jazzy and newer: parallel_gripper_action_controller replaces gripper_controllers package
+    panda_hand_controller:
+      type: parallel_gripper_action_controller/GripperActionController
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+gz_ros_control:
+  ros__parameters:
+    position_proportional_gain: 2.0
+
+panda_arm_controller:
+  ros__parameters:
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    joints:
+      - panda_joint1
+      - panda_joint2
+      - panda_joint3
+      - panda_joint4
+      - panda_joint5
+      - panda_joint6
+      - panda_joint7
+    allow_nonzero_velocity_at_trajectory_end: true
+
+panda_hand_controller:
+  ros__parameters:
+    joint: panda_finger_joint1
+
+    # parallel_gripper_action_controller drives panda_finger_joint1 via its
+    # position command interface; panda_hand.ros2_control.xacro does not expose
+    # effort or velocity command interfaces on the finger joint, so we leave
+    # max_effort_interface / max_velocity_interface unset. The controller falls
+    # back to pure position control, which is what panda's mock_components
+    # hardware supports.
+
+    # Optional (recommended)
+    state_interfaces: ["position", "velocity"]
+    allow_stalling: true
+    stall_timeout: 0.05
+    goal_tolerance: 0.02

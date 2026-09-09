@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- robotiq_description의 ur_to_robotiq_adapter.urdf.xacro 로컬 포크 —
+     <collision>만 정밀 STL 대신 box로 단순화 (robotiq_2f_85_macro_simplified.urdf.xacro와
+     같은 이유, 그 파일 상단 주석 참고). 크기/중심은 trimesh로 측정한 실제 값. -->
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:macro name="ur_to_robotiq" params="prefix connected_to rotation:=^|${0.0}">
+
+    <joint name="${prefix}ur_to_robotiq_joint" type="fixed">
+      <!-- The parent link must be read from the robot model it is attached to. -->
+      <parent link="${connected_to}"/>
+      <child link="${prefix}ur_to_robotiq_link"/>
+      <origin xyz="0 0 0" rpy="0 0 ${rotation}"/>
+    </joint>
+
+    <link name="${prefix}ur_to_robotiq_link">
+        <visual>
+          <origin xyz="0 0 0" rpy="0 0 0" />
+          <geometry>
+            <mesh filename="package://robotiq_description/meshes/visual/ur_to_robotiq_adapter.dae"/>
+          </geometry>
+        </visual>
+        <collision>
+          <origin xyz="0.0000 0.0000 0.0054" rpy="0 0 0"/>
+          <geometry>
+            <box size="0.0750 0.0750 0.0169"/>
+          </geometry>
+        </collision>
+        <inertial>
+          <mass value="0.01" />
+          <origin xyz="0 0 0" />
+          <inertia ixx="0.000044" ixy="0.0" ixz="0.0" iyy="0.000027" iyz="0.0" izz="0.000027" />
+        </inertial>
+    </link>
+
+    <joint name="${prefix}gripper_side_joint" type="fixed">
+      <parent link="${prefix}ur_to_robotiq_link"/>
+      <child link="${prefix}gripper_mount_link"/>
+      <!-- <origin xyz="0 0 0.011" rpy="0 ${-pi/2} ${pi/2}"/> -->
+      <origin xyz="0 0 0.011" rpy="0 0 0"/>
+    </joint>
+    <link name="${prefix}gripper_mount_link"/>
+
+  </xacro:macro>
+</robot>

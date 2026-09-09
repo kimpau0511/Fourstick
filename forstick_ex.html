@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FORSTICK Middleware UI Prototype</title>
+<style>
+:root{
+  --bg:#f2f6f7;--panel:#ffffff;--navy:#15394b;--navy2:#0f2d3c;--ink:#172830;--sub:#6b7d84;
+  --teal:#2db5a4;--teal-dark:#14907f;--teal-soft:#e6f7f3;--line:#dce7ea;--orange:#e59c4c;--orange-soft:#fff4e8;
+  --red:#d7605a;--red-soft:#fff0ef;--blue:#4f82c6;--shadow:0 12px 34px rgba(21,57,75,.08);
+  --radius:18px;
+}
+*{box-sizing:border-box} html,body{margin:0;min-height:100%;font-family:Inter,Pretendard,"Noto Sans KR",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+body{overflow:hidden}
+button,input,textarea{font:inherit}
+.app{height:100vh;display:grid;grid-template-columns:248px 1fr;background:var(--bg)}
+.sidebar{background:var(--navy2);color:#fff;padding:22px 16px;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.08)}
+.brand{padding:4px 10px 24px}.brand .logo{font-weight:1000;letter-spacing:.18em;font-size:19px}.brand .sub{font-size:11px;color:#9fb8c4;margin-top:6px;letter-spacing:.08em}
+.nav{display:grid;gap:6px}.nav button{width:100%;border:0;background:transparent;color:#bed0d8;padding:13px 14px;border-radius:12px;text-align:left;cursor:pointer;font-weight:800;display:flex;align-items:center;gap:10px}.nav button:hover{background:rgba(255,255,255,.06);color:#fff}.nav button.active{background:#fff;color:var(--navy2)}
+.nav .ico{width:22px;text-align:center}.side-foot{margin-top:auto;padding:16px 10px 4px}.status-mini{display:grid;gap:8px}.srow{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#b9cbd2}.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;background:#61d2bd;box-shadow:0 0 0 3px rgba(97,210,189,.12)}
+.main{min-width:0;display:flex;flex-direction:column;height:100vh}.topbar{height:72px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 26px;flex:0 0 auto}.crumb{font-size:13px;color:var(--sub);font-weight:800}.top-status{display:flex;align-items:center;gap:10px}.pill{height:34px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:0 12px;display:flex;align-items:center;font-size:12px;font-weight:850;color:#50656e}.pill strong{color:var(--navy)}
+.stop{border:0;background:var(--red);color:#fff;border-radius:12px;padding:10px 16px;font-weight:950;cursor:pointer;box-shadow:0 8px 18px rgba(215,96,90,.22)}
+.content{padding:24px;overflow:auto;height:calc(100vh - 72px)}.screen{display:none;animation:fade .18s ease}.screen.active{display:block}@keyframes fade{from{opacity:.3;transform:translateY(4px)}to{opacity:1;transform:none}}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:20px}.eyebrow{font-size:12px;color:var(--teal-dark);font-weight:1000;letter-spacing:.12em}.page-head h1{font-size:28px;letter-spacing:-.04em;color:var(--navy);margin:4px 0 0}.page-head p{margin:6px 0 0;color:var(--sub);font-size:14px}.page-tag{font-size:12px;color:var(--sub);background:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.grid{display:grid;gap:18px}.grid.two{grid-template-columns:1.05fr .95fr}.grid.three{grid-template-columns:repeat(3,1fr)}.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}.card-pad{padding:20px}.card h3{margin:0;color:var(--navy);font-size:16px}.muted{color:var(--sub)}
+.command-hero{padding:26px;min-height:360px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;background:linear-gradient(180deg,#fff,#f9fcfc)}.mic{width:88px;height:88px;border-radius:26px;background:var(--teal-soft);display:grid;place-items:center;font-size:38px;margin-bottom:18px;border:1px solid #c9ece5;cursor:pointer;user-select:none}.mic.recording{background:var(--red-soft);border-color:#f0c9c6;animation:pulse 1s infinite}@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}.command-hero h2{font-size:25px;color:var(--navy);margin:0}.command-hero p{color:var(--sub);max-width:520px;line-height:1.6}.input-wrap{width:min(680px,100%);display:flex;gap:10px;margin-top:16px}.command-input{flex:1;border:1px solid var(--line);background:#fff;border-radius:12px;padding:13px 14px;outline:none}.command-input:focus{border-color:#8bd5c8;box-shadow:0 0 0 3px rgba(45,181,164,.12)}.primary{border:0;background:var(--navy);color:#fff;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer}.primary:disabled{opacity:.5;cursor:default}.secondary{border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:12px;padding:11px 14px;font-weight:850;cursor:pointer}.soft{background:var(--teal-soft);color:var(--teal-dark);border-color:#cdece6}.danger-soft{background:var(--red-soft);color:var(--red);border-color:#f0c9c6}
+.info-list{display:grid;gap:10px;margin-top:14px}.info-row{display:flex;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid #edf2f4;font-size:13px}.info-row:last-child{border-bottom:0}.info-row b{color:var(--navy)}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:16px}.flow-step{background:#f7fafb;border:1px solid var(--line);border-radius:13px;padding:14px}.flow-step .n{font-size:10px;color:var(--teal-dark);font-weight:1000;letter-spacing:.08em}.flow-step b{display:block;color:var(--navy);font-size:13px;margin-top:5px}.flow-step span{font-size:11px;color:var(--sub)}
+.plan-steps{display:grid;gap:12px}.plan-step{display:grid;grid-template-columns:42px 1fr auto;gap:12px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:13px 14px;background:#fff}.step-num{width:34px;height:34px;border-radius:10px;background:var(--teal-soft);display:grid;place-items:center;color:var(--teal-dark);font-weight:1000}.skill{font-weight:1000;color:var(--navy);font-size:13px}.desc{font-size:12px;color:var(--sub);margin-top:3px}.chip{font-size:10px;font-weight:1000;border-radius:999px;padding:6px 8px;background:#eef4f6;color:#62757d}.json{background:#102731;color:#dff7f1;border-radius:14px;padding:16px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-all;min-height:200px;overflow:auto}
+.validation-shell{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}.pipeline{display:grid;gap:13px}.gate{display:grid;grid-template-columns:48px 1fr auto;gap:12px;align-items:center;padding:15px;border:1px solid var(--line);border-radius:15px;background:#fff}.gate-ico{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:#eef4f6;font-weight:1000;color:var(--navy)}.gate.pass .gate-ico{background:var(--teal-soft);color:var(--teal-dark)}.gate.loading .gate-ico{background:var(--orange-soft);color:var(--orange)}.gate.block .gate-ico{background:var(--red-soft);color:var(--red)}.gate b{font-size:14px;color:var(--navy)}.gate small{display:block;color:var(--sub);margin-top:3px}.state{font-size:11px;font-weight:1000;border-radius:999px;padding:7px 9px;background:#eef2f4;color:#78888f}.pass .state{background:var(--teal-soft);color:var(--teal-dark)}.loading .state{background:var(--orange-soft);color:var(--orange)}.block .state{background:var(--red-soft);color:var(--red)}
+.metric-list{display:grid;gap:12px;margin-top:14px}.metric{display:grid;grid-template-columns:1fr auto;gap:14px;padding-bottom:10px;border-bottom:1px solid #edf2f4}.metric:last-child{border-bottom:0}.metric b{font-size:12px;color:var(--navy)}.metric span{font-size:11px;color:var(--sub)}.ok{color:var(--teal-dark)!important;font-weight:900}.warn{color:var(--orange)!important;font-weight:900}.bad{color:var(--red)!important;font-weight:900}.lock{margin-top:14px;background:#f5f8f9;border:1px dashed #cddadd;border-radius:14px;padding:14px;text-align:center;color:#72858c;font-weight:900;font-size:12px}
+.result-layout{display:grid;grid-template-columns:1fr .9fr;gap:18px}.result-hero{padding:28px}.result-icon{width:74px;height:74px;border-radius:22px;display:grid;place-items:center;font-size:34px;margin-bottom:18px}.result-hero.pass .result-icon{background:var(--teal-soft);color:var(--teal-dark)}.result-hero.block .result-icon{background:var(--red-soft);color:var(--red)}.result-hero.ask .result-icon{background:var(--orange-soft);color:var(--orange)}.result-hero h2{margin:0;color:var(--navy)}.result-hero p{color:var(--sub);line-height:1.6}.reason{border-radius:14px;padding:14px;margin-top:16px;background:#f7fafb;border:1px solid var(--line)}.reason b{color:var(--navy)}.button-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.sim{display:grid;grid-template-columns:1.35fr .65fr;gap:18px}.viewport{height:470px;background:linear-gradient(180deg,#15252d,#0e1a20);border-radius:18px;position:relative;overflow:hidden;border:1px solid #2d4048;display:flex;align-items:center;justify-content:center}.viewport img{max-width:100%;max-height:100%;object-fit:contain}.viewport .stream-fallback{color:#8fb0bd;font-size:12px;text-align:center;padding:20px}.sim-badge{position:absolute;left:16px;top:16px;color:#9cc6d3;font-size:11px;font-weight:900;background:rgba(10,20,25,.6);border:1px solid #35505b;padding:8px 10px;border-radius:9px}.live{position:absolute;right:16px;top:16px;color:#78dac6;font-size:11px;font-weight:1000}.sim-controls{display:grid;gap:18px}.progress{height:10px;background:#edf2f4;border-radius:999px;overflow:hidden;margin-top:10px;position:relative}.progress i{display:block;height:100%;background:var(--teal);border-radius:999px}.progress.indeterminate i{width:40%!important;position:absolute;animation:indet 1.1s ease-in-out infinite}@keyframes indet{0%{left:-40%}100%{left:100%}}.event{font-size:12px;padding:10px 0;border-bottom:1px solid #edf2f4;color:#50646c}.event b{color:var(--navy)}
+.table{width:100%;border-collapse:collapse}.table th,.table td{text-align:left;padding:13px 12px;border-bottom:1px solid #edf2f4;font-size:12px}.table th{font-size:11px;color:#71838b;letter-spacing:.05em;background:#f8fafb}.badge{font-size:10px;font-weight:1000;padding:6px 8px;border-radius:999px;display:inline-block}.badge.pass{background:var(--teal-soft);color:var(--teal-dark)}.badge.block{background:var(--red-soft);color:var(--red)}.badge.ask{background:var(--orange-soft);color:var(--orange)}.search-row{display:flex;gap:10px;margin-bottom:14px}.search{flex:1;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:#fff}
+.toast{position:fixed;right:24px;bottom:24px;background:#122b37;color:#fff;padding:14px 16px;border-radius:12px;box-shadow:0 16px 36px rgba(0,0,0,.22);font-size:12px;font-weight:800;opacity:0;transform:translateY(10px);pointer-events:none;transition:.2s}.toast.show{opacity:1;transform:none}
+.empty-state{padding:60px 20px;text-align:center;color:var(--sub);font-size:13px}
+
+.user-panel{margin:4px 0 16px;padding:14px 12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.055);border-radius:14px}.user-kicker{font-size:10px;color:#8fb0bd;font-weight:900;letter-spacing:.08em}.user-name{font-size:16px;font-weight:950;margin-top:4px}.factory-name{font-size:11px;color:#b7cbd3;margin-top:5px;line-height:1.45}.fleet-mini{margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px}.fleet-stat{padding:9px;border-radius:10px;background:rgba(255,255,255,.06)}.fleet-stat b{display:block;font-size:15px;color:#77dfcb}.fleet-stat span{font-size:9px;color:#9fb8c4}.robot-select-card{padding:18px;margin-bottom:18px}.robot-select-top{display:flex;align-items:center;justify-content:space-between;gap:16px}.robot-select-top h3{font-size:15px}.robot-select-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:13px}.field label{display:block;font-size:10px;color:var(--sub);font-weight:900;letter-spacing:.04em;margin-bottom:6px}.robot-kpi{min-height:42px;border:1px solid var(--line);border-radius:11px;background:#f8fbfb;display:flex;align-items:center;padding:8px 11px;font-size:12px;font-weight:900;color:var(--navy)}.robot-kpi .mini-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);margin-right:7px;flex:0 0 auto}.location-line{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--sub)}
+@media(max-width:1050px){.app{grid-template-columns:92px 1fr}.brand .sub,.brand .logo span,.nav button .txt,.side-foot{display:none}.brand{text-align:center;padding-left:0;padding-right:0}.brand .logo{letter-spacing:0}.nav button{justify-content:center}.grid.two,.validation-shell,.result-layout,.sim,.robot-select-grid{grid-template-columns:1fr}.flow{grid-template-columns:repeat(2,1fr)}}
+
+.log-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,.55fr);gap:18px;align-items:start}.log-toolbar{display:grid;grid-template-columns:1.2fr 170px 150px;gap:10px;margin-bottom:14px}.log-toolbar .search{min-width:0}.date-select,.filter-select{width:100%;border:1px solid var(--line);border-radius:12px;padding:11px 12px;background:#fff;color:var(--navy);font-weight:850}.log-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}.log-stat{padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:#f8fbfb}.log-stat span{display:block;font-size:10px;color:var(--sub);font-weight:900;letter-spacing:.04em}.log-stat b{display:block;margin-top:4px;font-size:20px;color:var(--navy)}.log-table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.log-table{width:100%;border-collapse:collapse;min-width:640px}.log-table th,.log-table td{text-align:left;padding:12px 11px;border-bottom:1px solid #edf2f4;font-size:12px}.log-table th{position:sticky;top:0;background:#f8fafb;color:#71838b;font-size:10px;letter-spacing:.05em;z-index:1}.log-table tbody tr{cursor:pointer;background:#fff}.log-table tbody tr:hover{background:#f7fbfa}.log-table tbody tr.selected{background:var(--teal-soft)}.log-detail{position:sticky;top:0}.detail-empty{padding:40px 18px;text-align:center;color:var(--sub);font-size:12px}.detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line)}.detail-head h3{margin:3px 0 0;font-size:14px}.detail-kicker{font-size:10px;color:var(--teal-dark);font-weight:1000;letter-spacing:.08em}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.detail-box{padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#f8fbfb}.detail-box span{display:block;font-size:10px;color:var(--sub);font-weight:850}.detail-box b{display:block;font-size:12px;color:var(--navy);margin-top:4px;overflow-wrap:anywhere}.detail-section{margin-top:16px}.detail-section h4{font-size:11px;color:var(--sub);letter-spacing:.05em;margin:0 0 8px}.command-box{padding:13px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:12px;line-height:1.55;color:var(--ink)}.log-count{font-size:11px;color:var(--sub);margin-top:10px}@media(max-width:1180px){.log-layout{grid-template-columns:1fr}.log-detail{position:static}.log-toolbar{grid-template-columns:1fr 1fr}.log-summary{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">F<span>ORSTICK</span></div><div class="sub">MIDDLEWARE CONTROL</div></div>
+    <div class="user-panel">
+      <div class="user-kicker">OPERATOR</div>
+      <div class="user-name">김예은님, 어서오세요.</div>
+      <div class="factory-name">📍 FORSTICK 스마트팩토리 · A동<br>생산 2라인 / CELL-01</div>
+      <div class="fleet-mini">
+        <div class="fleet-stat"><b id="sidebarRobotId">robot-01</b><span>ROBOT ID</span></div>
+        <div class="fleet-stat"><b id="sidebarRobotStatus">확인 중</b><span>연결 상태</span></div>
+      </div>
+    </div>
+    <div class="nav">
+      <button class="active" data-screen="command"><span class="ico">⌁</span><span class="txt">작업 콘솔</span></button>
+      <button data-screen="plan"><span class="ico">☷</span><span class="txt">Task Plan</span></button>
+      <button data-screen="validate"><span class="ico">✓</span><span class="txt">안전 검증</span></button>
+      <button data-screen="result"><span class="ico">◉</span><span class="txt">판정 결과</span></button>
+      <button data-screen="simulation"><span class="ico">⬡</span><span class="txt">시뮬레이션</span></button>
+      <button data-screen="logs"><span class="ico">▤</span><span class="txt">감사 로그</span></button>
+    </div>
+    <div class="side-foot">
+      <div class="status-mini">
+        <div class="srow"><span><i class="dot"></i>API 서버</span><b id="statusApi">확인 중</b></div>
+        <div class="srow"><span><i class="dot"></i>로봇 실행기</span><b id="statusRobot">확인 중</b></div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div><div class="crumb">FORSTICK / <span id="crumbName">작업 콘솔</span></div></div>
+      <div class="top-status">
+        <div class="pill"><span class="dot"></span><strong id="topRobotName">robot-01</strong>&nbsp; <span id="topRobotState">확인 중</span></div>
+        <div class="pill">CELL v1.0</div>
+        <button class="stop" id="stopBtn">■ STOP</button>
+      </div>
+    </header>
+
+    <section class="content">
+      <div class="screen active" id="command">
+        <div class="page-head"><div><div class="eyebrow">01 · COMMAND CENTER</div><h1>작업 명령 콘솔</h1><p>자연어 명령을 입력하면 미들웨어가 구조화된 작업 계획으로 변환합니다.</p></div><div class="page-tag">LIVE MODE</div></div>
+        <div class="card robot-select-card">
+          <div class="robot-select-top">
+            <div><h3>연결된 로봇</h3><div class="location-line" style="margin-top:5px">현재 공장 · FORSTICK 스마트팩토리 A동 / 생산 2라인</div></div>
+            <div class="page-tag"><span class="dot"></span><span id="fleetCountText">확인 중...</span></div>
+          </div>
+          <div class="robot-select-grid">
+            <div class="field"><label>ROBOT ID</label><div class="robot-kpi" id="robotIdBox">robot-01</div></div>
+            <div class="field"><label>STATUS</label><div class="robot-kpi"><span class="mini-dot"></span><span id="robotStatus">확인 중</span></div></div>
+            <div class="field"><label>위치(LOCATIONS)</label><div class="robot-kpi" id="robotLocations">-</div></div>
+            <div class="field"><label>물건(OBJECTS)</label><div class="robot-kpi" id="robotObjects">-</div></div>
+          </div>
+          <div style="margin-top:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button class="secondary" id="robotSwitchPanda" onclick="switchRobot('panda')">Panda로 전환</button>
+            <button class="secondary" id="robotSwitchUr5e" onclick="switchRobot('ur5e')">UR5e로 전환</button>
+            <span class="muted" id="robotSwitchStatus" style="font-size:11px"></span>
+          </div>
+        </div>
+        <div class="grid two">
+          <div class="card command-hero">
+            <div class="mic" id="micBtn" title="누르고 있는 동안 녹음">🎙</div><h2>어떤 작업을 시킬까요?</h2><p>작업자가 평소 말하듯 입력합니다. AI는 계획만 생성하고, 실제 실행 권한은 검증 계층이 결정합니다.</p>
+            <div class="input-wrap"><input id="cmdInput" class="command-input" value="2번 팔레트에서 A자재를 집어서 컨베이어에 올려줘."/><button class="primary" id="makePlan">계획 생성</button></div>
+            <div class="button-row"><span class="muted" style="font-size:11px">🎙 마이크 아이콘을 누르고 있는 동안 녹음됩니다</span></div>
+          </div>
+          <div class="card card-pad">
+            <h3>미들웨어 상태</h3>
+            <div class="info-list">
+              <div class="info-row"><span>STT Engine</span><b>faster-whisper</b></div>
+              <div class="info-row"><span>Planner</span><b>EXAONE / vLLM</b></div>
+              <div class="info-row"><span>Schema</span><b>Task Plan v1.0</b></div>
+              <div class="info-row"><span>Robot ID</span><b id="profileRobot">robot-01</b></div>
+              <div class="info-row"><span>Capability Profile</span><b id="profileSkills">확인 중</b></div>
+            </div>
+            <h3 style="margin-top:22px">처리 흐름</h3>
+            <div class="flow"><div class="flow-step"><div class="n">01</div><b>INPUT</b><span>음성·텍스트</span></div><div class="flow-step"><div class="n">02</div><b>PLAN</b><span>Task Plan</span></div><div class="flow-step"><div class="n">03</div><b>CHECK</b><span>형식·안전</span></div><div class="flow-step"><div class="n">04</div><b>RUN</b><span>Gazebo 실행</span></div><div class="flow-step"><div class="n">05</div><b>LOG</b><span>감사 기록</span></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="plan">
+        <div class="page-head"><div><div class="eyebrow">02 · TASK PLAN</div><h1>작업 계획 확인</h1><p>자연어를 사람이 읽을 수 있는 원자 스킬과 JSON으로 구조화합니다.</p></div><div class="page-tag" id="planTag">PLAN #-</div></div>
+        <div id="planEmpty" class="card empty-state">아직 생성된 작업 계획이 없습니다. 작업 콘솔에서 명령을 먼저 입력해 주세요.</div>
+        <div class="grid two" id="planContent" hidden>
+          <div class="card card-pad"><h3>Human-readable Plan</h3><p class="muted" style="font-size:12px">원본 명령 · <b id="originText"></b></p>
+            <div class="plan-steps" id="planSteps" style="margin-top:16px"></div>
+            <div class="button-row"><button class="secondary" data-goto="command">명령 수정</button><button class="primary" data-goto="validate">안전 검사 시작</button></div>
+          </div>
+          <div class="card card-pad"><h3>JSON Task Plan</h3><div class="json" id="jsonView"></div></div>
+        </div>
+      </div>
+
+      <div class="screen" id="validate">
+        <div class="page-head"><div><div class="eyebrow">03 · VALIDATION PIPELINE</div><h1>검증 및 실행</h1><p>계획 생성과 실행 허가를 분리한다 — 형식·안전 검사를 실제로 통과한 계획만 Gazebo에서 실행됩니다.</p></div><div class="page-tag" id="validateTag">-</div></div>
+        <div id="validateEmpty" class="card empty-state">아직 생성된 작업 계획이 없습니다.</div>
+        <div class="validation-shell" id="validateContent" hidden>
+          <div class="card card-pad"><h3>검증 파이프라인</h3><div class="pipeline" style="margin-top:16px">
+            <div class="gate" id="gateSchema"><div class="gate-ico">1</div><div><b>형식 검증 · Schema</b><small>Pydantic / JSON Schema, Capability Profile 검사</small></div><span class="state" id="gateSchemaState">-</span></div>
+            <div class="gate" id="gateSafety"><div class="gate-ico">2</div><div><b>L3 Safety Guard</b><small>순서·가반상태·인자 결정론적 규칙 (E-SEQ/E-HOLD/E-LIMIT/E-ARG)</small></div><span class="state" id="gateSafetyState">-</span></div>
+            <div class="gate" id="gateExec"><div class="gate-ico">3</div><div><b>실행</b><small>taskplan_bridge를 통해 실제 Gazebo 로봇 실행</small></div><span class="state" id="gateExecState">대기</span></div>
+          </div><div class="button-row" id="validateActions"></div></div>
+          <div class="card card-pad"><h3>Safety Guard 상세</h3><div id="safetyDetail"></div></div>
+        </div>
+      </div>
+
+      <div class="screen" id="result">
+        <div class="page-head"><div><div class="eyebrow">04 · DECISION</div><h1>판정 결과</h1><p>사용자는 단순 코드가 아니라, 이유와 다음 행동까지 이해할 수 있어야 합니다.</p></div><div class="page-tag" id="resultTag">-</div></div>
+        <div id="resultEmpty" class="card empty-state">아직 판정된 작업이 없습니다.</div>
+        <div class="result-layout" id="resultContent" hidden>
+          <div class="card result-hero" id="resultHero"><div class="result-icon" id="resultIcon">·</div><h2 id="resultTitle"></h2><p id="resultDesc"></p>
+            <div class="reason"><b id="reasonTitle"></b><p id="reasonDesc" class="muted" style="font-size:12px;margin-bottom:0"></p></div>
+            <div class="button-row" id="resultActions"></div>
+          </div>
+          <div class="card card-pad"><h3>판정 상세</h3><div class="info-list" id="resultDetailList"></div></div>
+        </div>
+      </div>
+
+      <div class="screen" id="simulation">
+        <div class="page-head"><div><div class="eyebrow">05 · SIMULATION</div><h1>가상 실행 모니터링</h1><p>Gazebo 시뮬레이션의 scene_camera 라이브 영상입니다.</p></div><div class="page-tag">GAZEBO</div></div>
+        <div class="sim">
+          <div><div class="viewport"><div class="sim-badge" id="simBadge">robot-01 · CELL-01</div><div class="live"><i class="dot"></i>LIVE</div><img id="gazeboView" src="/gazebo-stream.mjpeg" alt="Gazebo 화면을 불러올 수 없습니다 (서버/시뮬레이션 상태 확인 필요)"></div></div>
+          <div class="sim-controls">
+            <div class="card card-pad"><h3>현재 작업</h3><div class="info-list" id="simTaskInfo"></div><div class="progress"><i id="simProgress" style="width:0%"></i></div><p class="muted" style="font-size:11px" id="simProgressText">실행한 작업이 없습니다.</p><button class="stop" style="width:100%;margin-top:8px" id="simStopBtn">■ EMERGENCY STOP</button></div>
+            <div class="card card-pad"><h3>Event Stream</h3><div id="simEvents" class="muted" style="font-size:12px">아직 이벤트가 없습니다.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="logs">
+        <div class="page-head"><div><div class="eyebrow">06 · AUDIT LOG</div><h1>검사 · 작업 로그</h1><p>날짜별 작업 이력과 판정 결과를 조회하고, 한 건을 선택해 명령·상세 기록까지 확인합니다.</p></div><div class="page-tag">audit_log.jsonl</div></div>
+        <div class="log-layout">
+          <div class="card card-pad">
+            <div class="log-toolbar">
+              <input class="search" id="logSearch" placeholder="명령, 이유 코드 검색" />
+              <select class="date-select" id="logDate"></select>
+              <select class="filter-select" id="logResult"><option value="all">전체 판정</option><option value="SUCCESS">SUCCESS</option><option value="REJECTED">REJECTED</option><option value="GATED">GATED</option><option value="ERROR">ERROR</option></select>
+            </div>
+            <div class="log-summary">
+              <div class="log-stat"><span>TOTAL JOBS</span><b id="statTotal">0</b></div>
+              <div class="log-stat"><span>SUCCESS</span><b id="statPass">0</b></div>
+              <div class="log-stat"><span>REJECTED / GATED</span><b id="statIssue">0</b></div>
+              <div class="log-stat"><span>AVG STT CONF</span><b id="statLatency">-</b></div>
+            </div>
+            <div class="log-table-wrap">
+              <table class="log-table"><thead><tr><th>TIME</th><th>PLAN</th><th>COMMAND</th><th>EVENT</th><th>REASON</th></tr></thead><tbody id="logBody"></tbody></table>
+            </div>
+            <div class="log-count" id="logCount"></div>
+          </div>
+          <div class="card card-pad log-detail" id="logDetail"><div class="detail-empty">왼쪽에서 작업 로그를 선택하면 상세 검사 기록이 표시됩니다.</div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+// ============================================================
+// 화면 전환
+// ============================================================
+const names={command:'작업 콘솔',plan:'Task Plan',validate:'안전 검증',result:'판정 결과',simulation:'시뮬레이션',logs:'감사 로그'};
+const screenRefreshers={plan:refreshPlanScreen,validate:refreshValidateScreen,result:refreshResultScreen,simulation:refreshSimScreen,logs:refreshLogsScreen};
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.screen===id));
+  document.getElementById('crumbName').textContent=names[id]||id;
+  if(screenRefreshers[id]) screenRefreshers[id]();
+}
+document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>showScreen(b.dataset.screen)));
+document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>showScreen(b.dataset.goto)));
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
+
+// ============================================================
+// 상태
+// ============================================================
+let currentPlanData=null;   // /v1/task-plan 응답 (status/task_plan/violations/message/reason_code)
+let executeResponse=null;   // /v1/execute 응답
+let executing=false;        // /v1/execute가 아직 진행 중인지 (실행 버튼 누른 직후 ~ 응답 받기 전)
+
+// ============================================================
+// 스킬 → 사람이 읽는 텍스트 (demo.html의 stepInfo와 동일한 매핑)
+// ============================================================
+function stepInfo(step){
+  const a=step.args||{};
+  switch(step.skill){
+    case 'move':  return {title:'MOVE',  desc:`${a.target} 위치로 이동`};
+    case 'pick':  return {title:'PICK',  desc:`${a.object}${a.from?` (${a.from})`:''} 파지`};
+    case 'place': return {title:'PLACE', desc:`${a.object} → ${a.to} 내려놓기`};
+    case 'stop':  return {title:'STOP',  desc:'남은 스텝 실행 중단'};
+    case 'home':  return {title:'HOME',  desc:'홈 위치로 복귀'};
+    default:      return {title:(step.skill||'').toUpperCase(), desc:''};
+  }
+}
+
+// ============================================================
+// 로봇 상태 (GET /health) + Capability Profile (GET /v1/capability-profile)
+// ============================================================
+let robotSwitching = false;
+// start_dual_robots.sh로 띄우면 Panda=8090/UR5e=8091이 동시에 떠 있는다 —
+// 이 경우 굳이 start_robot.sh로 죽였다 재기동할 필요 없이, 이미 떠 있는
+// 다른 포트로 바로 이동하면 전환이 즉시 끝난다(재기동은 원래 로봇 하나만
+// 띄우는 start_robot.sh 단일 모드에서만 필요).
+const ROBOT_PORTS = {panda: 8090, ur5e: 8091};
+async function switchRobot(target){
+  if(robotSwitching) return;
+  robotSwitching = true;
+  const btnPanda=document.getElementById('robotSwitchPanda'), btnUr5e=document.getElementById('robotSwitchUr5e');
+  const statusEl=document.getElementById('robotSwitchStatus');
+  btnPanda.disabled = true; btnUr5e.disabled = true;
+  const targetLabel = target === 'panda' ? 'Panda' : 'UR5e';
+  const finish = (msg) => {
+    robotSwitching = false;
+    statusEl.textContent = msg;
+    checkHealth();
+  };
+
+  // 1) 듀얼 모드 확인: 다른 포트가 이미 목표 로봇으로 응답하는지 짧게(1.5초)
+  // 확인해보고, 맞으면 그 포트의 /console로 바로 이동만 하고 끝낸다 —
+  // /v1/robot/switch(재기동, 2~3분) 자체를 안 탄다.
+  const otherPort = ROBOT_PORTS[target];
+  if(otherPort && String(otherPort) !== location.port){
+    statusEl.textContent = `${targetLabel} 서버 확인 중...`;
+    try{
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 1500);
+      const otherOrigin = `${location.protocol}//${location.hostname}:${otherPort}`;
+      const res = await fetch(`${otherOrigin}/health`, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if(res.ok){
+        const data = await res.json();
+        if(data.robot_type === target){
+          statusEl.textContent = `${data.robot_label} 서버로 이동 중...`;
+          location.href = `${otherOrigin}/console`;
+          return;
+        }
+      }
+    }catch(err){
+      // 다른 포트가 응답 안 함 — 듀얼 모드가 아니라 단일 모드로 보고
+      // 아래 기존 재기동 흐름으로 계속 진행.
+    }
+  }
+
+  // 2) 단일 모드 폴백: 기존처럼 start_robot.sh 기반 전환(재기동 필요).
+  statusEl.textContent = `${targetLabel}로 전환 요청 중...`;
+  try{
+    const res = await fetch('/v1/robot/switch', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({robot: target})
+    });
+    const data = await res.json();
+    if(!res.ok){ finish(`전환 실패: ${data.message||res.status}`); return; }
+    if(data.already){ finish('이미 해당 로봇입니다.'); return; }
+  }catch(err){ finish('전환 요청 실패 (서버 응답 없음)'); return; }
+
+  // 전환 스크립트가 API 서버를 내렸다 새로 띄우므로, /health가 목표
+  // 로봇을 보고할 때까지 폴링한다 (그 사이엔 연결 에러가 나는 게 정상).
+  statusEl.textContent = `${targetLabel}로 전환 중... (Gazebo 재기동, 최대 2~3분 소요)`;
+  const deadline = Date.now() + 180000;
+  const poll = async () => {
+    if(Date.now() > deadline){ finish('전환 확인 타임아웃 — 콘솔/로그 직접 확인 필요'); return; }
+    try{
+      const res = await fetch('/health');
+      const data = await res.json();
+      if(data.robot_type === target){ finish(`${data.robot_label}로 전환 완료`); loadCapabilityProfile(); return; }
+    }catch(err){ /* 재기동 중 일시적 연결 실패 — 무시하고 계속 폴링 */ }
+    setTimeout(poll, 3000);
+  };
+  setTimeout(poll, 3000);
+}
+async function checkHealth(){
+  try{
+    const res=await fetch('/health');
+    const data=await res.json();
+    const online=!!data.robot_connected;
+    const robotLabel=data.robot_label||'-';
+    const robotType=data.robot_type||'-';
+    document.getElementById('statusApi').textContent='ONLINE';
+    document.getElementById('statusRobot').textContent=online?'ONLINE':'OFFLINE';
+    document.getElementById('sidebarRobotStatus').textContent=online?'ONLINE':'OFFLINE';
+    document.getElementById('robotStatus').textContent=online?'ONLINE':'OFFLINE';
+    document.getElementById('topRobotState').textContent=online?'READY':'OFFLINE';
+    document.getElementById('fleetCountText').textContent=online?'1대 연결됨':'로봇 연결 안 됨';
+    document.getElementById('sidebarRobotId').textContent=robotLabel;
+    document.getElementById('topRobotName').textContent=robotLabel;
+    document.getElementById('robotIdBox').textContent=robotType;
+    document.getElementById('profileRobot').textContent=robotLabel;
+    document.getElementById('simBadge').textContent=`${robotLabel} · CELL-01`;
+    if(!robotSwitching){
+      const btnPanda=document.getElementById('robotSwitchPanda'), btnUr5e=document.getElementById('robotSwitchUr5e');
+      btnPanda.disabled = (robotType === 'panda');
+      btnUr5e.disabled = (robotType === 'ur5e');
+      btnPanda.textContent = robotType === 'panda' ? 'Panda (현재)' : 'Panda로 전환';
+      btnUr5e.textContent = robotType === 'ur5e' ? 'UR5e (현재)' : 'UR5e로 전환';
+    }
+  }catch(err){
+    document.getElementById('statusApi').textContent='OFFLINE';
+    document.getElementById('statusRobot').textContent='-';
+    document.getElementById('sidebarRobotStatus').textContent='서버 확인 불가';
+    document.getElementById('robotStatus').textContent='서버 확인 불가';
+    document.getElementById('topRobotState').textContent='-';
+    document.getElementById('fleetCountText').textContent='서버 확인 불가';
+  }
+}
+async function loadCapabilityProfile(){
+  try{
+    const res=await fetch('/v1/capability-profile');
+    const data=await res.json();
+    const locs=(data.locations||[]);
+    const objs=(data.objects||[]);
+    document.getElementById('robotLocations').textContent=locs.length+'개';
+    document.getElementById('robotObjects').textContent=objs.length+'개';
+    document.getElementById('profileSkills').textContent=`위치 ${locs.length} · 물건 ${objs.length}`;
+  }catch(err){
+    document.getElementById('robotLocations').textContent='-';
+    document.getElementById('robotObjects').textContent='-';
+    document.getElementById('profileSkills').textContent='확인 불가';
+  }
+}
+checkHealth();loadCapabilityProfile();setInterval(checkHealth,8000);
+
+// ============================================================
+// 작업 콘솔 — 텍스트/음성 명령 → /v1/task-plan (execute는 항상 false,
+// 실제 실행은 안전 검증 화면의 '실행' 버튼에서 /v1/execute로 한다)
+// ============================================================
+const cmdInput=document.getElementById('cmdInput');
+const makePlanBtn=document.getElementById('makePlan');
+
+function onPlanResponse(data){
+  currentPlanData=data;
+  executeResponse=null;
+  if(data.status==='success'||(data.status==='rejected'&&data.task_plan)){
+    showScreen('plan');
+  }else{
+    toast(data.message||'계획을 생성하지 못했습니다.');
+  }
+}
+
+async function sendText(text){
+  if(!text.trim())return;
+  makePlanBtn.disabled=true;makePlanBtn.textContent='생성 중...';
+  try{
+    const res=await fetch('/v1/task-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,execute:false})});
+    const data=await res.json();
+    onPlanResponse(data);
+  }catch(err){
+    toast('서버에 연결할 수 없습니다: '+err);
+  }finally{
+    makePlanBtn.disabled=false;makePlanBtn.textContent='계획 생성';
+  }
+}
+async function sendAudio(blob){
+  makePlanBtn.disabled=true;makePlanBtn.textContent='인식 중...';
+  try{
+    const formData=new FormData();
+    formData.append('file',blob,'recording.webm');
+    formData.append('execute','false');
+    const res=await fetch('/v1/task-plan/audio',{method:'POST',body:formData});
+    const data=await res.json();
+    if(data.utterance) cmdInput.value=data.utterance;
+    onPlanResponse(data);
+  }catch(err){
+    toast('서버에 연결할 수 없습니다: '+err);
+  }finally{
+    makePlanBtn.disabled=false;makePlanBtn.textContent='계획 생성';
+  }
+}
+makePlanBtn.addEventListener('click',()=>sendText(cmdInput.value));
+cmdInput.addEventListener('keydown',e=>{if(e.key==='Enter')sendText(cmdInput.value)});
+
+// ---- 마이크 녹음 (누르고 있는 동안 녹음, demo.html과 동일한 방식) ----
+const micBtn=document.getElementById('micBtn');
+let mediaRecorder=null,chunks=[],activeStream=null;
+async function startRecording(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    toast('이 주소에서는 마이크를 사용할 수 없습니다 (https 또는 localhost 필요)');
+    return;
+  }
+  try{
+    activeStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }catch(err){
+    toast('마이크 접근이 거부되었습니다: '+err);
+    return;
+  }
+  chunks=[];
+  mediaRecorder=new MediaRecorder(activeStream);
+  mediaRecorder.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
+  mediaRecorder.onstop=()=>{
+    const blob=new Blob(chunks,{type:'audio/webm'});
+    activeStream.getTracks().forEach(t=>t.stop());
+    sendAudio(blob);
+  };
+  mediaRecorder.start();
+  micBtn.classList.add('recording');
+}
+function stopRecording(){
+  if(mediaRecorder&&mediaRecorder.state!=='inactive')mediaRecorder.stop();
+  micBtn.classList.remove('recording');
+}
+micBtn.addEventListener('mousedown',startRecording);
+micBtn.addEventListener('mouseup',stopRecording);
+micBtn.addEventListener('mouseleave',()=>{if(mediaRecorder&&mediaRecorder.state==='recording')stopRecording()});
+micBtn.addEventListener('touchstart',e=>{e.preventDefault();startRecording()});
+micBtn.addEventListener('touchend',e=>{e.preventDefault();stopRecording()});
+
+document.getElementById('stopBtn').addEventListener('click',()=>toast('STOP은 이번 콘솔에서 별도 API가 연결되어 있지 않습니다 — "정지"라고 명령해 보세요.'));
+document.getElementById('simStopBtn').addEventListener('click',()=>toast('STOP은 이번 콘솔에서 별도 API가 연결되어 있지 않습니다 — "정지"라고 명령해 보세요.'));
+
+// ============================================================
+// Task Plan 화면
+// ============================================================
+function refreshPlanScreen(){
+  const empty=document.getElementById('planEmpty'),content=document.getElementById('planContent');
+  if(!currentPlanData||!currentPlanData.task_plan){empty.hidden=false;content.hidden=true;return}
+  empty.hidden=true;content.hidden=false;
+  const plan=currentPlanData.task_plan;
+  document.getElementById('planTag').textContent='PLAN #'+plan.plan_id.slice(0,8);
+  document.getElementById('originText').textContent=plan.utterance||cmdInput.value;
+  document.getElementById('planSteps').innerHTML=plan.steps.map((s,i)=>{
+    const info=stepInfo(s);
+    return `<div class="plan-step"><div class="step-num">${i+1}</div><div><div class="skill">${info.title}</div><div class="desc">${info.desc}</div></div><span class="chip">${s.skill}</span></div>`;
+  }).join('');
+  document.getElementById('jsonView').textContent=JSON.stringify(plan,null,2);
+}
+
+// ============================================================
+// 안전 검증 화면 — 실제 존재하는 2단계(형식/Safety Guard)만 표시하고,
+// 세 번째 게이트는 /v1/execute 호출 결과로 채운다.
+// ============================================================
+function setGate(el,state,label){
+  el.className='gate '+state;
+  el.querySelector('.state').textContent=label;
+}
+function refreshValidateScreen(){
+  const empty=document.getElementById('validateEmpty'),content=document.getElementById('validateContent');
+  if(!currentPlanData||!currentPlanData.task_plan){empty.hidden=false;content.hidden=true;return}
+  empty.hidden=true;content.hidden=false;
+
+  const violations=currentPlanData.violations||[];
+  const schemaGate=document.getElementById('gateSchema');
+  const safetyGate=document.getElementById('gateSafety');
+  const execGate=document.getElementById('gateExec');
+  const actions=document.getElementById('validateActions');
+  const detail=document.getElementById('safetyDetail');
+
+  // 형식 검증: 여기까지 왔다는 것 자체가 이미 통과했다는 뜻 (process_utterance가
+  // gated/error면 애초에 task_plan을 안 준다).
+  setGate(schemaGate,'pass','PASS');
+
+  if(violations.length>0){
+    setGate(safetyGate,'block',violations[0].code);
+    setGate(execGate,'block','BLOCKED');
+    document.getElementById('validateTag').textContent='EXECUTION BLOCKED';
+    detail.innerHTML=violations.map(v=>`<div class="metric"><div><b>${v.code}</b><br><span>${v.message}</span></div><span class="bad">FAIL</span></div>`).join('');
+    actions.innerHTML='';
+    const btn=document.createElement('button');
+    btn.className='secondary danger-soft';btn.textContent='판정 결과 보기';
+    btn.addEventListener('click',()=>showScreen('result'));
+    actions.appendChild(btn);
+  }else{
+    setGate(safetyGate,'pass','PASS');
+    document.getElementById('validateTag').textContent='EXECUTION READY';
+    detail.innerHTML=`<div class="metric"><div><b>위반 사항 없음</b><br><span>E-SEQ/E-HOLD/E-LIMIT/E-ARG 규칙을 모두 통과했습니다.</span></div><span class="ok">PASS</span></div>`;
+    if(executing){
+      setGate(execGate,'loading','실행 중...');
+    }else if(executeResponse){
+      setGate(execGate,executeResponse.success?'pass':'block',executeResponse.success?'SUCCESS':'FAILED');
+    }else{
+      setGate(execGate,'','대기');
+    }
+    actions.innerHTML='';
+    const btn=document.createElement('button');
+    btn.className='primary';btn.textContent=executing?'실행 중...':(executeResponse?'다시 실행':'▶ 실행');
+    btn.disabled=executing;
+    btn.addEventListener('click',runExecute);
+    actions.appendChild(btn);
+    if(!executing){
+      const btn2=document.createElement('button');
+      btn2.className='secondary';btn2.textContent='실행 중인 화면 보기';
+      btn2.addEventListener('click',()=>showScreen('simulation'));
+      actions.appendChild(btn2);
+    }
+    if(executeResponse&&!executing){
+      const btn3=document.createElement('button');
+      btn3.className='secondary';btn3.textContent='판정 결과 보기';
+      btn3.addEventListener('click',()=>showScreen('result'));
+      actions.appendChild(btn3);
+    }
+  }
+}
+async function runExecute(){
+  executing=true;
+  executeResponse=null;
+  // 실행 버튼을 누르는 즉시 시뮬레이션 화면(라이브 Gazebo 카메라)으로 전환한다.
+  // /v1/execute는 계획의 모든 스텝이 끝날 때까지 응답하지 않는 동기 호출이라,
+  // 응답을 기다렸다가 화면을 옮기면 로봇이 이미 다 움직인 뒤라 아무것도 못 본다.
+  showScreen('simulation');
+  try{
+    const res=await fetch('/v1/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task_plan:currentPlanData.task_plan})});
+    executeResponse=await res.json();
+  }catch(err){
+    executeResponse={success:false,message:String(err)};
+  }
+  executing=false;
+  refreshValidateScreen();
+  refreshSimScreen();
+  toast(executeResponse.success?'실행이 완료되었습니다.':('실행에 실패했습니다'+(executeResponse.message?': '+executeResponse.message:'')));
+}
+
+// ============================================================
+// 판정 결과 화면
+// ============================================================
+function refreshResultScreen(){
+  const empty=document.getElementById('resultEmpty'),content=document.getElementById('resultContent');
+  if(!currentPlanData||!currentPlanData.task_plan){empty.hidden=false;content.hidden=true;return}
+  empty.hidden=true;content.hidden=false;
+  const plan=currentPlanData.task_plan;
+  const violations=currentPlanData.violations||[];
+  const hero=document.getElementById('resultHero'),icon=document.getElementById('resultIcon'),title=document.getElementById('resultTitle'),
+        desc=document.getElementById('resultDesc'),rt=document.getElementById('reasonTitle'),rd=document.getElementById('reasonDesc'),
+        tag=document.getElementById('resultTag'),actions=document.getElementById('resultActions'),detailList=document.getElementById('resultDetailList');
+  actions.innerHTML='';
+
+  let mode,execLabel;
+  if(violations.length>0){
+    mode='block';
+    icon.textContent='!';title.textContent='작업이 차단되었습니다';
+    desc.textContent='L3 Safety Guard가 이 작업 계획을 결정론적 규칙 위반으로 거부했습니다.';
+    rt.textContent=violations[0].code+' · 안전 규칙 위반';
+    rd.textContent=violations.map(v=>`[${v.code}] ${v.message}`).join(' / ');
+    tag.textContent='BLOCK';execLabel='-';
+    const b=document.createElement('button');b.className='secondary';b.textContent='새 명령 입력';b.dataset.goto='command';
+    b.addEventListener('click',()=>showScreen('command'));actions.appendChild(b);
+  }else if(executing){
+    mode='ask';
+    icon.textContent='⋯';title.textContent='실행 중입니다';
+    desc.textContent='Gazebo 로봇이 지금 계획을 실행하고 있습니다. 라이브 화면에서 진행 상황을 볼 수 있습니다.';
+    rt.textContent='실행 중';rd.textContent='완료되면 이 화면이 자동으로 갱신되지는 않으니, 완료 토스트 알림을 확인하거나 잠시 후 다시 확인해 주세요.';
+    tag.textContent='RUNNING';execLabel='RUNNING';
+    const b=document.createElement('button');b.className='primary';b.textContent='▶ 라이브 화면 보기';b.dataset.goto='simulation';
+    b.addEventListener('click',()=>showScreen('simulation'));actions.appendChild(b);
+  }else if(!executeResponse){
+    mode='ask';
+    icon.textContent='?';title.textContent='아직 실행 전입니다';
+    desc.textContent='형식·안전 검증은 통과했지만, 아직 실행 버튼을 누르지 않았습니다.';
+    rt.textContent='실행 대기';rd.textContent='안전 검증 화면에서 ▶ 실행을 눌러야 Gazebo 로봇이 움직입니다.';
+    tag.textContent='PENDING';execLabel='대기';
+    const b=document.createElement('button');b.className='primary';b.textContent='안전 검증으로 이동';b.dataset.goto='validate';
+    b.addEventListener('click',()=>showScreen('validate'));actions.appendChild(b);
+  }else if(executeResponse.success){
+    mode='pass';
+    icon.textContent='✓';title.textContent='실행되었습니다';
+    desc.textContent='형식·안전 검증을 통과하고, Gazebo 시뮬레이션 로봇 실행까지 완료했습니다.';
+    rt.textContent='PASS · 실행 완료';rd.textContent='taskplan_bridge.TaskPlanExecutor가 계획된 스텝을 모두 처리했습니다.';
+    tag.textContent='PASS';execLabel='SUCCESS';
+    const b=document.createElement('button');b.className='primary';b.textContent='▶ 시뮬레이션 보기';b.dataset.goto='simulation';
+    b.addEventListener('click',()=>showScreen('simulation'));actions.appendChild(b);
+  }else{
+    mode='block';
+    icon.textContent='!';title.textContent='실행에 실패했습니다';
+    desc.textContent=executeResponse.message||'로봇 실행 중 오류가 발생했습니다 (로봇/Gazebo 연결 상태를 확인하세요).';
+    rt.textContent='EXEC-FAILED';rd.textContent=executeResponse.message||'상세 메시지가 없습니다.';
+    tag.textContent='FAILED';execLabel='FAILED';
+    const b=document.createElement('button');b.className='secondary';b.textContent='다시 시도';b.dataset.goto='validate';
+    b.addEventListener('click',()=>showScreen('validate'));actions.appendChild(b);
+  }
+  hero.className='card result-hero '+mode;
+
+  detailList.innerHTML=`
+    <div class="info-row"><span>Plan ID</span><b>${plan.plan_id}</b></div>
+    <div class="info-row"><span>Schema</span><b class="ok">PASS</b></div>
+    <div class="info-row"><span>Safety Guard</span><b class="${violations.length>0?'bad':'ok'}">${violations.length>0?'BLOCK':'PASS'}</b></div>
+    <div class="info-row"><span>Execution</span><b class="${execLabel==='SUCCESS'?'ok':execLabel==='FAILED'?'bad':''}">${execLabel}</b></div>
+    <div class="info-row"><span>Plan Hash</span><b style="font-size:11px">${plan.plan_hash?plan.plan_hash.slice(0,16)+'…':'-'}</b></div>
+    <div class="info-row"><span>Robot</span><b>${plan.robot_id}</b></div>`;
+}
+
+// ============================================================
+// 시뮬레이션 화면
+// ============================================================
+function refreshSimScreen(){
+  const info=document.getElementById('simTaskInfo'),events=document.getElementById('simEvents'),
+        progress=document.getElementById('simProgress'),progressText=document.getElementById('simProgressText'),
+        progressBar=progress.parentElement;
+  if(!currentPlanData||!currentPlanData.task_plan){
+    info.innerHTML='<div class="info-row"><span>Task Plan</span><b>없음</b></div>';
+    events.textContent='아직 이벤트가 없습니다.';
+    progressBar.classList.remove('indeterminate');
+    progress.style.width='0%';progressText.textContent='실행한 작업이 없습니다.';
+    return;
+  }
+  const plan=currentPlanData.task_plan;
+  const done=!!(executeResponse&&executeResponse.success);
+  const failed=!!(executeResponse&&!executeResponse.success);
+  info.innerHTML=`
+    <div class="info-row"><span>Plan ID</span><b>${plan.plan_id.slice(0,8)}</b></div>
+    <div class="info-row"><span>Steps</span><b>${plan.steps.length}개</b></div>
+    <div class="info-row"><span>Robot</span><b>${plan.robot_id}</b></div>
+    <div class="info-row"><span>실행 상태</span><b class="${done?'ok':failed?'bad':''}">${executing?'실행 중':executeResponse?(done?'SUCCESS':'FAILED'):'대기'}</b></div>`;
+  if(executing){
+    progressBar.classList.add('indeterminate');
+    progressText.textContent='로봇이 계획을 실행하고 있습니다 — 왼쪽 라이브 화면을 확인하세요.';
+  }else{
+    progressBar.classList.remove('indeterminate');
+    progress.style.width=executeResponse?'100%':'0%';
+    progressText.textContent=done?'실행 완료':(executeResponse?'실행 실패':'아직 실행하지 않음');
+  }
+  events.innerHTML=plan.steps.map((s,i)=>{const info2=stepInfo(s);return `<div class="event"><b>STEP ${i+1}</b> ${info2.title} — ${info2.desc}</div>`}).join('');
+}
+
+// ============================================================
+// 감사 로그 화면 — GET /v1/audit-log (실제 audit_log.jsonl)
+// ============================================================
+let auditEntries=[];
+function fmtDateTime(iso){
+  const d=new Date(iso);
+  const p=n=>String(n).padStart(2,'0');
+  return {date:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`,time:`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`};
+}
+function badgeClass(event){return event==='SUCCESS'?'pass':event==='GATED'?'ask':'block'}
+const logDate=document.getElementById('logDate'),logResult=document.getElementById('logResult'),logSearch=document.getElementById('logSearch'),
+      logBody=document.getElementById('logBody'),logDetail=document.getElementById('logDetail');
+async function refreshLogsScreen(){
+  try{
+    const res=await fetch('/v1/audit-log?limit=500');
+    auditEntries=await res.json();
+  }catch(err){
+    logBody.innerHTML=`<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--sub)">로그를 불러올 수 없습니다: ${err}</td></tr>`;
+    return;
+  }
+  initLogFilters();
+  renderLogs();
+}
+function initLogFilters(){
+  const dates=[...new Set(auditEntries.map(x=>fmtDateTime(x.logged_at).date))].sort().reverse();
+  const today=fmtDateTime(new Date().toISOString()).date;
+  logDate.innerHTML=dates.map(d=>`<option value="${d}">${d}${d===today?' · 오늘':''}</option>`).join('')||'<option value="">데이터 없음</option>';
+}
+function filteredLogs(){
+  const q=logSearch.value.trim().toLowerCase();
+  return auditEntries.filter(x=>{
+    const {date}=fmtDateTime(x.logged_at);
+    if(logDate.value&&date!==logDate.value)return false;
+    if(logResult.value!=='all'&&x.event!==logResult.value)return false;
+    if(q){
+      const hay=[x.utterance,x.reason_code,JSON.stringify(x.detail||{})].join(' ').toLowerCase();
+      if(!hay.includes(q))return false;
+    }
+    return true;
+  });
+}
+function renderLogs(){
+  const rows=filteredLogs();
+  logBody.innerHTML=rows.map((x,i)=>{
+    const {time}=fmtDateTime(x.logged_at);
+    const planId=(x.detail&&x.detail.plan_id)?x.detail.plan_id.slice(0,8):'-';
+    return `<tr data-idx="${i}" class="${i===0?'selected':''}"><td>${time}</td><td>${planId}</td><td>${x.utterance||''}</td><td><span class="badge ${badgeClass(x.event)}">${x.event}</span></td><td>${x.reason_code||'-'}</td></tr>`;
+  }).join('')||'<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--sub)">조건에 맞는 작업 로그가 없습니다.</td></tr>';
+
+  document.getElementById('statTotal').textContent=rows.length;
+  document.getElementById('statPass').textContent=rows.filter(x=>x.event==='SUCCESS').length;
+  document.getElementById('statIssue').textContent=rows.filter(x=>x.event==='REJECTED'||x.event==='GATED').length;
+  const confs=rows.map(x=>x.stt_confidence).filter(v=>typeof v==='number');
+  document.getElementById('statLatency').textContent=confs.length?(confs.reduce((a,b)=>a+b,0)/confs.length).toFixed(2):'-';
+  document.getElementById('logCount').textContent=`${logDate.value||'전체'} · ${rows.length}건 표시`;
+
+  logBody.querySelectorAll('tr[data-idx]').forEach(tr=>tr.addEventListener('click',()=>{
+    logBody.querySelectorAll('tr').forEach(r=>r.classList.remove('selected'));
+    tr.classList.add('selected');
+    showLogDetail(rows[Number(tr.dataset.idx)]);
+  }));
+  if(rows.length)showLogDetail(rows[0]);
+  else logDetail.innerHTML='<div class="detail-empty">선택한 조건에 해당하는 로그가 없습니다.</div>';
+}
+function showLogDetail(x){
+  const {date,time}=fmtDateTime(x.logged_at);
+  logDetail.innerHTML=`
+    <div class="detail-head"><div><div class="detail-kicker">SELECTED LOG</div><h3>${(x.detail&&x.detail.plan_id)?x.detail.plan_id.slice(0,8):x.reason_code||x.event}</h3></div><span class="badge ${badgeClass(x.event)}">${x.event}</span></div>
+    <div class="detail-grid">
+      <div class="detail-box"><span>DATE / TIME</span><b>${date}<br>${time}</b></div>
+      <div class="detail-box"><span>REASON CODE</span><b>${x.reason_code||'-'}</b></div>
+      <div class="detail-box"><span>STT 신뢰도</span><b>${typeof x.stt_confidence==='number'?x.stt_confidence.toFixed(3):'-'}</b></div>
+      <div class="detail-box"><span>EVENT</span><b>${x.event}</b></div>
+    </div>
+    <div class="detail-section"><h4>ORIGINAL COMMAND</h4><div class="command-box">"${x.utterance||''}"</div></div>
+    <div class="detail-section"><h4>DETAIL</h4><div class="json" style="min-height:auto">${JSON.stringify(x.detail||{},null,2)}</div></div>`;
+}
+[logDate,logResult].forEach(el=>el.addEventListener('change',renderLogs));
+logSearch.addEventListener('input',renderLogs);
+</script>
+</body>
+</html>

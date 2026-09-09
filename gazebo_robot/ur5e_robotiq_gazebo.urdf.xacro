@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ur5e_robotiq">
+  <!-- UR5e 팔(월드 고정 조인트, 기구학, ros2_control, gz_ros2_control 플러그인 블록 전부 포함) -->
+  <xacro:include filename="$(find ur_simulation_gz)/urdf/ur_gz.urdf.xacro" />
+
+  <!-- UR tool0 -> Robotiq gripper_mount_link 어댑터. 충돌 메시를 box로 단순화한
+       로컬 포크 사용 (robotiq_2f_85_macro_simplified.urdf.xacro 상단 주석 참고 —
+       bullet-featherstone이 정밀 STL 충돌 메시를 감당 못 해 real_time_factor가
+       0.01~0.02까지 떨어졌었음). -->
+  <xacro:include filename="ur_to_robotiq_adapter_simplified.urdf.xacro" />
+  <xacro:ur_to_robotiq prefix="" connected_to="tool0" />
+
+  <!-- Robotiq 2F-85 그리퍼 본체 (시각/충돌/기구학만 — ros2_control은 아래 로컬 파일로 대체).
+       마찬가지로 충돌 메시를 box로 단순화한 로컬 포크 사용. -->
+  <xacro:include filename="robotiq_2f_85_macro_simplified.urdf.xacro" />
+  <xacro:robotiq_gripper name="ur5e_gripper" prefix="" parent="gripper_mount_link" include_ros2_control="false">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </xacro:robotiq_gripper>
+
+  <!-- 그리퍼 ros2_control: robotiq_gripper.ros2_control.xacro는 gz_ros2_control/GazeboSimSystem을
+       지원하지 않아서(ign_ros2_control 레거시 네이밍만 있음) 로컬 버전을 대신 쓴다. -->
+  <xacro:include filename="ur5e_gripper.ros2_control.xacro" />
+  <xacro:ur5e_gripper_ros2_control name="ur5e_gripper" ros2_control_hardware_type="gazebo" />
+
+  <!-- [2026-09-09] DetachableJoint — 기획서가 "파지 물리는 검증 대상이 아님"을
+       명시하고 있어서(물건이 미끄러지는지/관성으로 흔들리는지는 검증 범위 밖),
+       Panda에서 이틀간 파던 마찰 기반 그립(gz_ros2_control 게인 튜닝, effort
+       인터페이스 등)을 UR5e에는 처음부터 적용하지 않는다 — 그리퍼가 닫히면
+       물체를 그리퍼 베이스 링크에 강체로 고정하고, 열리면 풀어준다. parent_link를
+       손가락이 아니라 안 움직이는 robotiq_85_base_link로 잡아서, 손가락 개폐와
+       무관하게 물체가 그리퍼 기준 고정 위치를 유지한다(gz-sim 공식 예제
+       detachable_joint.sdf와 동일한 패턴). attach/detach 토픽은 ROS2가 아니라
+       Gazebo Transport 토픽이라(taskplan_bridge.py가 `gz topic -t ...`를
+       서브프로세스로 직접 호출해서 쏨, _get_object_pose와 같은 방식) 여기서
+       ros_gz_bridge 매핑은 불필요. -->
+  <xacro:macro name="ur5e_material_detachable_joint" params="model_name">
+    <gazebo>
+      <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">
+        <!-- robotiq_85_base_link은 gripper_mount_link/어댑터/베이스까지 전부
+             fixed 조인트로 연결돼 있어서 URDF->SDF 변환 시 wrist_3_link로
+             전부 흡수(lump)됨(gz scene/info로 실측 확인 —
+             "wrist_3_link_fixed_joint_lump__robotiq_85_base_link_visual_2"
+             로 찍힘, DetachableJoint도 "Link with name robotiq_85_base_link
+             not found" 에러로 초기화 실패했었음). 실제로 존재하는 링크인
+             wrist_3_link을 부모로 써야 한다. -->
+        <parent_link>wrist_3_link</parent_link>
+        <child_model>${model_name}</child_model>
+        <child_link>link</child_link>
+        <detach_topic>/${model_name}/detach</detach_topic>
+        <attach_topic>/${model_name}/attach</attach_topic>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+  <xacro:ur5e_material_detachable_joint model_name="material_a" />
+  <xacro:ur5e_material_detachable_joint model_name="material_b" />
+  <xacro:ur5e_material_detachable_joint model_name="material_c" />
+</robot>

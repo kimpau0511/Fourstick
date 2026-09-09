@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>포스틱 Task Plan 데모</title>
+<style>
+  :root{
+    --bg:#f2f6f7; --panel:#ffffff; --navy:#15394b; --navy2:#0f2d3c; --ink:#172830; --sub:#6b7d84;
+    --teal:#2db5a4; --teal-dark:#14907f; --teal-soft:#e6f7f3; --line:#dce7ea;
+    --orange:#e59c4c; --orange-soft:#fff4e8; --red:#d7605a; --red-soft:#fff0ef;
+    --shadow:0 12px 34px rgba(21,57,75,.08); --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0; min-height:100%;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:Inter,Pretendard,"Noto Sans KR",system-ui,sans-serif;
+    padding:28px 20px 80px;
+  }
+  button,input{font:inherit;}
+
+  .page{max-width:980px; margin:0 auto;}
+
+  .topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px;}
+  .brand .logo{font-weight:1000; letter-spacing:.14em; font-size:19px; color:var(--navy);}
+  .brand .logo span{color:var(--teal-dark);}
+  .brand .sub{font-size:11px; color:var(--sub); margin-top:4px; letter-spacing:.08em;}
+  .top-status{display:flex; gap:10px;}
+  .pill{
+    height:34px; border:1px solid var(--line); background:#fff; border-radius:999px;
+    padding:0 13px; display:flex; align-items:center; gap:7px; font-size:12px; font-weight:850; color:#50656e;
+  }
+  .dot{width:8px; height:8px; border-radius:50%; display:inline-block; background:#c7d3d6;}
+  .pill.online .dot{background:#61d2bd; box-shadow:0 0 0 3px rgba(97,210,189,.16);}
+  .pill.offline .dot{background:var(--red);}
+
+  .page-head{margin-bottom:20px;}
+  .eyebrow{font-size:12px; color:var(--teal-dark); font-weight:1000; letter-spacing:.12em;}
+  .page-head h1{font-size:27px; letter-spacing:-.03em; color:var(--navy); margin:5px 0 0;}
+  .page-head p{margin:8px 0 0; color:var(--sub); font-size:14px; line-height:1.6;}
+
+  .grid{display:grid; gap:18px;}
+  .grid.two{grid-template-columns:1.05fr .95fr;}
+  @media(max-width:900px){ .grid.two{grid-template-columns:1fr;} }
+
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);}
+  .card-pad{padding:22px;}
+  .muted{color:var(--sub);}
+
+  .command-hero{padding:26px; display:flex; flex-direction:column; align-items:center; text-align:center;}
+  .mic-badge{
+    width:64px; height:64px; border-radius:20px; background:var(--teal-soft); border:1px solid #c9ece5;
+    display:grid; place-items:center; font-size:28px; margin-bottom:14px;
+  }
+  .command-hero h2{font-size:20px; color:var(--navy); margin:0 0 4px;}
+  .command-hero > p.muted{font-size:12.5px; margin:0 0 4px;}
+  .input-wrap{width:100%; display:flex; gap:8px; margin-top:14px;}
+  .command-input{
+    flex:1; border:1px solid var(--line); background:#fff; border-radius:12px;
+    padding:12px 13px; outline:none; font-size:14px; color:var(--ink);
+  }
+  .command-input:focus{border-color:#8bd5c8; box-shadow:0 0 0 3px rgba(45,181,164,.14);}
+  .primary{border:0; background:var(--navy); color:#fff; border-radius:12px; padding:12px 17px; font-weight:900; cursor:pointer;}
+  .primary:disabled{opacity:.5; cursor:default;}
+  .secondary{border:1px solid var(--line); background:#fff; color:var(--navy); border-radius:12px; padding:11px 15px; font-weight:850; cursor:pointer;}
+
+  .divider{display:flex; align-items:center; gap:10px; color:var(--sub); font-size:12px; width:100%; margin:18px 0 14px;}
+  .divider::before,.divider::after{content:""; flex:1; height:1px; background:var(--line);}
+
+  .mic-wrap{display:flex; flex-direction:column; align-items:center; gap:9px;}
+  .mic-round{
+    width:76px; height:76px; border-radius:50%; font-size:27px;
+    background:var(--teal-soft); border:2px solid var(--teal); color:var(--teal-dark);
+    display:flex; align-items:center; justify-content:center; user-select:none; cursor:pointer;
+    transition:transform .1s, background .15s, border-color .15s, color .15s;
+  }
+  .mic-round.recording{background:var(--red); border-color:var(--red); color:#fff; transform:scale(1.07);}
+  .mic-hint{color:var(--sub); font-size:12px;}
+
+  .toggle-row{
+    display:flex; align-items:center; gap:9px; margin-top:20px; font-size:13.5px;
+    font-weight:800; color:var(--navy); cursor:pointer;
+  }
+  .toggle-row input{width:17px; height:17px; accent-color:var(--teal-dark); cursor:pointer;}
+  .toggle-hint{font-size:11.5px; color:var(--sub); margin:5px 0 0;}
+
+  .viewport-card{padding:0; overflow:hidden;}
+  .viewport{
+    position:relative; height:100%; min-height:280px; background:linear-gradient(180deg,#15252d,#0e1a20);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .viewport img{width:100%; height:100%; object-fit:contain; display:block;}
+  .sim-badge{
+    position:absolute; left:14px; top:14px; color:#9cc6d3; font-size:10.5px; font-weight:900;
+    background:rgba(10,20,25,.6); border:1px solid #35505b; padding:7px 9px; border-radius:9px; letter-spacing:.04em;
+  }
+  .live{position:absolute; right:14px; top:14px; color:#78dac6; font-size:11px; font-weight:1000; display:flex; align-items:center; gap:5px;}
+  .live .dot{background:#78dac6; box-shadow:0 0 0 3px rgba(120,218,198,.18);}
+
+  .loading{color:var(--sub); font-size:13px; text-align:center; padding:14px 0; display:none;}
+
+  .result-hero{padding:24px;}
+  .result-icon{
+    width:52px; height:52px; border-radius:16px; display:grid; place-items:center; font-size:24px; margin-bottom:12px;
+  }
+  .result-hero.pass .result-icon{background:var(--teal-soft); color:var(--teal-dark);}
+  .result-hero.ask .result-icon{background:var(--orange-soft); color:var(--orange);}
+  .result-hero.block .result-icon{background:var(--red-soft); color:var(--red);}
+
+  .badge{
+    display:inline-block; font-size:11px; font-weight:1000; letter-spacing:.04em;
+    border-radius:999px; padding:6px 10px; margin-bottom:10px;
+  }
+  .badge.pass{background:var(--teal-soft); color:var(--teal-dark);}
+  .badge.ask{background:var(--orange-soft); color:var(--orange);}
+  .badge.block{background:var(--red-soft); color:var(--red);}
+
+  #resultTitle{margin:2px 0 6px; font-size:19px; color:var(--navy);}
+  #message{font-size:13.5px; line-height:1.6; margin:0 0 6px; white-space:pre-wrap;}
+
+  .plan-steps{display:grid; gap:10px; margin:16px 0 4px;}
+  .plan-step{
+    display:grid; grid-template-columns:32px 1fr auto; gap:11px; align-items:center;
+    border:1px solid var(--line); border-radius:13px; padding:11px 12px; background:#f9fcfc;
+  }
+  .step-num{
+    width:28px; height:28px; border-radius:8px; background:var(--teal-soft); color:var(--teal-dark);
+    display:grid; place-items:center; font-weight:1000; font-size:12px;
+  }
+  .step-skill{font-weight:1000; color:var(--navy); font-size:12.5px; letter-spacing:.03em;}
+  .step-desc{font-size:12px; color:var(--sub); margin-top:2px;}
+  .chip{font-size:9.5px; font-weight:1000; border-radius:999px; padding:5px 8px; background:#eef4f6; color:#62757d; white-space:nowrap;}
+
+  .exec-row{display:flex; align-items:center; justify-content:space-between; margin-top:16px; padding-top:14px; border-top:1px solid var(--line);}
+  .exec-row span:first-child{font-size:12.5px; font-weight:900; color:var(--navy);}
+  #execMessage{font-size:12px; margin:-4px 0 10px;}
+
+  #replayBtn{margin-top:16px; width:100%;}
+
+  .json{
+    background:#102731; color:#dff7f1; border-radius:14px; padding:16px; margin:12px 0 0;
+    font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap; word-break:break-word;
+    max-height:520px; overflow:auto;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">F<span>ORSTICK</span></div>
+      <div class="sub">TASK PLAN DEMO</div>
+    </div>
+    <div class="top-status">
+      <div class="pill" id="robotPill"><span class="dot" id="robotDot"></span><strong id="robotLabel">확인 중</strong></div>
+    </div>
+  </header>
+
+  <div class="page-head">
+    <div class="eyebrow">VOICE / TEXT → TASK PLAN</div>
+    <h1>포스틱 Task Plan 데모</h1>
+    <p>텍스트 입력 또는 마이크로 말하면 L1→L2(EXAONE)→L3 안전 검증을 거친 Task Plan을 생성하고, 원하면 실제 Gazebo 로봇까지 바로 실행합니다.</p>
+  </div>
+
+  <div class="grid two">
+    <div class="card command-hero">
+      <div class="mic-badge">🎙</div>
+      <h2>어떤 작업을 시킬까요?</h2>
+      <p class="muted">예: 2번 팔레트에서 A자재를 집어서 컨베이어에 올려줘</p>
+
+      <div class="input-wrap">
+        <input type="text" id="textInput" class="command-input" placeholder="예: 2번 팔레트에서 A자재를 집어서 컨베이어에 올려줘">
+        <button class="primary" id="sendTextBtn">전송</button>
+      </div>
+
+      <div class="divider">또는</div>
+
+      <div class="mic-wrap">
+        <div id="micBtn" class="mic-round">🎤</div>
+        <div class="mic-hint">누르고 있는 동안 녹음 · 떼면 전송</div>
+      </div>
+
+      <label class="toggle-row">
+        <input type="checkbox" id="executeToggle" checked>
+        <span>실제 로봇 실행까지 진행</span>
+      </label>
+      <p class="toggle-hint">체크 해제 시 계획만 생성하고 로봇은 움직이지 않습니다.</p>
+    </div>
+
+    <div class="card viewport-card">
+      <div class="viewport">
+        <div class="sim-badge">GAZEBO · LIVE VIEW</div>
+        <div class="live"><span class="dot"></span>LIVE</div>
+        <img id="gazeboView" src="/gazebo-stream.mjpeg" alt="Gazebo 화면을 불러올 수 없습니다 (서버/시뮬레이션 상태 확인 필요)">
+      </div>
+    </div>
+  </div>
+
+  <div id="loading" class="loading">처리 중...</div>
+
+  <div id="result" class="grid two" hidden>
+    <div class="card result-hero" id="resultHero">
+      <span class="badge" id="statusBadge"></span>
+      <div class="result-icon" id="resultIcon">✓</div>
+      <h2 id="resultTitle"></h2>
+      <p id="message" class="muted"></p>
+
+      <div class="plan-steps" id="steps"></div>
+
+      <div class="exec-row" id="execRow" hidden>
+        <span>로봇 실행</span>
+        <span class="badge" id="execBadge"></span>
+      </div>
+      <p id="execMessage" class="muted" hidden></p>
+
+      <button class="secondary" id="replayBtn">🔊 다시 듣기</button>
+    </div>
+
+    <div class="card card-pad">
+      <h3 style="margin:0 0 4px; color:var(--navy); font-size:15px;">JSON 원본</h3>
+      <pre class="json" id="rawJson"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const textInput = document.getElementById('textInput');
+const sendTextBtn = document.getElementById('sendTextBtn');
+const micBtn = document.getElementById('micBtn');
+const executeToggle = document.getElementById('executeToggle');
+const loading = document.getElementById('loading');
+const resultBox = document.getElementById('result');
+const resultHero = document.getElementById('resultHero');
+const resultIcon = document.getElementById('resultIcon');
+const resultTitle = document.getElementById('resultTitle');
+const statusBadge = document.getElementById('statusBadge');
+const stepsEl = document.getElementById('steps');
+const messageEl = document.getElementById('message');
+const execRow = document.getElementById('execRow');
+const execBadge = document.getElementById('execBadge');
+const execMessage = document.getElementById('execMessage');
+const rawJsonEl = document.getElementById('rawJson');
+const replayBtn = document.getElementById('replayBtn');
+const robotPill = document.getElementById('robotPill');
+const robotDot = document.getElementById('robotDot');
+const robotLabel = document.getElementById('robotLabel');
+
+let lastSpeech = '';
+
+function setLoading(on){
+  loading.style.display = on ? 'block' : 'none';
+  sendTextBtn.disabled = on;
+}
+
+function stepInfo(step){
+  const a = step.args || {};
+  switch(step.skill){
+    case 'move':  return {title:'MOVE',  desc:`${a.target} 위치로 이동`};
+    case 'pick':  return {title:'PICK',  desc:`${a.object}${a.from ? ` (${a.from})` : ''} 파지`};
+    case 'place': return {title:'PLACE', desc:`${a.object} → ${a.to} 내려놓기`};
+    case 'stop':  return {title:'STOP',  desc:'남은 스텝 실행 중단'};
+    case 'home':  return {title:'HOME',  desc:'홈 위치로 복귀'};
+    default:      return {title:(step.skill||'').toUpperCase(), desc:''};
+  }
+}
+
+function planToSpeech(plan){
+  const parts = plan.steps.map(s => {
+    const a = s.args || {};
+    switch(s.skill){
+      case 'move':  return `${a.target}로 이동`;
+      case 'pick':  return `${a.object} 집음`;
+      case 'place': return `${a.object}를 ${a.to}에 놓음`;
+      case 'stop':  return '정지';
+      case 'home':  return '홈 위치로 복귀';
+      default:      return '';
+    }
+  }).filter(Boolean);
+  return '계획을 생성했습니다. ' + parts.join('. ');
+}
+
+function speak(text){
+  lastSpeech = text;
+  if (!('speechSynthesis' in window) || !text) return;
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'ko-KR';
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
+}
+
+replayBtn.addEventListener('click', () => speak(lastSpeech));
+
+function statusMeta(status){
+  switch(status){
+    case 'success':  return {cls:'pass',  icon:'✓', label:'PASS',  title:'실행 가능한 계획입니다'};
+    case 'gated':    return {cls:'ask',   icon:'?', label:'ASK',   title:'추가 정보가 필요합니다'};
+    case 'rejected': return {cls:'block', icon:'!', label:'BLOCK', title:'안전 규칙 위반으로 차단됨'};
+    default:          return {cls:'block', icon:'!', label:'ERROR', title:'오류가 발생했습니다'};
+  }
+}
+
+function renderExecution(execution){
+  if (!execution){
+    execRow.hidden = true;
+    execMessage.hidden = true;
+    return;
+  }
+  execRow.hidden = false;
+  execBadge.textContent = execution.success ? 'SUCCESS' : 'FAILED';
+  execBadge.className = 'badge ' + (execution.success ? 'pass' : 'block');
+  if (execution.message){
+    execMessage.hidden = false;
+    execMessage.textContent = execution.message;
+  } else {
+    execMessage.hidden = true;
+  }
+}
+
+function renderResult(data){
+  resultBox.hidden = false;
+  const meta = statusMeta(data.status);
+  resultHero.className = 'card result-hero ' + meta.cls;
+  resultIcon.textContent = meta.icon;
+  statusBadge.textContent = meta.label + ' · ' + data.status;
+  statusBadge.className = 'badge ' + meta.cls;
+  resultTitle.textContent = meta.title;
+  rawJsonEl.textContent = JSON.stringify(data, null, 2);
+
+  if (data.status === 'success' || (data.status === 'rejected' && data.task_plan)){
+    const plan = data.task_plan;
+    stepsEl.innerHTML = plan.steps.map((s, i) => {
+      const info = stepInfo(s);
+      return `<div class="plan-step">
+        <div class="step-num">${i + 1}</div>
+        <div><div class="step-skill">${info.title}</div><div class="step-desc">${info.desc}</div></div>
+        <span class="chip">${s.skill}</span>
+      </div>`;
+    }).join('');
+  } else {
+    stepsEl.innerHTML = '';
+  }
+
+  if (data.status === 'success'){
+    messageEl.textContent = '';
+    speak(planToSpeech(data.task_plan));
+  } else {
+    const msg = data.message || (data.violations ? data.violations.map(v => `[${v.code}] ${v.message}`).join(' / ') : '오류가 발생했습니다.');
+    messageEl.textContent = msg;
+    speak(msg);
+  }
+
+  renderExecution(data.execution);
+}
+
+// title을 지정하지 않으면 기존처럼 "서버에 연결할 수 없습니다"(네트워크/fetch
+// 실패용 기본값)을 쓰지만, 마이크 에러처럼 서버와 무관한 실패는 title을
+// 따로 넘겨서 원인을 정확히 구분해서 보여준다. (이전 버전은 마이크 에러도
+// 이 함수를 그대로 재사용하면서 제목이 항상 "서버에 연결할 수 없습니다"로
+// 고정되어 있어서, 실제로는 서버가 멀쩡한데도 서버 문제처럼 보이는 착시가
+// 있었다.)
+function renderNetworkError(err, title){
+  resultBox.hidden = false;
+  resultHero.className = 'card result-hero block';
+  resultIcon.textContent = '!';
+  statusBadge.textContent = 'ERROR';
+  statusBadge.className = 'badge block';
+  resultTitle.textContent = title || '서버에 연결할 수 없습니다';
+  stepsEl.innerHTML = '';
+  messageEl.textContent = String(err);
+  rawJsonEl.textContent = String(err);
+  renderExecution(null);
+}
+
+async function sendText(text){
+  if (!text.trim()) return;
+  setLoading(true);
+  try {
+    const res = await fetch('/v1/task-plan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text, execute: executeToggle.checked}),
+    });
+    const data = await res.json();
+    renderResult(data);
+  } catch (err) {
+    renderNetworkError(err);
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function sendAudio(blob){
+  setLoading(true);
+  try {
+    const formData = new FormData();
+    formData.append('file', blob, 'recording.webm');
+    formData.append('execute', executeToggle.checked ? 'true' : 'false');
+    const res = await fetch('/v1/task-plan/audio', { method: 'POST', body: formData });
+    const data = await res.json();
+    renderResult(data);
+  } catch (err) {
+    renderNetworkError(err);
+  } finally {
+    setLoading(false);
+  }
+}
+
+sendTextBtn.addEventListener('click', () => sendText(textInput.value));
+textInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendText(textInput.value); });
+
+// ---- 마이크 녹음 (누르고 있는 동안 녹음) ----
+let mediaRecorder = null;
+let chunks = [];
+let activeStream = null;
+
+async function startRecording(){
+  // navigator.mediaDevices 자체가 없으면(비보안 컨텍스트 등) getUserMedia를
+  // 호출하기도 전에 TypeError가 난다. 미리 체크해서, 왜 안 되는지(현재
+  // 주소/보안 컨텍스트 여부)를 화면에 바로 보여준다 — 이전에는 이 정보가
+  // 안 보여서 "서버에 연결할 수 없습니다"처럼 오해하기 쉬웠다.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    renderNetworkError(
+      `현재 주소: ${location.protocol}//${location.host}\n` +
+      `보안 컨텍스트(isSecureContext): ${window.isSecureContext}\n` +
+      `마이크(getUserMedia)는 https 주소이거나, 호스트 이름이 정확히 ` +
+      `localhost / 127.0.0.1 인 경우에만 사용할 수 있습니다. 다른 IP(예: ` +
+      `192.168.x.x)로 접속했다면 텍스트 입력을 사용하시거나, https 터널링을 ` +
+      `설정해야 마이크를 쓸 수 있습니다.`,
+      '이 주소에서는 마이크를 사용할 수 없습니다'
+    );
+    return;
+  }
+  try {
+    activeStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    renderNetworkError('마이크 접근 실패: ' + err, '마이크 접근이 거부되었습니다');
+    return;
+  }
+  chunks = [];
+  mediaRecorder = new MediaRecorder(activeStream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    activeStream.getTracks().forEach(t => t.stop());
+    sendAudio(blob);
+  };
+  mediaRecorder.start();
+  micBtn.classList.add('recording');
+}
+
+function stopRecording(){
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  micBtn.classList.remove('recording');
+}
+
+micBtn.addEventListener('mousedown', startRecording);
+micBtn.addEventListener('mouseup', stopRecording);
+micBtn.addEventListener('mouseleave', () => { if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording(); });
+micBtn.addEventListener('touchstart', e => { e.preventDefault(); startRecording(); });
+micBtn.addEventListener('touchend', e => { e.preventDefault(); stopRecording(); });
+
+// ---- 로봇 연결 상태 표시 (GET /health) ----
+async function checkHealth(){
+  try {
+    const res = await fetch('/health');
+    const data = await res.json();
+    if (data.robot_connected){
+      robotPill.className = 'pill online';
+      robotLabel.textContent = '로봇 연결됨';
+    } else {
+      robotPill.className = 'pill offline';
+      robotLabel.textContent = '로봇 연결 안 됨';
+    }
+  } catch (err) {
+    robotPill.className = 'pill offline';
+    robotLabel.textContent = '서버 확인 불가';
+  }
+}
+checkHealth();
+</script>
+</body>
+</html>
