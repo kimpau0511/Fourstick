@@ -1,0 +1,16 @@
+{
+  "policy_version": "1.0",
+  "max_audio_sec": 30.0,
+  "window_sec": 5.0,
+  "window_stride_sec": 1.0,
+  "silence_end_sec": 0.8,
+  "speech_start_sec": 0.2,
+  "min_final_confidence": 0.6,
+  "stop_keywords": [
+    "정지",
+    "멈춰"
+  ],
+  "transcribe_deadline_sec": 20.0,
+  "max_concurrent_transcriptions": 2,
+  "provenance": {}
+}

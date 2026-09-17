@@ -1,0 +1,17 @@
+# MoveIt → ros2_control 컨트롤러 연결 (8-07). 우리 파일이다.
+#
+# 8-03에서 검증한 Gazebo 컨트롤러(`arm_trajectory_controller`)를 그대로 쓴다.
+# 컨트롤러 설정 자체는 config/gazebo/fr3wms_controllers.yaml이 단일 출처다.
+#
+# **컨트롤러의 SUCCEEDED를 목표 도달 근거로 쓰지 않는다.** 도달 판정은
+# scripts/verify_fr3_moveit.py가 /joint_states 관측으로 한다.
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_trajectory_controller
+  arm_trajectory_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints: [j1, j2, j3, j4, j5, j6]

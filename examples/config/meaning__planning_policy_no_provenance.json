@@ -1,0 +1,17 @@
+{
+  "policy_version": "no-prov-1.0",
+  "max_attempts": 2,
+  "request_timeout_sec": 30.0,
+  "retryable_reasons": [
+    "plan.llm_output_unparseable",
+    "plan.llm_output_schema_invalid",
+    "plan.llm_unavailable",
+    "plan.llm_timeout"
+  ],
+  "store_payloads": true,
+  "payload_max_chars": 8000,
+  "payload_retention_days": 30,
+  "provenance": {
+    "max_attempts": "있음"
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "profile_id": "fr3wms_2f85_workcell",
+  "profile_version": "0.1.0-gazebo-workcell",
+  "dof": 6,
+  "joint_limits": [
+    {
+      "name": "j1",
+      "lower": -3.0543,
+      "upper": 3.0543,
+      "max_velocity": 3.15,
+      "unit": "rad",
+      "kind": "revolute"
+    },
+    {
+      "name": "j2",
+      "lower": -4.6251,
+      "upper": 1.4835,
+      "max_velocity": 3.15,
+      "unit": "rad",
+      "kind": "revolute"
+    },
+    {
+      "name": "j3",
+      "lower": -2.7925,
+      "upper": 2.7925,
+      "max_velocity": 3.15,
+      "unit": "rad",
+      "kind": "revolute"
+    },
+    {
+      "name": "j4",
+      "lower": -4.6251,
+      "upper": 1.4835,
+      "max_velocity": 3.2,
+      "unit": "rad",
+      "kind": "revolute"
+    },
+    {
+      "name": "j5",
+      "lower": -3.0543,
+      "upper": 3.0543,
+      "max_velocity": 3.2,
+      "unit": "rad",
+      "kind": "revolute"
+    },
+    {
+      "name": "j6",
+      "lower": -6.2832,
+      "upper": 6.2832,
+      "max_velocity": 3.2,
+      "unit": "rad",
+      "kind": "revolute"
+    }
+  ],
+  "frames": {
+    "base": "base_link",
+    "tool": "robotiq_85_tcp"
+  },
+  "tcp_offset": {
+    "x": 0.0,
+    "y": -0.0008,
+    "z": 0.130346
+  },
+  "work_radius_m": 0.630277,
+  "payload_kg": null,
+  "supported_skills": [
+    "home",
+    "move",
+    "stop"
+  ],
+  "provenance": {
+    "joint_limits": "fairino_fr3wms_arm 0.3.0-urdf-reach-defined (공식 URDF)",
+    "tcp_offset": "fr3wms_to_robotiq_2f85 0.3.1-measured-dense-aperture tcp_xyz",
+    "work_radius_m": "공식 URDF FK 기준 flange 수평 반경. 데이터시트 대조 미확보 — unverified",
+    "payload_kg": "미확보 — 값을 만들지 않는다",
+    "supported_skills": "home/move/stop만 연다. pick/place는 validation/pick_place_gate.py의 9조건 미충족",
+    "gripper": "gripper 블록을 비운다. 이 계약의 max_effort는 값(>0)이 필수인데, 우리가 가진 것은 관절 토크 한계(50 N·m)뿐이고 그것은 파지력이 아니다. 그리퍼 사실은 extras.gripper에 출처와 함께 담는다",
+    "max_effort": "파지력을 시뮬레이션에서 주장하지 않는다 — 값을 두지 않는다",
+    "environment": "Gazebo simulation (forstick2_fr3_2f85_workcell). 실하드웨어 미검증",
+    "gated_skills": "validation/pick_place_gate.py의 9조건 미충족. reports/workcell/*.json 참조"
+  },
+  "extras": {
+    "workcell_id": "fr3_2f85_workcell",
+    "adapter": "robots.fr3_gazebo.adapter.Fr3GazeboAdapter",
+    "is_simulated": true,
+    "real_hardware_verified": false,
+    "mounting_yaw_status": "declared_by_operator",
+    "state_max_age_sec": 0.1,
+    "unverified_items": [
+      "payload_rating",
+      "joint_acceleration_limits",
+      "reach_definition_vs_datasheet",
+      "controller_requirement",
+      "state_freshness",
+      "connect_timeout",
+      "urdf_license"
+    ],
+    "gripper": {
+      "command_joint": "robotiq_85_left_knuckle_joint",
+      "command_range_rad": [
+        0.0,
+        0.8
+      ],
+      "closed_position_rad": 0.7929,
+      "aperture_at_open_m": 0.084997,
+      "aperture_model": "config/profiles/fr3wms_to_robotiq_2f85_mounting.json transform_derivation.aperture_table (공식 FK, 42점)",
+      "grasp_force_N": null,
+      "grasp_force_note": "미확보. 관절 토크 한계(50 N·m)를 파지력으로 변환하지 않는다",
+      "controller": "joint_trajectory_controller/JointTrajectoryController",
+      "controller_reason": "reports/workcell/gripper_control.json — GripperActionController는 목표를 지나 관절 제한에서 잠긴다",
+      "unobservable_mimic_joints": 5,
+      "unobservable_reason": "공식 ros2_control 블록이 mimic 관절에 state_interface를 선언하지 않는다 — /joint_states로 관측할 수 없다"
+    },
+    "gated_skills": {
+      "skills": [
+        "pick",
+        "place"
+      ],
+      "reason_code": "capability.profile_incomplete",
+      "message": "2F-85 장착 yaw 근거, 커플링 실측 질량·관성, 파지 상태 관측 수단이 확보되지 않았습니다. 계획과 충돌·도달 사전 검증은 통과했지만 실행은 열지 않습니다.",
+      "unmet": [
+        "장착 transform yaw 근거 — 커플링 도면의 핀 위치 또는 조립 사진",
+        "커플링 실측 질량·관성 — 저울 실측(g)",
+        "파지 상태 관측 수단(grasp.object_held) — 개구 관측은 파지 근거가 아니다",
+        "실행 직전 재검증 — 실행이 열린 뒤에만 기록할 수 있다"
+      ],
+      "note": "로봇이 그 스킬을 못 하는 것이 아니다(robot.skill_unsupported가 아니다). **근거가 모자라 열지 않은 것이다.** 계획 사전 검증 통과는 실행 가능이 아니다. 관문: validation/pick_place_gate.py · 계획 검증: validation/pick_place_plan.py",
+      "met": [
+        "충돌 형상 반영 · TCP 정의 · 그리퍼 open/close 제어 관측(8-08)",
+        "pick/place 계획 초안과 12단계 자원·도달·관절 제한·충돌 사전 검증(8-10)"
+      ]
+    }
+  },
+  "gripper": null
+}

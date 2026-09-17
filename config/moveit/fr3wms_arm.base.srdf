@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!-- FR3-WMS arm-only MoveIt2 기본 SRDF (md/개발플랜.md 8-07). **우리 파일이다.**
+
+     출처와 생성 과정:
+     - 링크·조인트 이름은 외부 공식 URDF(FAIRINO frcobot_ros2,
+       fairino_description/urdf/FR3WMS.urdf)에서 읽었다. URDF·메시를 저장소에
+       복사하지 않는다 — 외부 경로로만 참조한다.
+     - `tool_Link`는 공식 URDF가 선언하지 않은 링크다(상류 결함). 우리
+       래퍼(config/gazebo/fr3wms_arm.urdf.xacro)가 빈 프레임으로 선언한다.
+       따라서 tip_link로 쓰지만 **기하·질량이 없다** — TCP가 아니다.
+     - 그리퍼·커플링은 없다. 장착 변환이 공식 자료로 확인되기 전에는 결합하지
+       않는다(MountingProfile 0.2.0-custom-adapter-required).
+     - 이 파일에는 disable_collisions가 없다. 자기충돌 행렬은
+       `collisions_updater`로 생성해 `fr3wms_arm.srdf`에 넣는다. -->
+<robot name="fr3wms_arm">
+  <group name="fr3wms_arm">
+    <!-- 체인으로 정의한다. base_link(고정 기준) → tool_Link(공식 플랜지 프레임) -->
+    <chain base_link="base_link" tip_link="tool_Link"/>
+  </group>
+
+  <!-- home: 모든 관절 0 rad. 8-04에서 Gazebo 관측으로 도달을 확인한 자세다. -->
+  <group_state name="home" group="fr3wms_arm">
+    <joint name="j1" value="0"/>
+    <joint name="j2" value="0"/>
+    <joint name="j3" value="0"/>
+    <joint name="j4" value="0"/>
+    <joint name="j5" value="0"/>
+    <joint name="j6" value="0"/>
+  </group_state>
+</robot>

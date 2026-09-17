@@ -1,0 +1,64 @@
+{
+  "catalog_version": "cell-demo-1.0",
+  "entries": [
+    {
+      "resource_id": "loc_pallet_1",
+      "kind": "location",
+      "display_name": "1번 팔레트",
+      "aliases": [
+        "1번 팔레트",
+        "1번팔레트",
+        "일번 팔레트",
+        "첫번째 팔레트"
+      ],
+      "provenance": "데모 셀 배치도. 실제 좌표는 Adapter가 가진다"
+    },
+    {
+      "resource_id": "loc_pallet_2",
+      "kind": "location",
+      "display_name": "2번 팔레트",
+      "aliases": [
+        "2번 팔레트",
+        "2번팔레트",
+        "이번 팔레트",
+        "두번째 팔레트"
+      ],
+      "provenance": "데모 셀 배치도"
+    },
+    {
+      "resource_id": "loc_conveyor",
+      "kind": "location",
+      "display_name": "컨베이어",
+      "aliases": [
+        "컨베이어",
+        "컨베이어 벨트",
+        "벨트"
+      ],
+      "provenance": "데모 셀 배치도"
+    },
+    {
+      "resource_id": "obj_a",
+      "kind": "object",
+      "display_name": "A자재",
+      "aliases": [
+        "A자재",
+        "에이자재",
+        "에이 자재",
+        "a자재"
+      ],
+      "provenance": "데모 자재 목록. 치수·질량은 카탈로그에 두지 않는다"
+    },
+    {
+      "resource_id": "obj_b",
+      "kind": "object",
+      "display_name": "B자재",
+      "aliases": [
+        "B자재",
+        "비자재",
+        "비 자재",
+        "b자재"
+      ],
+      "provenance": "데모 자재 목록"
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+<?xml version="1.0" ?>
+<!-- forstick2 8-08 **조립(FR3 + GRP-CPL-062 + 2F-85) 전용** 셀.
+     (우리 파일. 제3자 자산을 포함하지 않는다.)
+
+     arm-only 기준선인 config/gazebo/fr3_cell.sdf를 건드리지 않기 위해 갈라
+     두었다(그 파일은 reports/baseline/fr3_arm_only_2026-09-16.1.json의
+     체크섬으로 보호된다). arm-only와는 GZ_PARTITION으로 격리되므로 world
+     이름은 같게 둔다.
+
+     여기서만 바꾼 것:
+      - 렌더 엔진 ogre2 (WSLg에서 ogre가 프레임을 만들지 못했다 — 실측)
+      - Screenshot 플러그인 (화면에 실제로 무엇이 그려지는지 파일로 확인한다)
+      - 카메라를 로봇에 더 가깝게 (팔·커플링·그리퍼·바닥·시험 물체가 한 화면에) -->
+<sdf version="1.9">
+  <world name="forstick2_fr3_cell">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 6 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.4 0.3 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>8 8</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>8 8</size></plane></geometry>
+          <material>
+            <ambient>0.3 0.3 0.34 1</ambient>
+            <diffuse>0.4 0.4 0.45 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 로봇을 중앙에 두고 비스듬히 본다. 팔과 그리퍼 전체가 들어온다. -->
+    <gui fullscreen="0">
+      <plugin filename="MinimalScene" name="3D View">
+        <gz-gui>
+          <title>forstick2 · FR3-WMS cell</title>
+          <property type="bool" key="showTitleBar">false</property>
+        </gz-gui>
+        <!-- 실행 스크립트의 GUI 렌더 엔진 인자와 맞춰야 한다. -->
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>0.5 0.5 0.5</ambient_light>
+        <background_color>0.18 0.20 0.24</background_color>
+        <camera_pose>0.75 -0.8 0.55 0 0.2520 2.1731</camera_pose>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager"/>
+      <!-- 화면에 실제로 무엇이 그려지는지 파일로 확인하려고 둔다.
+           /gui/screenshot 서비스는 인자를 **디렉터리**로 받는다. -->
+      <plugin filename="Screenshot" name="Screenshot"/>
+      <plugin filename="InteractiveViewControl" name="Interactive view control"/>
+      <plugin filename="CameraTracking" name="Camera Tracking"/>
+      <plugin filename="WorldControl" name="World control">
+        <gz-gui>
+          <anchors target="3D View">
+            <line own="left" target="left"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <use_event>true</use_event>
+      </plugin>
+      <plugin filename="WorldStats" name="World stats">
+        <gz-gui>
+          <anchors target="3D View">
+            <line own="right" target="right"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+      </plugin>
+      <plugin filename="ComponentInspector" name="Component inspector"/>
+      <plugin filename="EntityTree" name="Entity tree"/>
+    </gui>
+  </world>
+</sdf>

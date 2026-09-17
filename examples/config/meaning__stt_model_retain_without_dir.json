@@ -1,0 +1,22 @@
+{
+  "config_version": "lowspec-1.0",
+  "profile_id": "example",
+  "verification": "candidate",
+  "model_name": "small",
+  "device": "cpu",
+  "compute_type": "int8",
+  "language": "ko",
+  "sample_rate_hz": 16000,
+  "vad_threshold": 0.5,
+  "load_timeout_sec": 600.0,
+  "transcribe_timeout_sec": 120.0,
+  "cache_dir": null,
+  "retain_eval_audio": true,
+  "eval_audio_dir": null,
+  "provenance": {
+    "model_name": "small — 가용 RAM 2.4GiB에서 large-v3-turbo(int8 약 1.6GB)를 올릴 여유가 없다",
+    "device": "cpu — GPU 8188MiB 중 7511MiB가 다른 프로세스에 점유되어 약 677MiB만 남는다",
+    "compute_type": "int8 — CPU 추론에서 메모리와 속도 균형",
+    "vad_threshold": "Silero 기본 0.5. 실측 미완료"
+  }
+}

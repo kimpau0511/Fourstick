@@ -1,0 +1,419 @@
+{
+  "arm_profile_id": "fairino_fr3wms_arm",
+  "arm_profile_version": "0.3.0-urdf-reach-defined",
+  "display_name": "FAIRINO FR3-WMS",
+  "joints": [
+    {
+      "name": "j1",
+      "kind": "revolute",
+      "lower": {
+        "value": -3.0543,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit lower"
+        }
+      },
+      "upper": {
+        "value": 3.0543,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit upper"
+        }
+      },
+      "max_velocity": {
+        "value": 3.15,
+        "unit": "rad/s",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit velocity"
+        }
+      },
+      "max_acceleration": {
+        "value": null,
+        "unit": "rad/s^2",
+        "provenance": {
+          "source_kind": "",
+          "source": "",
+          "source_version": "",
+          "source_commit": "",
+          "status": "unavailable",
+          "checked_at": 0.0,
+          "note": "URDF에 가속도 한계가 없다. 공식 데이터시트 미확보"
+        }
+      }
+    },
+    {
+      "name": "j2",
+      "kind": "revolute",
+      "lower": {
+        "value": -4.6251,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit lower"
+        }
+      },
+      "upper": {
+        "value": 1.4835,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit upper"
+        }
+      },
+      "max_velocity": {
+        "value": 3.15,
+        "unit": "rad/s",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit velocity"
+        }
+      },
+      "max_acceleration": {
+        "value": null,
+        "unit": "rad/s^2",
+        "provenance": {
+          "source_kind": "",
+          "source": "",
+          "source_version": "",
+          "source_commit": "",
+          "status": "unavailable",
+          "checked_at": 0.0,
+          "note": "URDF에 가속도 한계가 없다. 공식 데이터시트 미확보"
+        }
+      }
+    },
+    {
+      "name": "j3",
+      "kind": "revolute",
+      "lower": {
+        "value": -2.7925,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit lower"
+        }
+      },
+      "upper": {
+        "value": 2.7925,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit upper"
+        }
+      },
+      "max_velocity": {
+        "value": 3.15,
+        "unit": "rad/s",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit velocity"
+        }
+      },
+      "max_acceleration": {
+        "value": null,
+        "unit": "rad/s^2",
+        "provenance": {
+          "source_kind": "",
+          "source": "",
+          "source_version": "",
+          "source_commit": "",
+          "status": "unavailable",
+          "checked_at": 0.0,
+          "note": "URDF에 가속도 한계가 없다. 공식 데이터시트 미확보"
+        }
+      }
+    },
+    {
+      "name": "j4",
+      "kind": "revolute",
+      "lower": {
+        "value": -4.6251,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit lower"
+        }
+      },
+      "upper": {
+        "value": 1.4835,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit upper"
+        }
+      },
+      "max_velocity": {
+        "value": 3.2,
+        "unit": "rad/s",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit velocity"
+        }
+      },
+      "max_acceleration": {
+        "value": null,
+        "unit": "rad/s^2",
+        "provenance": {
+          "source_kind": "",
+          "source": "",
+          "source_version": "",
+          "source_commit": "",
+          "status": "unavailable",
+          "checked_at": 0.0,
+          "note": "URDF에 가속도 한계가 없다. 공식 데이터시트 미확보"
+        }
+      }
+    },
+    {
+      "name": "j5",
+      "kind": "revolute",
+      "lower": {
+        "value": -3.0543,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit lower"
+        }
+      },
+      "upper": {
+        "value": 3.0543,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit upper"
+        }
+      },
+      "max_velocity": {
+        "value": 3.2,
+        "unit": "rad/s",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit velocity"
+        }
+      },
+      "max_acceleration": {
+        "value": null,
+        "unit": "rad/s^2",
+        "provenance": {
+          "source_kind": "",
+          "source": "",
+          "source_version": "",
+          "source_commit": "",
+          "status": "unavailable",
+          "checked_at": 0.0,
+          "note": "URDF에 가속도 한계가 없다. 공식 데이터시트 미확보"
+        }
+      }
+    },
+    {
+      "name": "j6",
+      "kind": "revolute",
+      "lower": {
+        "value": -6.2832,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit lower"
+        }
+      },
+      "upper": {
+        "value": 6.2832,
+        "unit": "rad",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit upper"
+        }
+      },
+      "max_velocity": {
+        "value": 3.2,
+        "unit": "rad/s",
+        "provenance": {
+          "source_kind": "urdf",
+          "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+          "source_version": "commit 5bed0b0263c8",
+          "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+          "status": "declared",
+          "checked_at": 1789532419.382,
+          "note": "URDF limit velocity"
+        }
+      },
+      "max_acceleration": {
+        "value": null,
+        "unit": "rad/s^2",
+        "provenance": {
+          "source_kind": "",
+          "source": "",
+          "source_version": "",
+          "source_commit": "",
+          "status": "unavailable",
+          "checked_at": 0.0,
+          "note": "URDF에 가속도 한계가 없다. 공식 데이터시트 미확보"
+        }
+      }
+    }
+  ],
+  "payload": {
+    "value": null,
+    "unit": "kg",
+    "provenance": {
+      "source_kind": "",
+      "source": "",
+      "source_version": "",
+      "source_commit": "",
+      "status": "unavailable",
+      "checked_at": 0.0,
+      "note": "정격 페이로드는 데이터시트 값이다. URDF에 없고 공식 문서 미확보 → pick·place는 지원 스킬에서 제외된다"
+    }
+  },
+  "reach": {
+    "value": 0.630277,
+    "unit": "m",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "fairino_description/urdf/FR3WMS.urdf (외부 경로: /home/asd/external/frcobot_ros2)",
+      "source_version": "commit 5bed0b0263c8",
+      "source_commit": "5bed0b0263c8f1e95f51aa45079f904d463c5c50",
+      "status": "unverified",
+      "checked_at": 1789532419.382,
+      "note": "작업 반경 정의: **base z축 기준 최대 수평 반경**(플랜지 링크 wrist3_Link까지), 관절 제한 안에서 13점 격자 FK로 계산. 같은 격자에서 tool frame 수평 반경 0.669904 m, base 원점 기준 3D 거리 0.80653 m. 더 촘촘한 17점 격자(scripts/analyze_fr3_reach.py, reports/profile/fr3_reach_analysis.json)에서는 각각 0.672505 m·0.809984 m다. 유통사 표기 0.622 m는 링크 오프셋 단순 합(0.28+0.24+0.102)과 같고 정의가 다르다. 플랜지 수평 반경과 약 8 mm 차이는 공식 도면·데이터시트 없이 해소되지 않는다(`scripts/analyze_fr3_reach.py`)"
+    }
+  },
+  "frames": {
+    "base": "base_link",
+    "tool": "tool_Link"
+  },
+  "controller_requirement": "ros2_control 6.9.0 / gz_ros2_control 3.0.8 / Gazebo Sim 10.5.0 (시뮬레이션 경로에서 검증. 실기 컨트롤러 요구 버전 미확보)",
+  "declared_skills": [
+    "home",
+    "move",
+    "pick",
+    "place",
+    "stop"
+  ],
+  "state_max_age": {
+    "value": 0.1,
+    "unit": "s",
+    "provenance": {
+      "source_kind": "config",
+      "source": "config/gazebo/fr3wms_controllers.yaml",
+      "source_version": "forstick2",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789532419.382,
+      "note": "controller_manager update_rate 200 Hz(주기 0.005s)의 20배. 시뮬레이션 경로 기준이며 실기 관측 주기로 교체해야 한다"
+    }
+  },
+  "connect_timeout": {
+    "value": 60.0,
+    "unit": "s",
+    "provenance": {
+      "source_kind": "config",
+      "source": "scripts/run_gazebo_fr3.sh",
+      "source_version": "forstick2",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789532419.382,
+      "note": "controller_manager 대기 제한시간(--controller-manager-timeout) 으로 실제 사용한 값. 실기 연결 기준 미확보"
+    }
+  },
+  "environment": "simulation",
+  "verified": false,
+  "unverified_items": [
+    "payload_rating",
+    "joint_acceleration_limits",
+    "reach_definition_vs_datasheet",
+    "controller_requirement",
+    "state_freshness",
+    "connect_timeout",
+    "urdf_license"
+  ],
+  "notes": "공식 URDF에서 읽은 값이다(commit 5bed0b0263c8, sha256 73d01435d7be, git-blob 45f1ce294242). 링크 질량 합 11.7236 kg(URDF inertial). effort는 관절 토크 한계(N·m)이며 파지력이 아니다. **URDF 라이선스가 확인되지 않아 저장소에 자산을 복사하지 않고 외부 경로로만 참조한다.**"
+}

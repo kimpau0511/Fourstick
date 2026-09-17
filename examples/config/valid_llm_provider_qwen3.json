@@ -1,0 +1,26 @@
+{
+  "config_version": "qwen3-8b-awq-1.0",
+  "base_url": "http://localhost:8000/v1",
+  "model_id": "qwen3-8b-awq",
+  "quantization": "awq",
+  "max_model_len": 3072,
+  "max_tokens": 512,
+  "request_timeout_sec": 60.0,
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "seed": 7,
+  "thinking_mode": "off",
+  "structured_output": "response_format_json_schema",
+  "api_key_env": null,
+  "verify_model_id": true,
+  "provenance": {
+    "model_id": "사용자가 지정한 첫 기준 모델 Qwen/Qwen3-8B-AWQ. vLLM --served-model-name qwen3-8b-awq",
+    "quantization": "config.json quantization_config.quant_method=awq (4bit, group_size 128). vLLM 로그 quantization=auto_awq",
+    "max_model_len": "3072 — 8188MiB GPU에서 KV 캐시 0.6GiB로 4096을 띄우지 못했다(필요 0.56GiB vs 가용 0.52GiB, util 0.85). util 0.86 + 3072으로 기동 성공",
+    "max_tokens": "512 — 실측 completion 토큰 mean 122 / max 287. 잘림(finish_reason=length) 여유 포함",
+    "request_timeout_sec": "60 — 실측 지연 30사례에서 median 9.37s / p90 12.19s / max 20.03s (Qwen3-8B-AWQ, cpu 없음, RTX 4060 Ti, max-num-seqs 1). 최댓값의 약 3배 여유. HTTP 제한시간이 runner 예산(90s)보다 작아야 타임아웃 사유가 전송 계층으로 기록된다",
+    "temperature": "0.0 — 계획 생성은 재현성이 중요하다. 반복 안정성을 측정 지표로 둔다",
+    "thinking_mode": "off — 사용자가 non-thinking으로 지정. chat_template_kwargs.enable_thinking=false",
+    "structured_output": "response_format json_schema — vLLM 0.28.0에서 동작 확인. 폐기 예정 옵션(guided_json)을 쓰지 않는다"
+  }
+}

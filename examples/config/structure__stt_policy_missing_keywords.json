@@ -1,0 +1,22 @@
+{
+  "policy_version": "1.0",
+  "max_audio_sec": 30.0,
+  "window_sec": 5.0,
+  "window_stride_sec": 1.0,
+  "silence_end_sec": 0.8,
+  "speech_start_sec": 0.2,
+  "min_final_confidence": 0.6,
+  "stop_keywords": [],
+  "transcribe_deadline_sec": 20.0,
+  "max_concurrent_transcriptions": 2,
+  "provenance": {
+    "max_audio_sec": "한 발화 상한 — 현장 지시 길이 관측 후 재조정 필요",
+    "window_sec": "rolling window 길이 — 실측 후 재조정 필요",
+    "window_stride_sec": "재전사 간격 — 실측 후 재조정 필요",
+    "silence_end_sec": "발화 종료 판정 — 실측 후 재조정 필요",
+    "speech_start_sec": "발화 시작 판정 — 실측 후 재조정 필요",
+    "min_final_confidence": "되묻기 기준 — 실제 신뢰도 분포 관측 후 확정(미확정)",
+    "transcribe_deadline_sec": "순음 2초 전사가 42~65초 걸린 실측(RTF 21~32)을 근거로, 발화가 아닌 신호에 세션이 붙잡히지 않도록 20초로 둔다",
+    "max_concurrent_transcriptions": "CPU 6코어/12스레드에서 small/int8 추론 2건까지. 버려진 작업이 슬롯을 점유하는 것을 감안한 값"
+  }
+}

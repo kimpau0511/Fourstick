@@ -1,0 +1,23 @@
+{
+  "config_version": "turbo-1.0",
+  "profile_id": "turbo-auto-int8",
+  "verification": "candidate",
+  "model_name": "large-v3-turbo",
+  "device": "auto",
+  "compute_type": "int8",
+  "language": "ko",
+  "sample_rate_hz": 16000,
+  "vad_threshold": 0.5,
+  "load_timeout_sec": 600.0,
+  "transcribe_timeout_sec": 60.0,
+  "cache_dir": null,
+  "retain_eval_audio": false,
+  "eval_audio_dir": null,
+  "provenance": {
+    "model_name": "요구정의서 사용 기술의 faster-whisper(large-v3-turbo)",
+    "device": "auto — GPU 여유가 있으면 cuda, 없으면 cpu로 내려간다",
+    "compute_type": "int8 — 8GB GPU/8GB RAM 환경에서 메모리 여유 확보",
+    "vad_threshold": "Silero 기본 0.5. 데이터셋별 재조정이 권장되며 실측 미완료",
+    "verification": "미실행 후보. 가용 RAM 2.4GiB / GPU 677MiB에서 로딩을 시도하지 못했다"
+  }
+}

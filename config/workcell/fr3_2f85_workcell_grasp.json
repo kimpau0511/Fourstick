@@ -1,0 +1,3880 @@
+{
+  "schema": "forstick2.workcell_grasp/1",
+  "workcell_id": "fr3_2f85_workcell",
+  "workcell_version": "0.1.0-design",
+  "derived_at": "2026-09-16T22:20:45+0900",
+  "is_simulated": true,
+  "real_hardware_verified": false,
+  "method": "moveit_contact_sweep_plus_numerical_ik",
+  "scene": {
+    "snapshot_id": "moveit:(noname)+",
+    "snapshot_version": "h40b3afc4a83b",
+    "content_hash": "40b3afc4a83b4356cbfed6c483e060f257a1542f3411f9ba2c0e0b87fbce4695",
+    "frame_id": "base_link",
+    "world_object_count": 18,
+    "stable_during_measurement": true,
+    "content_hash_after": "40b3afc4a83b4356cbfed6c483e060f257a1542f3411f9ba2c0e0b87fbce4695"
+  },
+  "declared": {
+    "gripper_mimic": {
+      "robotiq_85_right_knuckle_joint": [
+        -1.0,
+        0.0
+      ],
+      "robotiq_85_left_inner_knuckle_joint": [
+        1.0,
+        0.0
+      ],
+      "robotiq_85_right_inner_knuckle_joint": [
+        -1.0,
+        0.0
+      ],
+      "robotiq_85_left_finger_tip_joint": [
+        -1.0,
+        0.0
+      ],
+      "robotiq_85_right_finger_tip_joint": [
+        1.0,
+        0.0
+      ]
+    },
+    "gripper_mimic_source": "공식 robotiq_description URDF의 mimic 선언",
+    "pad_links": [
+      "robotiq_85_left_finger_tip_link",
+      "robotiq_85_right_finger_tip_link"
+    ],
+    "pad_links_source": "공식 robotiq_description URDF의 손가락 패드 링크. 물체에 닿는 것이 허용되는 링크는 이 둘뿐이다 — 몸통·너클이 물체에 닿으면 충돌로 본다",
+    "tcp_link": "robotiq_85_tcp",
+    "gripper_command_joint": "robotiq_85_left_knuckle_joint",
+    "sweep_step_m": 0.005
+  },
+  "object_support": {
+    "mat_a": "loc_pallet_1",
+    "mat_b": "loc_pallet_2",
+    "mat_c": "loc_pallet_3"
+  },
+  "objects": {
+    "mat_a": {
+      "resource_id": "mat_a",
+      "gazebo_model": "material_a",
+      "frame": "material_a_frame",
+      "size_m": [
+        0.05,
+        0.05,
+        0.1
+      ],
+      "support_frame": "pallet_1_frame",
+      "support_resource_id": "loc_pallet_1",
+      "world_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ]
+    },
+    "mat_b": {
+      "resource_id": "mat_b",
+      "gazebo_model": "material_b",
+      "frame": "material_b_frame",
+      "size_m": [
+        0.05,
+        0.05,
+        0.1
+      ],
+      "support_frame": "pallet_2_frame",
+      "support_resource_id": "loc_pallet_2",
+      "world_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ]
+    },
+    "mat_c": {
+      "resource_id": "mat_c",
+      "gazebo_model": "material_c",
+      "frame": "material_c_frame",
+      "size_m": [
+        0.05,
+        0.05,
+        0.1
+      ],
+      "support_frame": "pallet_3_frame",
+      "support_resource_id": "loc_pallet_3",
+      "world_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ]
+    }
+  },
+  "gripper": {
+    "open_joint_rad": 0.0,
+    "open_source": "reports/workcell/gripper_control.json 01_open (명령 0.0 rad → 관측 개구 0.084996 m, 오차 1 µm)",
+    "grasp_joint_rad": 0.35664642690331616,
+    "grasp_target_aperture_m": 0.05,
+    "grasp_aperture_evidence": {
+      "aperture_target_m": 0.05,
+      "joint_rad": 0.35664642690331616,
+      "aperture_back_m": 0.05,
+      "source": "fr3wms_to_robotiq_2f85 0.3.1-measured-dense-aperture",
+      "max_interpolation_error_m": 1.5000000000001124e-05,
+      "method": "official_fk_aperture_table_inverse"
+    },
+    "status": "measured",
+    "note": "개구가 자재 폭과 맞는다는 것이 **물체를 쥐었다는 뜻이 아니다.** 파지 여부는 grasp.object_held 관측이 있어야 판정한다"
+  },
+  "poses": {
+    "material_a_grasp": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.035
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        0.2,
+        0.875
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": -2.950949,
+        "j2": -0.779076,
+        "j3": 0.558919,
+        "j4": -1.330317,
+        "j5": -1.573717,
+        "j6": -1.380146
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "position_error_m": 0.001492,
+      "orientation_error_rad": 0.020536,
+      "fk_tcp_world_m": [
+        0.501177,
+        0.200496,
+        0.87577
+      ],
+      "expected_contacts": [
+        [
+          "robotiq_85_right_finger_tip_link",
+          "material_a"
+        ]
+      ],
+      "usable_dz_range_m": [
+        0.035,
+        0.06
+      ],
+      "usable_step_count": 6,
+      "attached_object": {
+        "object_id": "material_a__held",
+        "world_instance_id": "material_a",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000483,
+          0.000255,
+          0.035789
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": "파지 높이는 고른 값이 아니라 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다",
+      "held_state_checks": {
+        "material_a_grasp": {
+          "valid": false,
+          "out_of_bounds": [],
+          "expected_contacts": [
+            [
+              "material_a",
+              "material_a__held"
+            ],
+            [
+              "robotiq_85_right_finger_tip_link",
+              "material_a"
+            ],
+            [
+              "pallet_1__tray",
+              "material_a__held"
+            ]
+          ],
+          "collisions": [],
+          "clean": true
+        },
+        "pallet_1_approach": {
+          "valid": false,
+          "out_of_bounds": [],
+          "expected_contacts": [
+            [
+              "material_a",
+              "material_a__held"
+            ]
+          ],
+          "collisions": [],
+          "clean": true
+        },
+        "conveyor_approach": {
+          "valid": true,
+          "out_of_bounds": [],
+          "expected_contacts": [],
+          "collisions": [],
+          "clean": true
+        },
+        "conveyor_place": {
+          "valid": true,
+          "out_of_bounds": [],
+          "expected_contacts": [],
+          "collisions": [],
+          "clean": true
+        }
+      }
+    },
+    "material_b_grasp": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        0.0,
+        0.88
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "position_error_m": 0.001556,
+      "orientation_error_rad": 0.021858,
+      "fk_tcp_world_m": [
+        0.501266,
+        -2e-05,
+        0.880904
+      ],
+      "expected_contacts": [
+        [
+          "robotiq_85_right_finger_tip_link",
+          "material_b"
+        ]
+      ],
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "attached_object": {
+        "object_id": "material_b__held",
+        "world_instance_id": "material_b",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000373,
+          -7.8e-05,
+          0.040922
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": "파지 높이는 고른 값이 아니라 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다",
+      "held_state_checks": {
+        "material_b_grasp": {
+          "valid": false,
+          "out_of_bounds": [],
+          "expected_contacts": [
+            [
+              "material_b",
+              "material_b__held"
+            ],
+            [
+              "robotiq_85_right_finger_tip_link",
+              "material_b"
+            ],
+            [
+              "pallet_2__tray",
+              "material_b__held"
+            ]
+          ],
+          "collisions": [],
+          "clean": true
+        },
+        "pallet_2_approach": {
+          "valid": false,
+          "out_of_bounds": [],
+          "expected_contacts": [
+            [
+              "material_b",
+              "material_b__held"
+            ]
+          ],
+          "collisions": [],
+          "clean": true
+        },
+        "conveyor_approach": {
+          "valid": true,
+          "out_of_bounds": [],
+          "expected_contacts": [],
+          "collisions": [],
+          "clean": true
+        },
+        "conveyor_place": {
+          "valid": true,
+          "out_of_bounds": [],
+          "expected_contacts": [],
+          "collisions": [],
+          "clean": true
+        }
+      }
+    },
+    "material_c_grasp": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.035
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        -0.2,
+        0.875
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": -0.194809,
+        "j2": -2.35538,
+        "j3": -0.573292,
+        "j4": -1.802067,
+        "j5": 1.573351,
+        "j6": -1.765732
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "position_error_m": 0.001347,
+      "orientation_error_rad": 0.018532,
+      "fk_tcp_world_m": [
+        0.501061,
+        -0.200451,
+        0.875697
+      ],
+      "expected_contacts": [
+        [
+          "robotiq_85_right_finger_tip_link",
+          "material_c"
+        ]
+      ],
+      "usable_dz_range_m": [
+        0.035,
+        0.06
+      ],
+      "usable_step_count": 6,
+      "attached_object": {
+        "object_id": "material_c__held",
+        "world_instance_id": "material_c",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000436,
+          -0.000235,
+          0.035713
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": "파지 높이는 고른 값이 아니라 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다",
+      "held_state_checks": {
+        "material_c_grasp": {
+          "valid": false,
+          "out_of_bounds": [],
+          "expected_contacts": [
+            [
+              "material_c",
+              "material_c__held"
+            ],
+            [
+              "robotiq_85_right_finger_tip_link",
+              "material_c"
+            ],
+            [
+              "pallet_3__tray",
+              "material_c__held"
+            ]
+          ],
+          "collisions": [],
+          "clean": true
+        },
+        "pallet_3_approach": {
+          "valid": false,
+          "out_of_bounds": [],
+          "expected_contacts": [
+            [
+              "material_c",
+              "material_c__held"
+            ]
+          ],
+          "collisions": [],
+          "clean": true
+        },
+        "conveyor_approach": {
+          "valid": true,
+          "out_of_bounds": [],
+          "expected_contacts": [],
+          "collisions": [],
+          "clean": true
+        },
+        "conveyor_place": {
+          "valid": true,
+          "out_of_bounds": [],
+          "expected_contacts": [],
+          "collisions": [],
+          "clean": true
+        }
+      }
+    }
+  },
+  "sweeps": {
+    "mat_a": {
+      "object": "material_a",
+      "support_resource_id": "loc_pallet_1",
+      "steps": [
+        {
+          "dz_m": -0.05,
+          "tcp_world_z_m": 0.79,
+          "position_error_m": 0.001945,
+          "orientation_error_rad": 0.031738,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.045,
+          "tcp_world_z_m": 0.795,
+          "position_error_m": 0.001985,
+          "orientation_error_rad": 0.032176,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.04,
+          "tcp_world_z_m": 0.8,
+          "position_error_m": 0.00099,
+          "orientation_error_rad": 0.015796,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.035,
+          "tcp_world_z_m": 0.805,
+          "position_error_m": 0.001024,
+          "orientation_error_rad": 0.016265,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.03,
+          "tcp_world_z_m": 0.81,
+          "position_error_m": 0.001059,
+          "orientation_error_rad": 0.016748,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.025,
+          "tcp_world_z_m": 0.815,
+          "position_error_m": 0.001097,
+          "orientation_error_rad": 0.017244,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_1__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_1__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.02,
+          "tcp_world_z_m": 0.82,
+          "position_error_m": 0.001136,
+          "orientation_error_rad": 0.017748,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.015,
+          "tcp_world_z_m": 0.825,
+          "position_error_m": 0.001176,
+          "orientation_error_rad": 0.018255,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.01,
+          "tcp_world_z_m": 0.83,
+          "position_error_m": 0.001218,
+          "orientation_error_rad": 0.018759,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.005,
+          "tcp_world_z_m": 0.835,
+          "position_error_m": 0.001261,
+          "orientation_error_rad": 0.019251,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.0,
+          "tcp_world_z_m": 0.84,
+          "position_error_m": 0.001303,
+          "orientation_error_rad": 0.019719,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.005,
+          "tcp_world_z_m": 0.845,
+          "position_error_m": 0.001346,
+          "orientation_error_rad": 0.020149,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.01,
+          "tcp_world_z_m": 0.85,
+          "position_error_m": 0.001386,
+          "orientation_error_rad": 0.020522,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.015,
+          "tcp_world_z_m": 0.855,
+          "position_error_m": 0.001423,
+          "orientation_error_rad": 0.020815,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.02,
+          "tcp_world_z_m": 0.86,
+          "position_error_m": 0.001456,
+          "orientation_error_rad": 0.021001,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.025,
+          "tcp_world_z_m": 0.865,
+          "position_error_m": 0.00148,
+          "orientation_error_rad": 0.021044,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.03,
+          "tcp_world_z_m": 0.87,
+          "position_error_m": 0.001494,
+          "orientation_error_rad": 0.020905,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_a"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.035,
+          "tcp_world_z_m": 0.875,
+          "position_error_m": 0.001492,
+          "orientation_error_rad": 0.020536,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.04,
+          "tcp_world_z_m": 0.88,
+          "position_error_m": 0.001469,
+          "orientation_error_rad": 0.019884,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.045,
+          "tcp_world_z_m": 0.885,
+          "position_error_m": 0.001953,
+          "orientation_error_rad": 0.025373,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.05,
+          "tcp_world_z_m": 0.89,
+          "position_error_m": 0.001778,
+          "orientation_error_rad": 0.022768,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.055,
+          "tcp_world_z_m": 0.895,
+          "position_error_m": 0.001879,
+          "orientation_error_rad": 0.02339,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.06,
+          "tcp_world_z_m": 0.9,
+          "position_error_m": 0.00196,
+          "orientation_error_rad": 0.028883,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_left_finger_tip_link",
+                "material_a"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        }
+      ],
+      "usable_dz_m": [
+        0.035,
+        0.04,
+        0.045,
+        0.05,
+        0.055,
+        0.06
+      ],
+      "criterion": "연 상태에서 아무것과도 닿지 않고, 자재 폭만큼 닫았을 때 선언된 패드만 자재에 닿는 dz"
+    },
+    "mat_b": {
+      "object": "material_b",
+      "support_resource_id": "loc_pallet_2",
+      "steps": [
+        {
+          "dz_m": -0.05,
+          "tcp_world_z_m": 0.79,
+          "position_error_m": 0.001565,
+          "orientation_error_rad": 0.025062,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.045,
+          "tcp_world_z_m": 0.795,
+          "position_error_m": 0.001555,
+          "orientation_error_rad": 0.024769,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.04,
+          "tcp_world_z_m": 0.8,
+          "position_error_m": 0.001543,
+          "orientation_error_rad": 0.024451,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.035,
+          "tcp_world_z_m": 0.805,
+          "position_error_m": 0.001529,
+          "orientation_error_rad": 0.024107,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.03,
+          "tcp_world_z_m": 0.81,
+          "position_error_m": 0.001514,
+          "orientation_error_rad": 0.023733,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.025,
+          "tcp_world_z_m": 0.815,
+          "position_error_m": 0.001497,
+          "orientation_error_rad": 0.023328,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_2__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_2__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.02,
+          "tcp_world_z_m": 0.82,
+          "position_error_m": 0.001478,
+          "orientation_error_rad": 0.02289,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.015,
+          "tcp_world_z_m": 0.825,
+          "position_error_m": 0.001457,
+          "orientation_error_rad": 0.022416,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.01,
+          "tcp_world_z_m": 0.83,
+          "position_error_m": 0.001432,
+          "orientation_error_rad": 0.021903,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.005,
+          "tcp_world_z_m": 0.835,
+          "position_error_m": 0.001405,
+          "orientation_error_rad": 0.021347,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.0,
+          "tcp_world_z_m": 0.84,
+          "position_error_m": 0.001375,
+          "orientation_error_rad": 0.020746,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.005,
+          "tcp_world_z_m": 0.845,
+          "position_error_m": 0.001342,
+          "orientation_error_rad": 0.020096,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.01,
+          "tcp_world_z_m": 0.85,
+          "position_error_m": 0.001304,
+          "orientation_error_rad": 0.019392,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.015,
+          "tcp_world_z_m": 0.855,
+          "position_error_m": 0.001263,
+          "orientation_error_rad": 0.01863,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.02,
+          "tcp_world_z_m": 0.86,
+          "position_error_m": 0.001216,
+          "orientation_error_rad": 0.017804,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.025,
+          "tcp_world_z_m": 0.865,
+          "position_error_m": 0.001929,
+          "orientation_error_rad": 0.027758,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_b"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.03,
+          "tcp_world_z_m": 0.87,
+          "position_error_m": 0.001814,
+          "orientation_error_rad": 0.025896,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.035,
+          "tcp_world_z_m": 0.875,
+          "position_error_m": 0.00169,
+          "orientation_error_rad": 0.023931,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_b"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.04,
+          "tcp_world_z_m": 0.88,
+          "position_error_m": 0.001556,
+          "orientation_error_rad": 0.021858,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.045,
+          "tcp_world_z_m": 0.885,
+          "position_error_m": 0.001411,
+          "orientation_error_rad": 0.01967,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.05,
+          "tcp_world_z_m": 0.89,
+          "position_error_m": 0.00181,
+          "orientation_error_rad": 0.024825,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.055,
+          "tcp_world_z_m": 0.895,
+          "position_error_m": 0.001553,
+          "orientation_error_rad": 0.021159,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.06,
+          "tcp_world_z_m": 0.9,
+          "position_error_m": 0.001673,
+          "orientation_error_rad": 0.023049,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_b"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        }
+      ],
+      "usable_dz_m": [
+        0.04,
+        0.045,
+        0.05,
+        0.055,
+        0.06
+      ],
+      "criterion": "연 상태에서 아무것과도 닿지 않고, 자재 폭만큼 닫았을 때 선언된 패드만 자재에 닿는 dz"
+    },
+    "mat_c": {
+      "object": "material_c",
+      "support_resource_id": "loc_pallet_3",
+      "steps": [
+        {
+          "dz_m": -0.05,
+          "tcp_world_z_m": 0.79,
+          "position_error_m": 0.001794,
+          "orientation_error_rad": 0.029063,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.045,
+          "tcp_world_z_m": 0.795,
+          "position_error_m": 0.00183,
+          "orientation_error_rad": 0.029458,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.04,
+          "tcp_world_z_m": 0.8,
+          "position_error_m": 0.001867,
+          "orientation_error_rad": 0.029843,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.035,
+          "tcp_world_z_m": 0.805,
+          "position_error_m": 0.001904,
+          "orientation_error_rad": 0.030211,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.03,
+          "tcp_world_z_m": 0.81,
+          "position_error_m": 0.001941,
+          "orientation_error_rad": 0.030558,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.025,
+          "tcp_world_z_m": 0.815,
+          "position_error_m": 0.001978,
+          "orientation_error_rad": 0.030875,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_finger_tip_link",
+                "pallet_3__tray"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "pallet_3__tray"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.02,
+          "tcp_world_z_m": 0.82,
+          "position_error_m": 0.001035,
+          "orientation_error_rad": 0.016044,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.015,
+          "tcp_world_z_m": 0.825,
+          "position_error_m": 0.001071,
+          "orientation_error_rad": 0.016493,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.01,
+          "tcp_world_z_m": 0.83,
+          "position_error_m": 0.001108,
+          "orientation_error_rad": 0.016939,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": -0.005,
+          "tcp_world_z_m": 0.835,
+          "position_error_m": 0.001146,
+          "orientation_error_rad": 0.017375,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.0,
+          "tcp_world_z_m": 0.84,
+          "position_error_m": 0.001183,
+          "orientation_error_rad": 0.01779,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.005,
+          "tcp_world_z_m": 0.845,
+          "position_error_m": 0.001221,
+          "orientation_error_rad": 0.018172,
+          "reachable": true,
+          "open": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_base_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.01,
+          "tcp_world_z_m": 0.85,
+          "position_error_m": 0.001256,
+          "orientation_error_rad": 0.018505,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.015,
+          "tcp_world_z_m": 0.855,
+          "position_error_m": 0.001289,
+          "orientation_error_rad": 0.018768,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.02,
+          "tcp_world_z_m": 0.86,
+          "position_error_m": 0.001317,
+          "orientation_error_rad": 0.018935,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.025,
+          "tcp_world_z_m": 0.865,
+          "position_error_m": 0.001338,
+          "orientation_error_rad": 0.018977,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_left_inner_knuckle_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.03,
+          "tcp_world_z_m": 0.87,
+          "position_error_m": 0.00135,
+          "orientation_error_rad": 0.018857,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [
+              [
+                "robotiq_85_right_inner_knuckle_link",
+                "material_c"
+              ]
+            ],
+            "clean": false
+          },
+          "usable": false
+        },
+        {
+          "dz_m": 0.035,
+          "tcp_world_z_m": 0.875,
+          "position_error_m": 0.001347,
+          "orientation_error_rad": 0.018532,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.04,
+          "tcp_world_z_m": 0.88,
+          "position_error_m": 0.001918,
+          "orientation_error_rad": 0.025362,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.045,
+          "tcp_world_z_m": 0.885,
+          "position_error_m": 0.001792,
+          "orientation_error_rad": 0.023344,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.05,
+          "tcp_world_z_m": 0.89,
+          "position_error_m": 0.001631,
+          "orientation_error_rad": 0.020939,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.055,
+          "tcp_world_z_m": 0.895,
+          "position_error_m": 0.001746,
+          "orientation_error_rad": 0.021813,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        },
+        {
+          "dz_m": 0.06,
+          "tcp_world_z_m": 0.9,
+          "position_error_m": 0.001897,
+          "orientation_error_rad": 0.027986,
+          "reachable": true,
+          "open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_left_finger_tip_link",
+                "material_c"
+              ],
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_c"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "usable": true
+        }
+      ],
+      "usable_dz_m": [
+        0.035,
+        0.04,
+        0.045,
+        0.05,
+        0.055,
+        0.06
+      ],
+      "criterion": "연 상태에서 아무것과도 닿지 않고, 자재 폭만큼 닫았을 때 선언된 패드만 자재에 닿는 dz"
+    }
+  },
+  "limitations": [
+    "planning scene은 자재를 **원래 자리에** 담고 있다. 들어올림을 모르므로 붙인 사본과 원래 물체가 겹치는 쌍만 선언된 예외로 뒀다 (attached_object.world_instance_id)",
+    "place 이후 자재의 새 위치는 scene에 없다 — 해제 이후 단계는 빈손 기준으로만 검사했다",
+    "물체를 실제로 쥐었는지는 측정하지 않았다(grasp.object_held 미확보). 개구가 폭과 맞는 것을 파지 근거로 쓰지 않는다",
+    "장착 yaw와 커플링 실측 질량이 미확보다 — 이 자세들은 계획 검증용이며 실행 경로를 열지 않는다"
+  ]
+}

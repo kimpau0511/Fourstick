@@ -1,0 +1,11 @@
+{
+  "composite_profile_id": "fr3wms_with_2f85",
+  "composite_profile_version": "0.3.0-gripper-assembly-measured",
+  "arm_profile": "fairino_fr3wms_arm",
+  "gripper_profile": "robotiq_2f85",
+  "mounting_profile": "fr3wms_to_robotiq_2f85",
+  "asset_manifest_version": "assets-2026-09-16.1",
+  "environment": "simulation",
+  "verified": false,
+  "notes": "8-02 구조 + 8-03~8-06 arm-only Gazebo 검증 완료(시뮬레이션). 팔 Profile이 0.3.0-urdf-reach-defined로 올라가 구성 버전도 올렸다 — 기존 Profile 기록과 승인은 그대로 남고, 승인은 버전 차이로 무효가 된다. 장착 변환이 미확보라 pick·place는 계속 제외된다. 실제 Gazebo 결합·파지 검증 전까지 simulation·unverified를 유지한다. 2026-09-16: 장착 Profile 0.3.1(측정 기반 xyz·TCP, yaw 미확보)로 갱신. Gazebo 조립 모델과 개구 관측을 연결했다. pick/place는 7개 조건 관문으로 막혀 있다."
+}

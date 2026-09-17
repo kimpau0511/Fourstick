@@ -1,0 +1,18 @@
+{
+  "schema": "forstick2.active_workcell/1",
+  "note": [
+    "**지금 연결할 작업 셀을 가리키는 유일한 파일이다.**",
+    "공통 코드(server/·core/·validation/…)는 로봇·제조사 이름으로 분기하지",
+    "않는다(계획.md 27장). 그래서 서버는 이 파일만 알고, 실제 모델·셀 이름은",
+    "여기에만 적는다. 다른 셀로 바꾸려면 이 파일만 고친다.",
+    "경로는 이 파일 위치를 기준으로 해석한다."
+  ],
+  "enabled": true,
+  "adapter_module": "robots.fr3_gazebo",
+  "workcell_config": "fr3_2f85_workcell.json",
+  "poses": "fr3_2f85_workcell_poses.json",
+  "resource_catalog": "fr3_2f85_workcell_resource_catalog.json",
+  "capability_profile": "../profiles/fr3wms_2f85_workcell_capability.json",
+  "is_simulated": true,
+  "real_hardware_verified": false
+}

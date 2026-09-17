@@ -1,0 +1,55 @@
+{
+  "profile_id": "profile_a",
+  "profile_version": "1.0",
+  "dof": 2,
+  "joint_limits": [
+    {
+      "name": "j1",
+      "lower": -3.0,
+      "upper": 3.0,
+      "max_velocity": 1.0,
+      "unit": "rad",
+      "kind": "revolute"
+    },
+    {
+      "name": "j2",
+      "lower": -3.0,
+      "upper": 3.0,
+      "max_velocity": 1.0,
+      "unit": "rad",
+      "kind": "revolute"
+    }
+  ],
+  "frames": {
+    "base": "base_frame",
+    "tool": "tool_frame"
+  },
+  "tcp_offset": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.1
+  },
+  "work_radius_m": 0.0,
+  "payload_kg": 3.0,
+  "supported_skills": [
+    "home",
+    "move",
+    "pick",
+    "place",
+    "stop"
+  ],
+  "gripper": {
+    "joint_name": "grip_j",
+    "open_position": 0.02,
+    "close_position": 0.55,
+    "unit": "rad",
+    "grasp_aperture_m": 0.0286,
+    "max_effort": 50.0,
+    "fully_open_margin": 0.05
+  },
+  "provenance": {
+    "tcp_offset": "조립 도면 실측",
+    "grasp_aperture_m": "collision 형상 계산"
+  },
+  "extras": {}
+}

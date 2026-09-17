@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Forstick · Robot Command Console</title>
+  <meta name="description" content="forstick2 로봇 작업 콘솔 — 명령 입력, 계획 생성, 안전 판단(PASS/BLOCK/ASK), 실행과 정지" />
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+<div class="page">
+  <!-- 헤더: 목업 html/목업/src/App.tsx의 Header와 같은 구성이다. -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-badge" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="7" y="11" width="10" height="8" rx="1" />
+          <rect x="9" y="7" width="6" height="4" rx="1" />
+          <circle cx="12" cy="5" r="1" />
+          <line x1="12" y1="6" x2="12" y2="7" />
+          <line x1="7" y1="14" x2="4" y2="14" />
+          <line x1="17" y1="14" x2="20" y2="14" />
+          <circle cx="10" cy="14" r="1" fill="currentColor" stroke="none" />
+          <circle cx="14" cy="14" r="1" fill="currentColor" stroke="none" />
+          <line x1="10" y1="17" x2="14" y2="17" />
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">Forstick</span>
+        <span class="brand-sub">Robot Command Console</span>
+      </div>
+      <span class="schema-tag sm-only-inline">Schema v2</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="conn" id="conn">
+      <span class="conn-dot warn"></span>
+      <span class="conn-text warn sm-only-inline">연결 중…</span>
+    </div>
+    <span class="session-id md-only-inline" id="session-id">세션 없음</span>
+    <button class="estop" id="btn-estop" type="button" title="모든 실행을 즉시 중지합니다.">
+      <span aria-hidden="true">■</span>
+      <span class="sm-only-inline">전체 정지</span>
+    </button>
+  </header>
+
+  <!-- 계획 화면 -->
+  <main class="shell" id="view-plan">
+    <div class="grid-plan">
+      <div class="col col-left">
+        <section class="card" id="card-scene"></section>
+        <section class="card" id="card-robot"></section>
+        <section class="card" id="card-workcell"></section>
+        <section class="card" id="card-hardware"></section>
+        <section class="card" id="card-voice"></section>
+        <section class="card" id="card-events"></section>
+      </div>
+      <div class="col col-center">
+        <section class="card" id="card-command"></section>
+        <section class="card" id="card-plan"></section>
+      </div>
+      <div class="col col-right">
+        <section class="card" id="card-verdict"></section>
+        <section class="card" id="card-block"></section>
+        <div id="goto-workspace-slot"></div>
+      </div>
+    </div>
+    <div id="stop-slot-plan" style="margin-top:16px"></div>
+  </main>
+
+  <!-- 실행 워크스페이스 -->
+  <section id="view-workspace" class="hidden">
+    <div class="sub-header">
+      <button class="sub-back" type="button" data-action="back-to-plan">← 계획으로 돌아가기</button>
+      <div class="sub-divider"></div>
+      <span class="sub-title">Forstick 실행 워크스페이스</span>
+      <div class="spacer"></div>
+      <div class="pill-row" id="sub-verdict"></div>
+      <span class="session-id mono" id="sub-plan-id"></span>
+    </div>
+    <div class="shell">
+      <div class="grid-workspace">
+        <section class="card" id="card-sim"></section>
+        <div class="col" id="card-execution"></div>
+      </div>
+      <div id="stop-slot-workspace" style="margin-top:16px"></div>
+    </div>
+  </section>
+</div>
+
+<div id="modal-root"></div>
+
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

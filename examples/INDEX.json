@@ -1,0 +1,219 @@
+{
+  "valid": [
+    "config/valid_capability_profile.json",
+    "config/valid_freshness_policy.json",
+    "config/valid_llm_provider_qwen3.json",
+    "config/valid_planning_policy.json",
+    "config/valid_resource_catalog.json",
+    "config/valid_safety_policy.json",
+    "config/valid_skill_catalog.json",
+    "config/valid_stop_policy.json",
+    "config/valid_stt_model_candidate.json",
+    "config/valid_stt_model_lowspec.json",
+    "config/valid_stt_policy.json",
+    "config/valid_stt_profiles.json",
+    "stt/valid_final.json",
+    "stt/valid_start.json",
+    "task_plan/valid_carry.json",
+    "task_plan/valid_transfer.json"
+  ],
+  "invalid": {
+    "config/meaning__dof_mismatch.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__llm_provider_bad_base_url.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__llm_provider_bad_thinking_mode.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__llm_provider_credential_in_config.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__llm_provider_max_tokens_over_context.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__llm_provider_no_provenance.json": {
+      "rejected_by": "meaning",
+      "reason": "config.missing"
+    },
+    "config/meaning__margin_exceeds_travel.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__missing_gripper.json": {
+      "rejected_by": "meaning",
+      "reason": "config.missing"
+    },
+    "config/meaning__non_si_unit.json": {
+      "rejected_by": "meaning",
+      "reason": "config.unit_mismatch"
+    },
+    "config/meaning__planning_policy_no_provenance.json": {
+      "rejected_by": "meaning",
+      "reason": "config.missing"
+    },
+    "config/meaning__planning_policy_payload_without_limit.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__planning_policy_unknown_reason.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__resource_alias_clash.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__resource_bad_kind.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__resource_display_name_not_an_alias.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__safety_policy_final_skill_no_provenance.json": {
+      "rejected_by": "meaning",
+      "reason": "config.missing"
+    },
+    "config/meaning__safety_policy_unknown_final_skill.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.unsupported_skill"
+    },
+    "config/meaning__skill_arg_kind_missing.json": {
+      "rejected_by": "meaning",
+      "reason": "config.missing"
+    },
+    "config/meaning__skill_arg_not_in_contract.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.arg_unknown"
+    },
+    "config/meaning__skill_not_in_contract.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.unsupported_skill"
+    },
+    "config/meaning__stt_model_bad_device.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__stt_model_bad_verification.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__stt_model_no_provenance.json": {
+      "rejected_by": "meaning",
+      "reason": "config.missing"
+    },
+    "config/meaning__stt_model_retain_without_dir.json": {
+      "rejected_by": "meaning",
+      "reason": "config.missing"
+    },
+    "config/meaning__stt_policy_no_provenance.json": {
+      "rejected_by": "meaning",
+      "reason": "config.missing"
+    },
+    "config/meaning__stt_policy_stride_over_window.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__stt_policy_window_over_max.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__stt_profiles_unverified_default.json": {
+      "rejected_by": "meaning",
+      "reason": "config.invalid"
+    },
+    "config/meaning__unknown_frame.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.unknown_frame"
+    },
+    "config/structure__llm_provider_zero_timeout.json": {
+      "rejected_by": "structure",
+      "reason": "config.invalid"
+    },
+    "config/structure__out_of_range.json": {
+      "rejected_by": "structure",
+      "reason": "config.invalid"
+    },
+    "config/structure__planning_policy_zero_attempts.json": {
+      "rejected_by": "structure",
+      "reason": "config.invalid"
+    },
+    "config/structure__resource_catalog_empty.json": {
+      "rejected_by": "structure",
+      "reason": "config.invalid"
+    },
+    "config/structure__skill_catalog_empty.json": {
+      "rejected_by": "structure",
+      "reason": "config.invalid"
+    },
+    "config/structure__stt_model_threshold_range.json": {
+      "rejected_by": "structure",
+      "reason": "config.invalid"
+    },
+    "config/structure__stt_policy_missing_keywords.json": {
+      "rejected_by": "structure",
+      "reason": "config.invalid"
+    },
+    "config/structure__unknown_key.json": {
+      "rejected_by": "structure",
+      "reason": "config.invalid"
+    },
+    "stt/structure__bad_type_literal.json": {
+      "rejected_by": "structure"
+    },
+    "stt/structure__confidence_out_of_range.json": {
+      "rejected_by": "structure"
+    },
+    "stt/structure__missing_min_confidence.json": {
+      "rejected_by": "structure"
+    },
+    "task_plan/meaning__empty_arg_value.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.schema_invalid"
+    },
+    "task_plan/meaning__missing_arg.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.arg_missing"
+    },
+    "task_plan/meaning__unknown_arg.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.arg_unknown"
+    },
+    "task_plan/meaning__unsupported_skill.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.unsupported_skill"
+    },
+    "task_plan/meaning__unsupported_version.json": {
+      "rejected_by": "meaning",
+      "reason": "plan.version_unsupported"
+    },
+    "task_plan/structure__coordinate_in_args.json": {
+      "rejected_by": "structure",
+      "reason": "plan.schema_invalid"
+    },
+    "task_plan/structure__empty_steps.json": {
+      "rejected_by": "structure",
+      "reason": "plan.schema_invalid"
+    },
+    "task_plan/structure__missing_required.json": {
+      "rejected_by": "structure",
+      "reason": "plan.schema_invalid"
+    },
+    "task_plan/structure__unknown_field.json": {
+      "rejected_by": "structure",
+      "reason": "plan.schema_invalid"
+    },
+    "task_plan/structure__wrong_type.json": {
+      "rejected_by": "structure",
+      "reason": "plan.schema_invalid"
+    }
+  }
+}

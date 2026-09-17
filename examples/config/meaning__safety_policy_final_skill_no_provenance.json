@@ -1,0 +1,9 @@
+{
+  "policy_version": "no-prov-1.0",
+  "max_steps": 12,
+  "required_final_skill": "home",
+  "approach_skill": "move",
+  "provenance": {
+    "max_steps": "있음"
+  }
+}

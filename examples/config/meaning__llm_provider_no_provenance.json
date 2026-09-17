@@ -1,0 +1,19 @@
+{
+  "config_version": "no-prov-1.0",
+  "base_url": "http://localhost:8000/v1",
+  "model_id": "qwen3-8b-awq",
+  "quantization": "awq",
+  "max_model_len": 3072,
+  "max_tokens": 512,
+  "request_timeout_sec": 180.0,
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "seed": 7,
+  "thinking_mode": "off",
+  "structured_output": "response_format_json_schema",
+  "api_key_env": null,
+  "verify_model_id": true,
+  "provenance": {
+    "model_id": "있음"
+  }
+}

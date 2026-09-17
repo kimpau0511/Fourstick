@@ -1,0 +1,9 @@
+{
+  "policy_version": "web-freshness-1.0",
+  "robot_state_max_age_sec": 2.0,
+  "environment_max_age_sec": 5.0,
+  "provenance": {
+    "robot_state_max_age_sec": "Fake Adapter는 즉시 응답한다. 실제 로봇 상태 주기가 확인되면 실측으로 대체한다 — 현재 값은 잠정값",
+    "environment_max_age_sec": "환경 관측 주기 미확인. 잠정값이며 실제 센서가 붙으면 실측으로 대체한다"
+  }
+}

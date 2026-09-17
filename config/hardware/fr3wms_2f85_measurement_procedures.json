@@ -1,0 +1,233 @@
+{
+  "schema": "forstick2.hardware_procedures/1",
+  "procedures_id": "fr3wms_2f85_procedures",
+  "procedures_version": "0.1.0",
+  "description": "실제 장착 후 측정·보정·연결 절차. **이 파일에 측정값을 적지 않는다** — 값은 config/hardware/fr3wms_2f85_hardware_readiness.json에 들어간다. 여기는 '어떻게 재는가'만 있다.",
+  "is_simulated": false,
+  "note": "Gazebo 좌표를 실기 좌표로 복사해 verified 처리하지 않는다. 모든 측정값에 단위·측정 방법·측정 시각·작업자·원본 근거를 남긴다.",
+
+  "tcp_measurement": {
+    "target_input": "tcp_coordinates",
+    "procedure_input": "tcp_measurement_procedure",
+    "actor": "field_operator_with_robot",
+    "preconditions": [
+      "장착 체크리스트 1~5단계가 passed (전원 차단 장착 · 볼트 · 체결면 · yaw 사진 · 케이블)",
+      "arm_controller_interface 입력이 채워져 저속 이동을 보낼 수 있다",
+      "그리퍼가 완전히 닫힌 상태(개구 고정) — 측정 중 개구가 바뀌면 TCP가 흔들린다"
+    ],
+    "method": "contact_point_4point",
+    "steps": [
+      "고정된 기준 핀(뾰족한 정점)을 작업대에 단단히 고정한다. 움직이면 전부 무효다.",
+      "그리퍼 손가락 끝(또는 측정용 핀)을 기준 핀 정점에 **서로 다른 4개 자세**로 접촉시킨다. 자세마다 팔의 방향이 충분히 달라야 한다(같은 방향 4회는 해를 정하지 못한다).",
+      "접촉마다 관절값 6개를 그대로 기록한다. 보정하거나 반올림하지 않는다.",
+      "4점의 관절값으로 flange 기준 TCP x·y·z를 푼다. 쓴 식과 잔차를 함께 남긴다.",
+      "같은 절차를 **3회 이상 반복**하고 회차별 TCP와 표준편차를 기록한다.",
+      "표준편차가 허용치를 넘으면 passed로 두지 않는다 — 접촉 자세를 바꿔 다시 한다."
+    ],
+    "records": [
+      "접촉점별 관절값 6개 (rad)",
+      "회차별 산출 TCP x·y·z (m)",
+      "회차 간 표준편차 (m)",
+      "잔차(접촉점이 한 점으로 모이는 정도)",
+      "측정 당시 그리퍼 개구 (m 또는 명령 관절값 rad)",
+      "기준 핀 고정 방법과 사진",
+      "측정 방법·측정 시각·작업자"
+    ],
+    "tolerance_note": "허용 표준편차는 **측정한 재현성으로 정한다** — 이 파일에 숫자를 미리 적지 않는다. 3회 측정 결과를 보고 값을 정하고 그 근거를 함께 남긴다.",
+    "do_not": [
+      "공식 URDF FK 값을 측정값으로 적지 않는다(조립 오차가 빠져 있다)",
+      "시뮬레이터 TCP(0, -0.0008, 0.130346)를 복사하지 않는다",
+      "1회 측정만으로 passed로 두지 않는다"
+    ]
+  },
+
+  "cell_frame_calibration": {
+    "target_inputs": [
+      "cell_reference_frame",
+      "workbench_frame_measured",
+      "pallet_frames_measured",
+      "conveyor_frame_measured"
+    ],
+    "actor": "field_operator_with_robot",
+    "preconditions": [
+      "TCP 측정이 끝났다(tcp_measured 단계 passed) — TCP 없이 찍은 점은 기준이 없다",
+      "셀 구조물(받침대·작업대·팔레트·컨베이어)이 최종 위치에 고정됐다"
+    ],
+    "reference_frame": {
+      "candidate": "받침대 바닥면 중심",
+      "why": "로봇이 그 위에 놓이고 현장에서 다시 찾기 쉬운 면이다",
+      "must_record": [
+        "원점을 무엇으로 잡았는지",
+        "현장에서 그 원점을 다시 찾는 방법(표식·기준면·기준 구멍)",
+        "축 방향 정의(+x가 향하는 쪽, +z가 위인지)"
+      ],
+      "note": "후보다. 현장에서 다른 기준이 더 재현성이 좋으면 바꾸고 그 이유를 적는다."
+    },
+    "frames_to_measure": [
+      {
+        "frame": "world",
+        "what": "기준 원점 자체. 다른 모든 값이 이 점 기준이다",
+        "how": "기준 표식을 정하고 사진과 함께 정의를 적는다"
+      },
+      {
+        "frame": "pedestal_frame",
+        "what": "받침대 바닥면 중심",
+        "how": "바닥면 네 변 중앙을 재서 중심을 잡는다. world와 같게 두면 그 사실을 적는다"
+      },
+      {
+        "frame": "fr3_base_frame",
+        "what": "로봇 base_link가 놓이는 받침대 상판면 높이",
+        "how": "바닥면에서 상판면까지 높이를 실측한다(설계값 0.73 m는 **확인 대상**이다)"
+      },
+      {
+        "frame": "pallet_1_frame",
+        "what": "1번 팔레트 상면 중심(자재가 놓이는 면)",
+        "how": "기준 원점에서 x·y를 재고, 바닥에서 상면까지 높이를 잰다"
+      },
+      {
+        "frame": "pallet_2_frame",
+        "what": "2번 팔레트 상면 중심",
+        "how": "같은 방법"
+      },
+      {
+        "frame": "pallet_3_frame",
+        "what": "3번 팔레트 상면 중심",
+        "how": "같은 방법"
+      },
+      {
+        "frame": "conveyor_frame",
+        "what": "컨베이어 벨트 상면 중심",
+        "how": "상면 중심 x·y·z와 함께 **벨트 폭**·**가드레일 안쪽 간격**을 잰다(배치 허용 구역이 이 값에서 나온다)"
+      },
+      {
+        "frame": "workbench_frame",
+        "what": "작업대 상면 중심",
+        "how": "상면 중심 x·y와 바닥에서 상면까지 높이"
+      }
+    ],
+    "verification": [
+      "실측 좌표를 설정에 넣은 뒤, 로봇으로 각 프레임의 확인점을 **저속으로** 찍는다",
+      "TCP 관측 위치와 예상 좌표의 차이를 프레임별로 기록한다",
+      "차이가 허용치를 넘으면 passed로 두지 않는다 — 측정을 다시 한다",
+      "허용치는 측정 재현성과 컨트롤러 도달 오차로 정하고 근거를 적는다"
+    ],
+    "records": [
+      "프레임별 x·y·z (m)와 회전(rad)",
+      "측정 도구(레이저 거리계·줄자·각도기)와 모델",
+      "판독값이 보이는 사진",
+      "로봇 확인점의 관측 좌표와 예상 좌표의 차이 (m)",
+      "측정 방법·측정 시각·작업자"
+    ],
+    "do_not": [
+      "config/workcell/fr3_2f85_workcell.json의 설계값을 실측값으로 옮겨 적지 않는다",
+      "일부만 재고 나머지를 설계값으로 채우지 않는다 — 부분 보정은 전체를 틀리게 한다"
+    ]
+  },
+
+  "connection_requirements": {
+    "actor": "field_operator",
+    "note": "주소·인증값·포트·한계값을 **저장소에 적지 않는다.** 아래는 무엇이 필요한지의 목록이며, 값은 실행 환경과 별도 문서에 둔다.",
+    "arm": {
+      "target_input": "arm_controller_interface",
+      "must_decide": [
+        "접속 방식: 제조사 SDK / ros2_control 드라이버 중 무엇인가",
+        "쓸 드라이버 패키지 이름과 버전",
+        "컨트롤러 모델명과 펌웨어 버전",
+        "네트워크 구성(로봇과 PC가 같은 대역인가, 방화벽)",
+        "안전 정지 회로를 어떻게 연결하는가"
+      ],
+      "must_confirm_from_vendor_doc": [
+        "관절 제한(rad)과 최대 속도 — **URDF 값이 아니라 컨트롤러 설정값**",
+        "저속 모드 설정 방법",
+        "정지 명령의 공식 경로와 정지 확인 방법"
+      ]
+    },
+    "gripper": {
+      "target_inputs": ["gripper_power_interface", "gripper_communication_interface"],
+      "must_decide": [
+        "전원 공급 경로: 로봇 툴 커넥터 / 외부 전원",
+        "통신 방식과 물리 배선",
+        "쓸 드라이버 패키지와 버전"
+      ],
+      "must_confirm_from_vendor_doc": [
+        "전원 전압·전류 한계와 커넥터 형번",
+        "통신 기본 주소·보율·프레임 형식",
+        "힘·속도 설정 범위와 단위",
+        "물체 감지 상태 레지스터 위치와 값별 의미"
+      ]
+    },
+    "environment_variables": [
+      {
+        "name": "FORSTICK2_HW_ARM_KIND",
+        "what": "팔 접속 방식 이름(설정이 정한 값)",
+        "where": "실행 환경. 저장소에 적지 않는다"
+      },
+      {
+        "name": "FORSTICK2_HW_ARM_ENDPOINT",
+        "what": "팔 컨트롤러 접속 대상",
+        "where": "실행 환경. **주소를 저장소에 적지 않는다**"
+      },
+      {
+        "name": "FORSTICK2_HW_GRIPPER_KIND",
+        "what": "그리퍼 접속 방식 이름",
+        "where": "실행 환경"
+      },
+      {
+        "name": "FORSTICK2_HW_GRIPPER_ENDPOINT",
+        "what": "그리퍼 접속 대상(포트·주소)",
+        "where": "실행 환경"
+      },
+      {
+        "name": "FORSTICK2_HW_LIMITS_FILE",
+        "what": "관절·힘·속도 한계 파일 경로",
+        "where": "실행 환경. 파일은 저장소 밖에 두거나 값 없이 형식만 커밋한다"
+      }
+    ],
+    "limits_file_shape": {
+      "source": "이 값들이 어디서 왔는가(제조사 문서명·페이지)",
+      "joint_limits_rad": "관절명 -> [하한, 상한]",
+      "joint_velocity_rad_s": "관절명 -> 최대 속도",
+      "gripper_force_n": "[최소, 최대] (없으면 생략)",
+      "gripper_speed_m_s": "[최소, 최대] (없으면 생략)",
+      "note": "기본값을 만들지 않는다. 파일이 없으면 어댑터를 만들 수 없다"
+    },
+    "credentials": [
+      "필요하면 환경변수 이름만 설정에 두고 값은 담지 않는다",
+      "토큰·비밀번호·인증서 경로를 저장소에 적지 않는다"
+    ],
+    "do_not_connect_until": [
+      "실기 준비 판정이 real_hardware_ready=true가 되기 전에는 connect()를 부르지 않는다",
+      "한계값 파일 없이 어댑터를 만들지 않는다"
+    ]
+  },
+
+  "grasp_observation_capture": {
+    "target_input": "grasp_observation_interface",
+    "checklist_step": "grasp_observation_confirmed",
+    "actor": "field_operator_with_robot",
+    "why": "개구가 목표와 맞는 것은 파지 근거가 아니다. 빈손으로도 같은 개구를 만들 수 있다. 그래서 장치가 주는 **물체 감지 상태 원본값**이 필요하다.",
+    "steps": [
+      "제조사 문서에서 물체 감지 상태가 담긴 레지스터·비트 위치와 값별 의미를 확인해 적는다",
+      "그리퍼에 연결해 그 레지스터를 **원본 그대로** 읽는 경로를 만든다(해석 전 값)",
+      "빈손으로 close를 보내고 원본값을 기록한다",
+      "물체를 물린 상태로 close를 보내고 원본값을 기록한다",
+      "두 값이 **다른지** 확인한다. 같으면 그것은 파지 관측 수단이 아니다 — 다른 신호를 찾는다",
+      "값 → 파지 여부 해석 규칙을 설정으로 적는다(코드에 레지스터 이름을 박지 않는다)"
+    ],
+    "observation_record_fields": [
+      "robot_id",
+      "gripper_id",
+      "object_id — 무엇을 쥐었다고 말하는가. 없으면 파지 성공으로 판정하지 않는다",
+      "observed_at",
+      "observation method — 어떤 신호로 판정했는가",
+      "raw device state — 장치가 준 원본 값. 없으면 되짚을 수 없다",
+      "held — 판정 결과"
+    ],
+    "do_not": [
+      "개구 일치로 object_held=true를 만들지 않는다",
+      "시뮬레이터 관측(simulated_observation)을 실기 관측으로 올리지 않는다",
+      "대상 물체 id 없이 파지 성공으로 판정하지 않는다",
+      "원본값 없이 해석 결과만 기록하지 않는다"
+    ]
+  }
+}

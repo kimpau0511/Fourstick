@@ -1,0 +1,346 @@
+{
+  "gripper_profile_id": "robotiq_2f85",
+  "gripper_profile_version": "1.2.0-official-manual",
+  "display_name": "Robotiq 2F-85",
+  "two_finger_parallel": true,
+  "selection_status": "selected",
+  "command_joint": "robotiq_85_left_knuckle_joint",
+  "mimic_joints": {
+    "robotiq_85_right_knuckle_joint": -1.0,
+    "robotiq_85_left_inner_knuckle_joint": 1.0,
+    "robotiq_85_right_inner_knuckle_joint": -1.0,
+    "robotiq_85_left_finger_tip_joint": -1.0,
+    "robotiq_85_right_finger_tip_joint": 1.0
+  },
+  "open_position": {
+    "value": 0.0,
+    "unit": "rad",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "declared",
+      "checked_at": 1789523120.285,
+      "note": "명령 관절 limit lower=0.0 (완전 개방)"
+    }
+  },
+  "closed_position": {
+    "value": 0.7929,
+    "unit": "rad",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/2f_85.ros2_control.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "declared",
+      "checked_at": 1789523120.285,
+      "note": "gripper_closed_position 기본값(닫힘 명령 위치)"
+    }
+  },
+  "joint_lower": {
+    "value": 0.0,
+    "unit": "rad",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "declared",
+      "checked_at": 1789523120.285,
+      "note": "limit lower"
+    }
+  },
+  "joint_upper": {
+    "value": 0.8,
+    "unit": "rad",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "declared",
+      "checked_at": 1789523120.285,
+      "note": "limit upper"
+    }
+  },
+  "max_velocity": {
+    "value": 0.5,
+    "unit": "rad/s",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "declared",
+      "checked_at": 1789523120.285,
+      "note": "limit velocity (관절 각속도 한계)"
+    }
+  },
+  "max_effort": {
+    "value": 50.0,
+    "unit": "N*m",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "declared",
+      "checked_at": 1789523120.285,
+      "note": "limit effort — **관절 토크 한계다. 파지력이 아니다**"
+    }
+  },
+  "max_finger_speed": {
+    "value": 0.15,
+    "unit": "m/s",
+    "provenance": {
+      "source_kind": "datasheet",
+      "source": "Robotiq 2F-85/2F-140 Instruction Manual (공식) — 6. Specifications https://assets.robotiq.com/website-assets/support_documents/document/online/2F-85_2F-140_Instruction_Manual_Gen_HTML_20190524.zip",
+      "source_version": "Gen HTML 20190524",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789527411.344,
+      "note": "공식 매뉴얼 손가락 속도 20~150 mm/s의 상한 (ros2_control gripper_max_speed 기본값과 일치)"
+    }
+  },
+  "max_grasp_force": {
+    "value": 235.0,
+    "unit": "N",
+    "provenance": {
+      "source_kind": "datasheet",
+      "source": "Robotiq 2F-85/2F-140 Instruction Manual (공식) — 6. Specifications https://assets.robotiq.com/website-assets/support_documents/document/online/2F-85_2F-140_Instruction_Manual_Gen_HTML_20190524.zip",
+      "source_version": "Gen HTML 20190524",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789527411.344,
+      "note": "공식 매뉴얼 파지력 20~235 N의 상한. rFR 레지스터가 이 값의 분율이다. **관절 effort 50 N·m과 다른 값이며 서로 환산하지 않는다.** 모터 전류로도 환산하지 않는다"
+    }
+  },
+  "aperture_travel": {
+    "value": 0.084837,
+    "unit": "m",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "unverified",
+      "checked_at": 1789523120.285,
+      "note": "URDF 기구학 유도: 손가락 끝 프레임 거리의 열림-닫힘 차 (0.135517 − 0.050680). 카탈로그 표기 85mm와 0.2mm 이내로 일치하지만 데이터시트 원문은 미확보"
+    }
+  },
+  "tip_separation_open": {
+    "value": 0.135517,
+    "unit": "m",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "unverified",
+      "checked_at": 1789523120.285,
+      "note": "q=0.0 rad에서 양쪽 finger_tip 프레임 거리(FK 계산)"
+    }
+  },
+  "tip_separation_closed": {
+    "value": 0.05068,
+    "unit": "m",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "unverified",
+      "checked_at": 1789523120.285,
+      "note": "q=0.8 rad에서 같은 거리. 중간각 FK 0.095833 m는 선형 보간 0.093099 m와 2.7mm 다르다 — **각도-간격은 선형이 아니다**"
+    }
+  },
+  "mass": {
+    "value": 0.925,
+    "unit": "kg",
+    "provenance": {
+      "source_kind": "datasheet",
+      "source": "Robotiq 2F-85/2F-140 Instruction Manual (공식) — 6. Specifications https://assets.robotiq.com/website-assets/support_documents/document/online/2F-85_2F-140_Instruction_Manual_Gen_HTML_20190524.zip",
+      "source_version": "Gen HTML 20190524",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789527411.344,
+      "note": "공식 매뉴얼 질량 925 g(커플링 GRP-CPL-062 포함 측정 기준). URDF inertial 합 0.920864 kg과 4.1 g 차이 — 모델 오차로 기록"
+    }
+  },
+  "pad_aperture_open": {
+    "value": 0.085,
+    "unit": "m",
+    "provenance": {
+      "source_kind": "datasheet",
+      "source": "Robotiq 2F-85/2F-140 Instruction Manual (공식) — 6. Specifications https://assets.robotiq.com/website-assets/support_documents/document/online/2F-85_2F-140_Instruction_Manual_Gen_HTML_20190524.zip",
+      "source_version": "Gen HTML 20190524",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789527411.344,
+      "note": "공식 매뉴얼 Stroke/최대 개방폭 85 mm. **물리 제품 명세**다. 시뮬레이션 모델의 관측 가능 최대값(URDF FK 0.084837 m)과 구분해 쓴다"
+    }
+  },
+  "pad_aperture_closed": {
+    "value": null,
+    "unit": "m",
+    "provenance": {
+      "source_kind": "",
+      "source": "",
+      "source_version": "",
+      "source_commit": "",
+      "status": "unavailable",
+      "checked_at": 0.0,
+      "note": "완전 닫힘 시 패드 간격(패드 두께 의존). 메시 분석·데이터시트 미확보"
+    }
+  },
+  "fully_open_margin": {
+    "value": 0.003493,
+    "unit": "rad",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_driver/include/robotiq_driver/gripper_scaling.hpp",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "unverified",
+      "checked_at": 1789523120.285,
+      "note": "레지스터 1카운트에 해당하는 관절각(closed_position/227). SDK가 쓰는 사용 가능 구간 [3,230] 기준. 실측 확인 필요"
+    }
+  },
+  "command_timeout": {
+    "value": 0.5,
+    "unit": "s",
+    "provenance": {
+      "source_kind": "urdf",
+      "source": "robotiq/ros v1.1.0 grippers/robotiq_driver/include/robotiq_driver/hardware_parameters.hpp",
+      "source_version": "v1.1.0",
+      "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+      "status": "declared",
+      "checked_at": 1789523120.285,
+      "note": "kTimeoutDefault = 500 ms (Modbus 응답 제한시간)"
+    }
+  },
+  "command_interfaces": [
+    "position",
+    "set_gripper_max_velocity",
+    "set_gripper_max_effort"
+  ],
+  "state_interfaces": [
+    "position",
+    "velocity"
+  ],
+  "object_detection_real": true,
+  "object_detection_simulation": false,
+  "object_detection_states": [
+    "Moving — 이동 중, 물체 미검출",
+    "DetectedWhileOpening — 열면서 물체 검출",
+    "DetectedWhileClosing — 닫으면서 물체 검출",
+    "AtRequestedPosition — 요청 위치 도달(물체 없음)"
+  ],
+  "activation_interfaces": [
+    "reactivate_gripper_cmd",
+    "reactivate_gripper_response"
+  ],
+  "fault_interfaces": [
+    "gFLT(그리퍼 자체 결함)",
+    "kFLT(컨트롤러 결함)"
+  ],
+  "bus_semantics": {
+    "rACT": "활성화. 활성화 후에도 계속 set 상태를 유지해야 한다. 하강 에지가 리셋 요청",
+    "rGTO": "이동 실행 허가",
+    "rATR": "자동 릴리즈",
+    "rARD": "자동 릴리즈 방향",
+    "rPR": "위치 요청 0(열림)~255(닫힘) 레지스터",
+    "rSP": "속도 요청. max_finger_speed의 분율(0x00~0xFF)",
+    "rFR": "힘 요청. max_grasp_force의 분율(0x00~0xFF)",
+    "gACT": "rACT 에코",
+    "gGTO": "rGTO 에코",
+    "gSTA": "활성화 절차 상태: Reset / InProgress / Reserved / Complete",
+    "gOBJ": "물체 감지 상태(4값). 실제 하드웨어만 제공",
+    "gFLT": "그리퍼 결함 코드(하위 니블). 주요 결함은 rACT 에지로 리셋",
+    "kFLT": "컨트롤러 결함 코드(상위 니블)",
+    "gPO": "현재 위치 레지스터. 관절값 환산은 사용 구간 [3,230] 선형"
+  },
+  "bus_defaults": {
+    "protocol": "Modbus RTU (시리얼)",
+    "baudrate": "115200 bps",
+    "slave_address": "0x09",
+    "response_timeout": "500 ms",
+    "connection_frequency": "100 Hz",
+    "deactivation_timeout": "2 s",
+    "speed_multiplier": "1.0",
+    "force_multiplier": "0.5"
+  },
+  "base_frame": "robotiq_85_base_link",
+  "environment": "simulation",
+  "verified": false,
+  "unverified_items": [
+    "pad_surface_aperture_at_close",
+    "fully_open_margin_measured",
+    "command_timeout_measured",
+    "gazebo_mimic_behaviour",
+    "object_detection_in_gazebo",
+    "real_hardware_activation",
+    "coupling_height_GRP-CPL-062"
+  ],
+  "notes": "공식 robotiq/ros v1.1.0(BSD-3-Clause, commit 3ab3befccaa1, tag 객체 ca4bd282cc9a)과 Robotiq/grippers SDK(commit ce6384455c68)에서 확인한 값이다. 관절각(0~0.8 rad)과 패드 간격은 **선형이 아니다** — 중간각에서 FK와 선형 보간이 2.7mm 다르다. effort(N*m)·파지력(N)·모터 전류를 서로 환산하지 않는다. Gazebo에서는 물체 감지 상태를 만들지 않고 별도 파지 확인기를 쓴다. 2026-09-16 공식 매뉴얼 값 반영: 개방폭 85 mm, 질량 925 g, 파지력 20~235 N, 손가락 속도 20~150 mm/s, 정격 5 kg(모두 커플링 GRP-CPL-062 포함 측정). 관절각→개방폭 변환은 **URDF FK 비선형**을 쓰고, 완전 닫힘 패드 간격(0 mm)은 계약이 0을 허용하지 않아 별 항목으로 둔다.",
+  "min_grasp_force": {
+    "value": 20.0,
+    "unit": "N",
+    "provenance": {
+      "source_kind": "datasheet",
+      "source": "Robotiq 2F-85/2F-140 Instruction Manual (공식) — 6. Specifications https://assets.robotiq.com/website-assets/support_documents/document/online/2F-85_2F-140_Instruction_Manual_Gen_HTML_20190524.zip",
+      "source_version": "Gen HTML 20190524",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789527411.344,
+      "note": "공식 매뉴얼 파지력 하한"
+    }
+  },
+  "min_finger_speed": {
+    "value": 0.02,
+    "unit": "m/s",
+    "provenance": {
+      "source_kind": "datasheet",
+      "source": "Robotiq 2F-85/2F-140 Instruction Manual (공식) — 6. Specifications https://assets.robotiq.com/website-assets/support_documents/document/online/2F-85_2F-140_Instruction_Manual_Gen_HTML_20190524.zip",
+      "source_version": "Gen HTML 20190524",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789527411.344,
+      "note": "공식 매뉴얼 손가락 속도 하한"
+    }
+  },
+  "rated_payload": {
+    "value": 5.0,
+    "unit": "kg",
+    "provenance": {
+      "source_kind": "datasheet",
+      "source": "Robotiq 2F-85/2F-140 Instruction Manual (공식) — 6. Specifications https://assets.robotiq.com/website-assets/support_documents/document/online/2F-85_2F-140_Instruction_Manual_Gen_HTML_20190524.zip",
+      "source_version": "Gen HTML 20190524",
+      "source_commit": "",
+      "status": "declared",
+      "checked_at": 1789527411.344,
+      "note": "공식 매뉴얼 마찰/형상 파지 모두 5 kg"
+    }
+  },
+  "model_tolerance": {
+    "aperture_m": {
+      "physical_spec": 0.085,
+      "simulation_model_max": 0.084837,
+      "difference_m": 0.000163,
+      "basis": "공식 매뉴얼 85 mm vs URDF FK 계산 84.837 mm(0.19%)",
+      "usage": {
+        "api_contract": "물리 제품 명세 0.085 m",
+        "collision_and_observation": "시뮬레이션 모델 FK 값(관측 가능 최대)",
+        "tolerance_m": 0.0005,
+        "tolerance_basis": "두 값의 차(0.163 mm)를 포함하고 URDF FK 계산 반올림(1e-6 m)을 감싸는 0.5 mm로 둔다"
+      }
+    },
+    "mass_kg": {
+      "physical_spec": 0.925,
+      "simulation_model": 0.920864,
+      "difference_kg": 0.004136,
+      "basis": "공식 매뉴얼 925 g vs URDF inertial 합"
+    }
+  }
+}

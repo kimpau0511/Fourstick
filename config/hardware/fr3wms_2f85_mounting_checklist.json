@@ -1,0 +1,279 @@
+{
+  "schema": "forstick2.hardware_mounting_checklist/1",
+  "checklist_id": "fr3wms_2f85_mounting",
+  "checklist_version": "0.1.0-not-started",
+  "description": "FR3-WMS에 GRP-CPL-062 + Robotiq 2F-85를 **실제로** 장착하기 전·후에 사람이 순서대로 지나는 단계. 각 단계는 근거 파일이 있어야 통과로 둘 수 있다.",
+  "status_values": {
+    "not_started": "아직 시작하지 않았다",
+    "in_progress": "진행 중이다",
+    "passed": "통과했다(근거 있음)",
+    "failed": "실패했다 — 원인을 적고 다시 한다",
+    "evidence_missing": "했다고 하는데 근거가 없다 — 통과로 세지 않는다",
+    "_note": "passed로 두려면 evidence_path·captured_at·operator가 모두 있어야 한다. 하나라도 없으면 관문이 evidence_missing으로 되돌린다."
+  },
+  "how_to_fill": "status를 status_values 중 하나로 바꾸고, passed로 두려면 evidence_path·captured_at·operator를 모두 채운다. evidence_fields의 항목이 근거 파일에 들어 있어야 한다. **실제 장비를 연결하거나 움직이는 단계는 현장 작업자가 수행한다** — actor를 보라. 코드는 근거를 받아 판정만 한다.",
+  "steps": [
+    {
+      "no": 1,
+      "key": "power_off_before_mounting",
+      "label": "FR3 전원 차단 상태에서 장착",
+      "status": "not_started",
+      "requires_inputs": [],
+      "evidence": "차단기·전원 표시가 보이는 사진, 차단 시각",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "전원을 내린 상태를 사진으로 남긴다. 통전 중 장착은 하지 않는다.",
+      "actor": "field_operator",
+      "operator": "",
+      "evidence_fields": [
+        "차단 시각",
+        "차단기 위치·상태 사진",
+        "로봇 전원 표시등 소등 사진",
+        "재통전 금지 표식(락아웃) 사진 또는 없음 사유"
+      ]
+    },
+    {
+      "no": 2,
+      "key": "bolt_spec_confirmed",
+      "label": "볼트 규격·강도·길이·토크 근거 확인",
+      "status": "not_started",
+      "requires_inputs": [
+        "mounting_bolt_spec"
+      ],
+      "evidence": "제조사 문서 발췌 또는 볼트 실물 사진 + 토크렌치 설정값",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "mounting_bolt_spec 입력을 먼저 채운다. 토크렌치 설정값을 사진으로 남긴다.",
+      "actor": "field_operator",
+      "operator": "",
+      "evidence_fields": [
+        "볼트 규격·강도등급·길이",
+        "체결 토크 설정값",
+        "토크렌치 모델·교정 상태",
+        "제조사 문서 출처(문서명·페이지)"
+      ]
+    },
+    {
+      "no": 3,
+      "key": "coupling_faces_and_boss",
+      "label": "커플링 체결면·중심 보스·핀 위치 확인",
+      "status": "not_started",
+      "requires_inputs": [
+        "mounting_yaw_evidence"
+      ],
+      "evidence": "체결면 청결 상태, 보스 삽입 상태, 핀 위치가 보이는 사진",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "중심 보스(∅31.5 mm)가 끝까지 들어갔는지 확인하고, 핀·키 위치를 사진으로 남긴다.",
+      "actor": "field_operator",
+      "operator": "",
+      "evidence_fields": [
+        "체결면 청결 상태 사진",
+        "중심 보스 삽입 깊이(끝까지 들어갔는가)",
+        "핀 위치 사진",
+        "이물·손상 유무"
+      ]
+    },
+    {
+      "no": 4,
+      "key": "yaw_direction_photo",
+      "label": "yaw 방향 사진 기록",
+      "status": "not_started",
+      "requires_inputs": [
+        "mounting_yaw_evidence",
+        "mounting_transform_rpy"
+      ],
+      "evidence": "조립 완료 상태에서 위·정면 각 1장, 손가락 방향이 보이는 사진",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "장착된 그리퍼의 손가락 축 방향이 로봇 기준 어느 방향인지 사진으로 남기고, 그 값을 mounting_yaw_evidence에 적는다.",
+      "actor": "field_operator",
+      "operator": "",
+      "evidence_fields": [
+        "위에서 본 사진 1장(핀 구멍 + 0° 기준면)",
+        "정면 사진 1장(손가락 축 방향)",
+        "사진 안의 방향 기준물",
+        "판독한 yaw 값(rad)과 판독 방법"
+      ]
+    },
+    {
+      "no": 5,
+      "key": "cable_clearance_and_range",
+      "label": "케이블 간섭·가동 범위 확인",
+      "status": "not_started",
+      "requires_inputs": [],
+      "evidence": "관절 한계 부근 자세에서 케이블 여유가 보이는 사진 또는 영상",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "전원 차단 상태에서 손으로 움직이거나 저속으로 관절 한계 부근을 지나며 케이블이 당겨지거나 끼이지 않는지 확인한다.",
+      "actor": "field_operator",
+      "operator": "",
+      "evidence_fields": [
+        "확인한 자세 목록(관절 한계 부근 포함)",
+        "케이블 여유가 보이는 사진 또는 영상",
+        "간섭·끼임 발견 여부와 조치"
+      ]
+    },
+    {
+      "no": 6,
+      "key": "tcp_measured",
+      "label": "TCP 측정",
+      "status": "not_started",
+      "requires_inputs": [
+        "tcp_coordinates",
+        "tcp_measurement_procedure"
+      ],
+      "evidence": "측정 기록(접촉점 좌표, 반복 오차)과 결과 좌표",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "TCP를 로봇으로 측정하고 재현 오차까지 기록한다.",
+      "actor": "field_operator_with_robot",
+      "operator": "",
+      "evidence_fields": [
+        "측정 방법(접촉점 수·지그)",
+        "접촉점별 관절값 원본",
+        "산출 TCP x·y·z",
+        "반복 3회 이상의 편차"
+      ]
+    },
+    {
+      "no": 7,
+      "key": "slow_unloaded_home",
+      "label": "저속 무하중 home",
+      "status": "not_started",
+      "requires_inputs": [
+        "arm_controller_interface"
+      ],
+      "evidence": "명령값·관측값 로그와 최대 관절 오차",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "물체 없이 저속으로 안전 home까지 이동하고 **관측값으로** 도달을 확인한다. 컨트롤러 결과 코드만으로 통과로 두지 않는다.",
+      "actor": "field_operator_with_robot",
+      "operator": "",
+      "evidence_fields": [
+        "명령 속도 설정",
+        "명령 관절값",
+        "관측 관절값",
+        "관절별 오차와 최대 오차",
+        "컨트롤러 결과 코드(근거로 쓰지 않고 함께 기록)"
+      ]
+    },
+    {
+      "no": 8,
+      "key": "slow_open_close",
+      "label": "저속 open/close",
+      "status": "not_started",
+      "requires_inputs": [
+        "gripper_power_interface",
+        "gripper_communication_interface"
+      ],
+      "evidence": "명령 개구·관측 개구·목표 초과 여부 로그",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "무하중으로 open·중간·close·재개방을 저속으로 돌리고 목표를 지나치지 않는지 확인한다.",
+      "actor": "field_operator_with_robot",
+      "operator": "",
+      "evidence_fields": [
+        "단계별 명령 개구",
+        "관측 개구",
+        "목표 초과(overshoot) 여부",
+        "관절 제한 잠김 여부"
+      ]
+    },
+    {
+      "no": 9,
+      "key": "real_stop",
+      "label": "실제 STOP",
+      "status": "not_started",
+      "requires_inputs": [
+        "arm_controller_interface"
+      ],
+      "evidence": "정지 요청 시각, 정지 확인 관측(연속 표본 속도), 남은 goal 수",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "이동 중 정지를 걸고 **관측으로** 멈춘 것을 확인한다. 요청이 수락된 것만으로 정지로 두지 않는다.",
+      "actor": "field_operator_with_robot",
+      "operator": "",
+      "evidence_fields": [
+        "정지 요청 시각",
+        "요청 시점의 진행 중 동작",
+        "연속 표본 속도(정지 확인 근거)",
+        "남은 goal 수",
+        "정지 후 자세와 목표 미도달 여부"
+      ]
+    },
+    {
+      "no": 10,
+      "key": "grasp_observation_confirmed",
+      "label": "파지 관측 확인",
+      "status": "not_started",
+      "requires_inputs": [
+        "grasp_observation_interface"
+      ],
+      "evidence": "빈손 close와 물체 close에서 읽은 device 상태 원본값 비교 기록",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "빈손으로 닫았을 때와 물체를 물었을 때 **관측값이 달라지는 것**을 원본 device 상태로 확인한다. 같은 값이면 파지 관측 수단이 아니다.",
+      "actor": "field_operator_with_robot",
+      "operator": "",
+      "evidence_fields": [
+        "빈손 close에서 읽은 **원본 device 상태**",
+        "물체 close에서 읽은 **원본 device 상태**",
+        "두 값이 다른가(같으면 관측 수단이 아니다)",
+        "robot_id · gripper_id · object_id · 관측 시각 · 관측 방식"
+      ]
+    },
+    {
+      "no": 11,
+      "key": "cell_frame_calibration",
+      "label": "작업 셀 frame 보정",
+      "status": "not_started",
+      "requires_inputs": [
+        "cell_reference_frame",
+        "workbench_frame_measured",
+        "pallet_frames_measured",
+        "conveyor_frame_measured"
+      ],
+      "evidence": "실측 좌표표와 로봇으로 찍은 확인점의 오차",
+      "evidence_path": "",
+      "captured_at": "",
+      "detail": "",
+      "blocking": true,
+      "needed": "실측 frame을 설정에 넣고, 로봇으로 몇 점을 찍어 예상 좌표와의 오차를 기록한다.",
+      "actor": "field_operator_with_robot",
+      "operator": "",
+      "evidence_fields": [
+        "기준 원점 정의와 재현 방법",
+        "작업대·팔레트 1·2·3·컨베이어 실측 좌표표",
+        "로봇으로 찍은 확인점과 예상 좌표의 오차",
+        "측정 도구와 판독값"
+      ]
+    }
+  ],
+  "note": "체크리스트가 모두 passed가 되어도 실기 실행이 자동으로 열리지 않는다. 실기 어댑터 설정과 실기 파지 관측이 함께 있어야 하고, 판정은 validation/hardware_readiness.py가 한다.",
+  "actor_values": {
+    "field_operator": "현장 작업자가 손으로 수행한다(코드가 대신하지 않는다)",
+    "field_operator_with_robot": "현장 작업자가 실제 장비를 움직여 수행한다",
+    "code": "근거가 들어온 뒤 코드가 판정·기록한다"
+  }
+}

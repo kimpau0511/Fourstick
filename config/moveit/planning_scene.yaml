@@ -1,0 +1,12 @@
+# planning scene monitor 설정 (8-07). 우리 파일이다.
+#
+# octomap은 켜지 않는다 — 깊이 센서가 없고, 없는 환경 관측을 만들지 않는다.
+# 환경 물체는 world fixture로 명시 등록하고, 그 snapshot id·hash를
+# validation_run에 남긴다(GeometryValidator 경계).
+publish_planning_scene: true
+publish_geometry_updates: true
+publish_state_updates: true
+publish_transforms_updates: true
+publish_planning_scene_hz: 10.0
+# 로봇 상태 관측이 이보다 오래되면 계획에 쓰지 않는다(신선도 기준).
+robot_description_planning_scene_monitor_state_max_age: 0.1

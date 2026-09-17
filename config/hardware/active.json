@@ -1,0 +1,12 @@
+{
+  "schema": "forstick2.hardware_manifest/1",
+  "enabled": true,
+  "description": "활성 실기 전환 준비 설정. **로봇·그리퍼 이름은 이 파일에만 있다** — 공통 코드(server/·core/·validation/)에는 나타나지 않는다(계획.md 27장).",
+  "inputs": "config/hardware/fr3wms_2f85_hardware_readiness.json",
+  "checklist": "config/hardware/fr3wms_2f85_mounting_checklist.json",
+  "is_simulated": false,
+  "real_hardware_connected": false,
+  "note": "이 매니페스트가 있어도 실기 실행이 열리지 않는다. 판정은 validation/hardware_readiness.py가 한다.",
+  "procedures": "config/hardware/fr3wms_2f85_measurement_procedures.json",
+  "evidence_dir": "reports/hardware/evidence"
+}

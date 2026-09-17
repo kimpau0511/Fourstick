@@ -1,0 +1,38 @@
+{
+  "catalog_version": "atomic-5-1.0",
+  "entries": [
+    {
+      "skill": "home",
+      "description": "안전한 홈 자세로 돌아간다",
+      "arg_kinds": {}
+    },
+    {
+      "skill": "move",
+      "description": "지정한 위치로 이동한다",
+      "arg_kinds": {
+        "to": "location"
+      }
+    },
+    {
+      "skill": "pick",
+      "description": "지정한 위치에서 물체를 집는다",
+      "arg_kinds": {
+        "object": "object",
+        "from": "location"
+      }
+    },
+    {
+      "skill": "place",
+      "description": "쥔 물체를 지정한 위치에 놓는다",
+      "arg_kinds": {
+        "object": "object",
+        "to": "location"
+      }
+    },
+    {
+      "skill": "stop",
+      "description": "현재 동작을 즉시 정지한다",
+      "arg_kinds": {}
+    }
+  ]
+}

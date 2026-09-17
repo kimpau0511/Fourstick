@@ -1,0 +1,746 @@
+{
+  "schema": "forstick2.workcell_poses/1",
+  "workcell_id": "fr3_2f85_workcell",
+  "workcell_version": "0.1.0-design",
+  "derived_at": "2026-09-16T17:34:47+0900",
+  "is_simulated": true,
+  "real_hardware_verified": false,
+  "source_urdf": "/tmp/forstick2_gazebo/workcell/fr3wms_with_2f85.moveit.urdf",
+  "arm_joints": [
+    "j1",
+    "j2",
+    "j3",
+    "j4",
+    "j5",
+    "j6"
+  ],
+  "tcp_link": "robotiq_85_tcp",
+  "sample_points_per_link": 2500,
+  "margins_m": {
+    "floor": 0.02,
+    "environment": 0.01
+  },
+  "safe_home": {
+    "status": "verified",
+    "joint_rad": {
+      "j1": 0.0,
+      "j2": -1.9,
+      "j3": 1.2,
+      "j4": -1.9,
+      "j5": -1.5708,
+      "j6": 0.0
+    },
+    "gripper_joint_rad": 0.0,
+    "floor_clearance_m": 0.731,
+    "environment_clearance_min_m": 0.142575,
+    "tcp_world_m": [
+      -0.352385,
+      -0.101441,
+      1.253576
+    ],
+    "worst_pairs": [
+      {
+        "model": "conveyor",
+        "part": "frame_left",
+        "clearance_m": 0.142575,
+        "link": "upperarm_Link"
+      },
+      {
+        "model": "conveyor",
+        "part": "belt",
+        "clearance_m": 0.182575,
+        "link": "upperarm_Link"
+      },
+      {
+        "model": "workbench",
+        "part": "top",
+        "clearance_m": 0.250993,
+        "link": "upperarm_Link"
+      },
+      {
+        "model": "workbench",
+        "part": "leg_back_right",
+        "clearance_m": 0.280993,
+        "link": "upperarm_Link"
+      },
+      {
+        "model": "workbench",
+        "part": "leg_back_left",
+        "clearance_m": 0.296729,
+        "link": "base_link"
+      }
+    ],
+    "lowest_link": "base_link",
+    "candidates_tried": 240,
+    "candidates_passing": 240,
+    "source": "scripts/derive_workcell_poses.py 후보 탐색",
+    "measurement_method": "fk_plus_collision_mesh_point_cloud",
+    "verified": true,
+    "captured_at": "2026-09-16",
+    "note": "받침대는 로봇을 지지하는 구조물이므로 간극 판정에서 제외한다. 바닥 높이를 바꾸거나 로봇을 띄워 통과시키지 않았다"
+  },
+  "zero_pose_for_comparison": {
+    "joint_rad": {
+      "j1": 0.0,
+      "j2": 0.0,
+      "j3": 0.0,
+      "j4": 0.0,
+      "j5": 0.0,
+      "j6": 0.0
+    },
+    "floor_clearance_m": 0.727999,
+    "environment_clearance_min_m": 0.142575,
+    "worst_pairs": [
+      {
+        "model": "conveyor",
+        "part": "frame_left",
+        "clearance_m": 0.142575,
+        "link": "upperarm_Link"
+      },
+      {
+        "model": "conveyor",
+        "part": "belt",
+        "clearance_m": 0.182575,
+        "link": "upperarm_Link"
+      },
+      {
+        "model": "workbench",
+        "part": "top",
+        "clearance_m": 0.266729,
+        "link": "base_link"
+      },
+      {
+        "model": "workbench",
+        "part": "leg_back_left",
+        "clearance_m": 0.296729,
+        "link": "base_link"
+      },
+      {
+        "model": "workbench",
+        "part": "leg_back_right",
+        "clearance_m": 0.296729,
+        "link": "base_link"
+      }
+    ],
+    "tcp_world_m": [
+      -0.519347,
+      -0.342786,
+      0.766818
+    ],
+    "passes_floor": true,
+    "passes_environment": true,
+    "note": "실행용 home으로 쓰지 않는다. 받침대 없는 단순 셀에서는 이 자세의 손목이 바닥을 2 mm 파고들었다 (reports/gripper/floor_clearance.json)"
+  },
+  "binding_constraint": "받침대(상판 0.73 m) 때문에 바닥 간극은 이 셀에서 구속 조건이 아니다. 실제로 구속하는 것은 작업대·팔레트·컨베이어에 대한 환경 간극이다. 두 값을 따로 기록해 무엇이 판정했는지 드러낸다",
+  "poses": {
+    "pallet_1_approach": {
+      "status": "verified",
+      "target_frame": "pallet_1_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.14
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        0.2,
+        0.93
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": -2.954519,
+        "j2": -0.733317,
+        "j3": 0.25298,
+        "j4": -1.109558,
+        "j5": -1.568024,
+        "j6": -1.383653
+      },
+      "fk_tcp_world_m": [
+        0.498624,
+        0.199487,
+        0.928967
+      ],
+      "position_error_m": 0.001795,
+      "orientation_error_rad": 0.019295,
+      "position_tolerance_m": 0.002,
+      "orientation_tolerance_rad": 0.05,
+      "floor_clearance_m": 0.731,
+      "environment_clearance_min_m": 0.019143,
+      "worst_pairs": [
+        {
+          "model": "material_a",
+          "part": "body",
+          "clearance_m": 0.019143,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_1",
+          "part": "tray",
+          "clearance_m": 0.119143,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_2",
+          "part": "tray",
+          "clearance_m": 0.119143,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "material_b",
+          "part": "body",
+          "clearance_m": 0.136481,
+          "link": "robotiq_85_base_link"
+        },
+        {
+          "model": "workbench",
+          "part": "top",
+          "clearance_m": 0.159143,
+          "link": "robotiq_85_right_finger_tip_link"
+        }
+      ],
+      "clearance_checked": true,
+      "clearance_check_note": "접근 자세만 환경 간극을 요구한다. pick/place 자세는 물체에 닿는 자세라 간극이 음수인 것이 정상이다 — 그 판정은 pick/place 관문이 별도로 한다",
+      "source": "config/workcell/fr3_2f85_workcell.json tcp_targets",
+      "measurement_method": "numerical_ik_verified_by_fk_and_collision_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16"
+    },
+    "pallet_1_pick": {
+      "status": "verified",
+      "target_frame": "material_a_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": -2.954184,
+        "j2": -0.862462,
+        "j3": 0.87702,
+        "j4": -1.601041,
+        "j5": -1.568526,
+        "j6": -1.383433
+      },
+      "fk_tcp_world_m": [
+        0.49902,
+        0.199618,
+        0.839441
+      ],
+      "position_error_m": 0.001191,
+      "orientation_error_rad": 0.015846,
+      "position_tolerance_m": 0.002,
+      "orientation_tolerance_rad": 0.05,
+      "floor_clearance_m": 0.731,
+      "environment_clearance_min_m": -0.010315,
+      "worst_pairs": [
+        {
+          "model": "material_a",
+          "part": "body",
+          "clearance_m": -0.010315,
+          "link": "robotiq_85_base_link"
+        },
+        {
+          "model": "pallet_1",
+          "part": "tray",
+          "clearance_m": 0.029764,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "workbench",
+          "part": "top",
+          "clearance_m": 0.069764,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_2",
+          "part": "tray",
+          "clearance_m": 0.100931,
+          "link": "robotiq_85_left_inner_knuckle_link"
+        },
+        {
+          "model": "workbench",
+          "part": "leg_back_left",
+          "clearance_m": 0.109764,
+          "link": "robotiq_85_right_finger_tip_link"
+        }
+      ],
+      "clearance_checked": false,
+      "clearance_check_note": "접근 자세만 환경 간극을 요구한다. pick/place 자세는 물체에 닿는 자세라 간극이 음수인 것이 정상이다 — 그 판정은 pick/place 관문이 별도로 한다",
+      "source": "config/workcell/fr3_2f85_workcell.json tcp_targets",
+      "measurement_method": "numerical_ik_verified_by_fk_and_collision_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16"
+    },
+    "pallet_2_approach": {
+      "status": "verified",
+      "target_frame": "pallet_2_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.14
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        0.0,
+        0.93
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": 0.21043,
+        "j2": -2.136839,
+        "j3": -0.736386,
+        "j4": -1.823818,
+        "j5": 1.554297,
+        "j6": -1.360985
+      },
+      "fk_tcp_world_m": [
+        0.499172,
+        0.0,
+        0.930231
+      ],
+      "position_error_m": 0.000859,
+      "orientation_error_rad": 0.022533,
+      "position_tolerance_m": 0.002,
+      "orientation_tolerance_rad": 0.05,
+      "floor_clearance_m": 0.731,
+      "environment_clearance_min_m": 0.02035,
+      "worst_pairs": [
+        {
+          "model": "material_b",
+          "part": "body",
+          "clearance_m": 0.02035,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_1",
+          "part": "tray",
+          "clearance_m": 0.120296,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_2",
+          "part": "tray",
+          "clearance_m": 0.120296,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_3",
+          "part": "tray",
+          "clearance_m": 0.120562,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "material_a",
+          "part": "body",
+          "clearance_m": 0.137814,
+          "link": "robotiq_85_base_link"
+        }
+      ],
+      "clearance_checked": true,
+      "clearance_check_note": "접근 자세만 환경 간극을 요구한다. pick/place 자세는 물체에 닿는 자세라 간극이 음수인 것이 정상이다 — 그 판정은 pick/place 관문이 별도로 한다",
+      "source": "config/workcell/fr3_2f85_workcell.json tcp_targets",
+      "measurement_method": "numerical_ik_verified_by_fk_and_collision_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16"
+    },
+    "pallet_2_pick": {
+      "status": "verified",
+      "target_frame": "material_b_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": 0.205035,
+        "j2": -2.154456,
+        "j3": -1.064965,
+        "j4": -1.516754,
+        "j5": 1.564779,
+        "j6": -1.361286
+      },
+      "fk_tcp_world_m": [
+        0.50114,
+        0.000302,
+        0.841274
+      ],
+      "position_error_m": 0.001736,
+      "orientation_error_rad": 0.024929,
+      "position_tolerance_m": 0.002,
+      "orientation_tolerance_rad": 0.05,
+      "floor_clearance_m": 0.731,
+      "environment_clearance_min_m": -0.008771,
+      "worst_pairs": [
+        {
+          "model": "material_b",
+          "part": "body",
+          "clearance_m": -0.008771,
+          "link": "robotiq_85_base_link"
+        },
+        {
+          "model": "pallet_2",
+          "part": "tray",
+          "clearance_m": 0.031262,
+          "link": "robotiq_85_left_finger_tip_link"
+        },
+        {
+          "model": "workbench",
+          "part": "top",
+          "clearance_m": 0.071262,
+          "link": "robotiq_85_left_finger_tip_link"
+        },
+        {
+          "model": "pallet_3",
+          "part": "tray",
+          "clearance_m": 0.102151,
+          "link": "robotiq_85_left_inner_knuckle_link"
+        },
+        {
+          "model": "pallet_1",
+          "part": "tray",
+          "clearance_m": 0.102385,
+          "link": "robotiq_85_right_inner_knuckle_link"
+        }
+      ],
+      "clearance_checked": false,
+      "clearance_check_note": "접근 자세만 환경 간극을 요구한다. pick/place 자세는 물체에 닿는 자세라 간극이 음수인 것이 정상이다 — 그 판정은 pick/place 관문이 별도로 한다",
+      "source": "config/workcell/fr3_2f85_workcell.json tcp_targets",
+      "measurement_method": "numerical_ik_verified_by_fk_and_collision_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16"
+    },
+    "pallet_3_approach": {
+      "status": "verified",
+      "target_frame": "pallet_3_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.14
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        -0.2,
+        0.93
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": -0.191414,
+        "j2": -2.39933,
+        "j3": -0.271114,
+        "j4": -2.021793,
+        "j5": 1.567974,
+        "j6": -1.762146
+      },
+      "fk_tcp_world_m": [
+        0.498623,
+        -0.199467,
+        0.928957
+      ],
+      "position_error_m": 0.001807,
+      "orientation_error_rad": 0.020344,
+      "position_tolerance_m": 0.002,
+      "orientation_tolerance_rad": 0.05,
+      "floor_clearance_m": 0.731,
+      "environment_clearance_min_m": 0.019095,
+      "worst_pairs": [
+        {
+          "model": "material_c",
+          "part": "body",
+          "clearance_m": 0.019095,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_2",
+          "part": "tray",
+          "clearance_m": 0.119023,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_3",
+          "part": "tray",
+          "clearance_m": 0.119023,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "material_b",
+          "part": "body",
+          "clearance_m": 0.13771,
+          "link": "robotiq_85_base_link"
+        },
+        {
+          "model": "conveyor",
+          "part": "frame_left",
+          "clearance_m": 0.138579,
+          "link": "upperarm_Link"
+        }
+      ],
+      "clearance_checked": true,
+      "clearance_check_note": "접근 자세만 환경 간극을 요구한다. pick/place 자세는 물체에 닿는 자세라 간극이 음수인 것이 정상이다 — 그 판정은 pick/place 관문이 별도로 한다",
+      "source": "config/workcell/fr3_2f85_workcell.json tcp_targets",
+      "measurement_method": "numerical_ik_verified_by_fk_and_collision_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16"
+    },
+    "pallet_3_pick": {
+      "status": "verified",
+      "target_frame": "material_c_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": -0.182838,
+        "j2": -2.274763,
+        "j3": -0.881353,
+        "j4": -1.540106,
+        "j5": 1.553125,
+        "j6": -1.733694
+      },
+      "fk_tcp_world_m": [
+        0.499751,
+        -0.198717,
+        0.840301
+      ],
+      "position_error_m": 0.001341,
+      "orientation_error_rad": 0.031249,
+      "position_tolerance_m": 0.002,
+      "orientation_tolerance_rad": 0.05,
+      "floor_clearance_m": 0.731,
+      "environment_clearance_min_m": -0.009626,
+      "worst_pairs": [
+        {
+          "model": "material_c",
+          "part": "body",
+          "clearance_m": -0.009626,
+          "link": "robotiq_85_base_link"
+        },
+        {
+          "model": "pallet_3",
+          "part": "tray",
+          "clearance_m": 0.030574,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "workbench",
+          "part": "top",
+          "clearance_m": 0.070574,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "conveyor",
+          "part": "frame_left",
+          "clearance_m": 0.099048,
+          "link": "robotiq_85_left_finger_tip_link"
+        },
+        {
+          "model": "pallet_2",
+          "part": "tray",
+          "clearance_m": 0.100389,
+          "link": "robotiq_85_right_inner_knuckle_link"
+        }
+      ],
+      "clearance_checked": false,
+      "clearance_check_note": "접근 자세만 환경 간극을 요구한다. pick/place 자세는 물체에 닿는 자세라 간극이 음수인 것이 정상이다 — 그 판정은 pick/place 관문이 별도로 한다",
+      "source": "config/workcell/fr3_2f85_workcell.json tcp_targets",
+      "measurement_method": "numerical_ik_verified_by_fk_and_collision_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16"
+    },
+    "conveyor_approach": {
+      "status": "verified",
+      "target_frame": "conveyor_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.18
+      ],
+      "target_world_xyz_m": [
+        0.25,
+        -0.5,
+        0.88
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": 1.849855,
+        "j2": -0.708007,
+        "j3": 0.427346,
+        "j4": -1.308548,
+        "j5": -1.568355,
+        "j6": 3.420285
+      },
+      "fk_tcp_world_m": [
+        0.249328,
+        -0.498561,
+        0.879121
+      ],
+      "position_error_m": 0.001815,
+      "orientation_error_rad": 0.018574,
+      "position_tolerance_m": 0.002,
+      "orientation_tolerance_rad": 0.05,
+      "floor_clearance_m": 0.731,
+      "environment_clearance_min_m": 0.137797,
+      "worst_pairs": [
+        {
+          "model": "conveyor",
+          "part": "frame_left",
+          "clearance_m": 0.137797,
+          "link": "robotiq_85_left_finger_tip_link"
+        },
+        {
+          "model": "conveyor",
+          "part": "frame_right",
+          "clearance_m": 0.139315,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "workbench",
+          "part": "top",
+          "clearance_m": 0.158619,
+          "link": "upperarm_Link"
+        },
+        {
+          "model": "conveyor",
+          "part": "belt",
+          "clearance_m": 0.159673,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "pallet_3",
+          "part": "tray",
+          "clearance_m": 0.183294,
+          "link": "robotiq_85_base_link"
+        }
+      ],
+      "clearance_checked": true,
+      "clearance_check_note": "접근 자세만 환경 간극을 요구한다. pick/place 자세는 물체에 닿는 자세라 간극이 음수인 것이 정상이다 — 그 판정은 pick/place 관문이 별도로 한다",
+      "source": "config/workcell/fr3_2f85_workcell.json tcp_targets",
+      "measurement_method": "numerical_ik_verified_by_fk_and_collision_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16"
+    },
+    "conveyor_place": {
+      "status": "verified",
+      "target_frame": "conveyor_frame",
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.11
+      ],
+      "target_world_xyz_m": [
+        0.25,
+        -0.5,
+        0.81
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": 1.850096,
+        "j2": -0.749885,
+        "j3": 0.797851,
+        "j4": -1.633863,
+        "j5": -1.568646,
+        "j6": 3.420838
+      },
+      "fk_tcp_world_m": [
+        0.249522,
+        -0.499011,
+        0.809533
+      ],
+      "position_error_m": 0.001193,
+      "orientation_error_rad": 0.01525,
+      "position_tolerance_m": 0.002,
+      "orientation_tolerance_rad": 0.05,
+      "floor_clearance_m": 0.731,
+      "environment_clearance_min_m": 0.090161,
+      "worst_pairs": [
+        {
+          "model": "conveyor",
+          "part": "belt",
+          "clearance_m": 0.090161,
+          "link": "robotiq_85_right_finger_tip_link"
+        },
+        {
+          "model": "conveyor",
+          "part": "frame_left",
+          "clearance_m": 0.131724,
+          "link": "robotiq_85_right_inner_knuckle_link"
+        },
+        {
+          "model": "conveyor",
+          "part": "frame_right",
+          "clearance_m": 0.133114,
+          "link": "robotiq_85_left_inner_knuckle_link"
+        },
+        {
+          "model": "workbench",
+          "part": "top",
+          "clearance_m": 0.153447,
+          "link": "robotiq_85_base_link"
+        },
+        {
+          "model": "pallet_3",
+          "part": "tray",
+          "clearance_m": 0.178054,
+          "link": "wrist3_Link"
+        }
+      ],
+      "clearance_checked": false,
+      "clearance_check_note": "접근 자세만 환경 간극을 요구한다. pick/place 자세는 물체에 닿는 자세라 간극이 음수인 것이 정상이다 — 그 판정은 pick/place 관문이 별도로 한다",
+      "source": "config/workcell/fr3_2f85_workcell.json tcp_targets",
+      "measurement_method": "numerical_ik_verified_by_fk_and_collision_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16"
+    }
+  },
+  "note": "관절값은 수치 IK 해이고, 같은 FK로 되돌려 확인했다. MoveIt planning scene 검증은 scripts/verify_workcell.py가 별도로 수행한다 — 이 파일만으로 충돌 없음을 주장하지 않는다"
+}

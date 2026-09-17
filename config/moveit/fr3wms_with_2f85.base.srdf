@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!-- FR3-WMS + 커플링 + 2F-85 조립 MoveIt2 기본 SRDF (md/개발플랜.md 8-08).
+     **우리 파일이다.**
+
+     출처와 생성 과정:
+     - 팔 그룹은 arm-only SRDF(8-07)와 같다. tip_link만 TCP로 바뀐다.
+     - 그리퍼 그룹은 공식 2F-85 URDF의 **명령 조인트 하나**다
+       (robotiq_85_left_knuckle_joint). 나머지 4개는 mimic이므로 그룹에
+       넣지 않는다 — 계획기가 독립 자유도로 다루면 안 된다.
+     - open/close 자세는 **개구에서 만든 값**이다(공식 FK 표):
+         open  = 0.0    rad → 패드 간격 0.084997 m (공식 최대 개구 0.085 m)
+         close = 0.7929 rad → 패드 간격 0.000969 m (공식 닫힘 위치)
+       (시뮬레이션에서 제한 근처로 닫으면 관절이 잠기는 문제는
+        reports/gripper/verify_gripper.json의 09 항목에 기록했다.)
+     - TCP(robotiq_85_tcp)는 장착 Profile의 tcp_xyz에서 온다.
+     - disable_collisions는 여기 없다. collisions_updater로 생성하고
+       scripts/prune_self_collision_srdf.py로 근거 없는 제외를 걷어낸다. -->
+<robot name="fr3wms_with_2f85">
+  <group name="fr3wms_arm">
+    <chain base_link="base_link" tip_link="robotiq_85_tcp"/>
+  </group>
+
+  <group name="fr3wms_gripper">
+    <joint name="robotiq_85_left_knuckle_joint"/>
+  </group>
+
+  <end_effector name="robotiq_2f85" parent_link="tool_Link"
+                group="fr3wms_gripper" parent_group="fr3wms_arm"/>
+
+  <group_state name="home" group="fr3wms_arm">
+    <joint name="j1" value="0"/>
+    <joint name="j2" value="0"/>
+    <joint name="j3" value="0"/>
+    <joint name="j4" value="0"/>
+    <joint name="j5" value="0"/>
+    <joint name="j6" value="0"/>
+  </group_state>
+
+  <group_state name="open" group="fr3wms_gripper">
+    <joint name="robotiq_85_left_knuckle_joint" value="0.0"/>
+  </group_state>
+
+  <group_state name="close" group="fr3wms_gripper">
+    <joint name="robotiq_85_left_knuckle_joint" value="0.7929"/>
+  </group_state>
+</robot>

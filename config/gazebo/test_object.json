@@ -1,0 +1,49 @@
+{
+  "sim_fixture_version": "sim-test-object-1.0",
+  "object_id": "sim_test_box_a",
+  "resource_catalog_id": "sim_test_box_a",
+  "purpose": "8-09 파지 검증용 시험 물체. **시뮬레이션 전용 fixture**다",
+  "is_simulated": true,
+  "test_only": true,
+  "shape": "box",
+  "dimensions_m": [
+    0.05,
+    0.05,
+    0.1
+  ],
+  "mass_kg": 0.2,
+  "inertia_kg_m2": {
+    "ixx": 0.00020833,
+    "iyy": 0.00020833,
+    "izz": 8.333e-05,
+    "ixy": 0.0,
+    "ixz": 0.0,
+    "iyz": 0.0
+  },
+  "inertia_basis": "균일 밀도 직육면체 공식으로 계산했다(제품 자료가 아니다)",
+  "friction": {
+    "mu": 0.8,
+    "mu2": 0.8,
+    "source": "시험용으로 정한 값이다. 실제 재질 계수가 아니다",
+    "verified": false
+  },
+  "start_pose": {
+    "xyz_m": [
+      0.45,
+      0.0,
+      0.05
+    ],
+    "rpy_rad": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "frame": "world",
+    "basis": "FR3 base 앞쪽 0.45 m. 팔 수평 반경 0.630 m(unverified) 안이며, 바닥 위에 놓는다"
+  },
+  "grasp_target": {
+    "aperture_needed_m": 0.05,
+    "note": "물체 폭과 같다. 2F-85 최대 개구 0.085 m보다 작다"
+  },
+  "note": "2F-85가 결합되지 않았으므로 이 물체로 파지를 시험할 수 없다. 장착 근거가 확인된 뒤 8-09에서 쓴다"
+}

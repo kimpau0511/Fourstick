@@ -1,0 +1,181 @@
+{
+  "schema": "forstick2.mounting_inputs/1",
+  "coupling_id": "GRP-CPL-062",
+  "description": "FR3-WMS 공구 플랜지 ↔ Robotiq 2F-85 사이 커플링의 장착 입력.",
+  "how_to_fill": [
+    "값을 채울 때 source, measurement_method, verified, captured_at을 함께 쓴다.",
+    "source는 공식 매뉴얼/도면/CAD/메시/실측 중 무엇인지 적는다. '추정'은 근거가 아니다.",
+    "근거가 없으면 value를 null로 두고 status를 blocked 또는 unverified로 남긴다.",
+    "**status가 verified가 아닌 값은 Gazebo·MoveIt 실행 경로에 넣지 않는다.**",
+    "실측은 측정 위치를 note에 적는다(어느 면, 어느 방향, 몇 군데 평균).",
+    "채운 뒤: python3 scripts/validate_mounting_inputs.py"
+  ],
+  "status_values": {
+    "verified": "출처가 확인됐고 값이 그 출처와 일치한다",
+    "declared": "사용자가 선언했을 뿐 검증되지 않았다(시뮬레이션 전용)",
+    "unverified": "값은 있으나 출처가 확인되지 않았다",
+    "blocked": "값을 낼 근거 자체가 없다 — 입력이 필요하다"
+  },
+  "inputs": {
+    "robot_side_pcd_mm": {
+      "value": 50.0,
+      "unit": "mm",
+      "status": "verified",
+      "source": "FR3WMS wrist3_Link.STL 평면·구멍 원 적합",
+      "measurement_method": "mesh_measurement",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": "reports/mounting/flange_measurements.json. ISO 9409-1-50-4-M6 치수와 일치. 표준 문서 원본은 확보하지 않았다"
+    },
+    "robot_side_hole_count": {
+      "value": 4,
+      "unit": "count",
+      "status": "verified",
+      "source": "FR3WMS wrist3_Link.STL 경계 루프 개수",
+      "measurement_method": "mesh_measurement",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": null
+    },
+    "robot_side_hole_diameter_mm": {
+      "value": 6.0,
+      "unit": "mm",
+      "status": "verified",
+      "source": "FR3WMS wrist3_Link.STL 구멍 원 적합",
+      "measurement_method": "mesh_measurement",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": "나사 규격(M6 탭 여부)은 메시로 판정할 수 없다 — 도면이 필요하다"
+    },
+    "robot_side_thread_spec": {
+      "value": null,
+      "unit": "text",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: FR3-WMS 공구 플랜지 도면의 나사 규격·유효 깊이"
+    },
+    "gripper_side_pcd_mm": {
+      "value": 50.0,
+      "unit": "mm",
+      "status": "verified",
+      "source": "robotiq_description v1.1.0 커플링 메시 평면·구멍 원 적합",
+      "measurement_method": "mesh_measurement",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": "reports/mounting/interface_comparison.json"
+    },
+    "gripper_side_hole_count": {
+      "value": 4,
+      "unit": "count",
+      "status": "verified",
+      "source": "robotiq_description v1.1.0 커플링 메시",
+      "measurement_method": "mesh_measurement",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": null
+    },
+    "centering_boss_diameter_mm": {
+      "value": 31.5,
+      "unit": "mm",
+      "status": "verified",
+      "source": "FR3WMS wrist3_Link.STL 중심 원 적합",
+      "measurement_method": "mesh_measurement",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": "로봇측 보스 지름이다. 커플링측 대응 구멍 공차는 도면이 필요하다"
+    },
+    "centering_boss_height_mm": {
+      "value": null,
+      "unit": "mm",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: 보스 돌출 높이. 커플링 체결면이 플랜지면에 닿는지 판단에 쓴다"
+    },
+    "pin_hole_position": {
+      "value": null,
+      "unit": "text",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: 핀/키 구멍의 각도 위치(플랜지 기준 0° 정의 포함). **장착 yaw를 정하는 값이다**"
+    },
+    "mounting_yaw_rad": {
+      "value": null,
+      "unit": "rad",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: 커플링 도면의 핀/키 위치 또는 조립 사진. 현재 시뮬레이션은 FORSTICK2_ASSEMBLY_YAW_RAD로 declared 값만 받는다 — **pick/place를 열지 않는다**"
+    },
+    "coupling_total_height_mm": {
+      "value": 11.0,
+      "unit": "mm",
+      "status": "verified",
+      "source": "robotiq_description v1.1.0 ur_to_robotiq_adapter.urdf.xacro + 시각 메시 (출처 2개 일치)",
+      "measurement_method": "official_urdf_and_mesh",
+      "verified": true,
+      "captured_at": "2026-09-16",
+      "note": "실물 커플링이 같은 품목인지 확인 필요. 다르면 실측으로 대체한다"
+    },
+    "coupling_measured_mass_kg": {
+      "value": null,
+      "unit": "kg",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: 저울 실측(g 단위). 공식 xacro의 0.01 kg은 11 mm 금속 커플링으로 물리적으로 맞지 않아 declared_implausible로 표시했다 — 관성 계산에 쓰지 않는다"
+    },
+    "coupling_inertia_kg_m2": {
+      "value": null,
+      "unit": "kg*m^2",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: 실측 질량 + CAD. 질량 없이 관성을 만들지 않는다"
+    },
+    "rubber_pad_thickness_mm": {
+      "value": null,
+      "unit": "mm",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: 패드 두께 실측(캘리퍼). 개구 표의 패드면 기준을 실물로 맞추는 값이다"
+    },
+    "rubber_pad_friction": {
+      "value": null,
+      "unit": "coefficient",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: 패드-물체 마찰 계수. 파지력 판정에 쓴다. 시험 물체의 0.8은 시뮬레이션 전용 값이다"
+    },
+    "bolt_spec": {
+      "value": null,
+      "unit": "text",
+      "status": "blocked",
+      "source": null,
+      "measurement_method": null,
+      "verified": false,
+      "captured_at": null,
+      "note": "필요 입력: 볼트 규격·강도등급·길이·조임 토크. md/8단계_2F85_장착.md의 물리 장착 체크리스트 참조"
+    }
+  }
+}

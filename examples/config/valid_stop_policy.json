@@ -1,0 +1,16 @@
+{
+  "policy_version": "web-stop-1.0",
+  "position_tolerance": {
+    "motion": 0.01,
+    "gripper": 0.002
+  },
+  "hold_sec": 0.2,
+  "cancel_ack_timeout_sec": 1.0,
+  "max_sample_gap_sec": 0.5,
+  "provenance": {
+    "position_tolerance": "채널별 허용치. Fake Adapter 기준 잠정값이며 실제 로봇 실측으로 대체한다 — 팔(rad)과 그리퍼(m)의 단위가 달라 채널별로 둔다",
+    "hold_sec": "허용치 안에 연속으로 머물러야 하는 시간. 잠정값",
+    "cancel_ack_timeout_sec": "취소 ACK 대기 상한. 잠정값",
+    "max_sample_gap_sec": "표본 공백 상한. 넘으면 연속 정지로 누적하지 않는다"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "policy_version": "bad-final-1.0",
+  "max_steps": 12,
+  "required_final_skill": "weld",
+  "approach_skill": "move",
+  "provenance": {
+    "max_steps": "이송 계획(move·pick·move·place·home) 5스텝의 두 배 이상 여유. 폭주·루프성 계획 차단이 목적이며 실측 상한이 아니다",
+    "required_final_skill": "안전 검증 E-SEQ-002가 요구하는 복귀 종료. 계획 생성 프롬프트도 이 값을 읽는다(md/계획생성_경계.md 4부)",
+    "approach_skill": "E-SEQ-003/004가 요구하는 접근 이동. 위치 인자를 받는 스텝 직전에 있어야 한다"
+  }
+}

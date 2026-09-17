@@ -1,0 +1,14 @@
+{"id": "cmd_short_01", "reference": "정지", "tags": ["짧은명령", "STOP", "유사용어"], "audio": "audio/cmd_short_01.wav", "note": "한 단어 명령. STOP 키워드와 동일"}
+{"id": "cmd_short_02", "reference": "홈으로", "tags": ["짧은명령"], "audio": "audio/cmd_short_02.wav", "note": "한 단어 이동 명령"}
+{"id": "cmd_mid_01", "reference": "2번 팔레트에서 A자재를 집어서 컨베이어에 올려줘", "tags": ["중간발화", "유사용어"], "audio": "audio/cmd_mid_01.wav", "note": "표준 이송 지시"}
+{"id": "cmd_mid_02", "reference": "1번 팔레트의 B자재를 3번 팔레트로 옮겨줘", "tags": ["중간발화", "유사용어"], "audio": "audio/cmd_mid_02.wav", "note": "팔레트 번호가 둘 등장"}
+{"id": "cmd_mid_03", "reference": "C자재를 집어서 들고 있어", "tags": ["중간발화"], "audio": "audio/cmd_mid_03.wav", "note": "terminal_hold가 있는 지시"}
+{"id": "cmd_stop_01", "reference": "지금 멈춰", "tags": ["STOP", "짧은명령"], "audio": "audio/cmd_stop_01.wav", "note": "정지 키워드 변형"}
+{"id": "cmd_stop_02", "reference": "정지해 정지", "tags": ["STOP"], "audio": "audio/cmd_stop_02.wav", "note": "정지 키워드 반복"}
+{"id": "cmd_term_01", "reference": "에이자재를 이번 팔레트로", "tags": ["유사용어"], "audio": "audio/cmd_term_01.wav", "note": "A자재/1번을 소리 나는 대로 말한 경우 — 용어 후보정 대상"}
+{"id": "cmd_term_02", "reference": "컨베이어 벨트에 놔줘", "tags": ["유사용어"], "audio": "audio/cmd_term_02.wav", "note": "컨베이어 표현 변형"}
+{"id": "env_silence_01", "reference": "", "tags": ["침묵"], "audio": "generated:silence:2.0", "note": "완전 무음 2초. 기대 전사는 빈 문자열"}
+{"id": "env_silence_02", "reference": "", "tags": ["침묵"], "audio": "generated:silence:0.5", "note": "짧은 무음"}
+{"id": "env_noise_01", "reference": "", "tags": ["잡음"], "audio": "generated:noise:2.0:0.02", "note": "저진폭 백색잡음 2초. 기대 전사는 빈 문자열"}
+{"id": "env_noise_02", "reference": "", "tags": ["잡음"], "audio": "generated:noise:2.0:0.10", "note": "중진폭 백색잡음 2초"}
+{"id": "env_tone_01", "reference": "", "tags": ["순음"], "audio": "generated:tone:2.0:220", "note": "220Hz 순음 — 기계 소음 모사. 음성이 아니다"}

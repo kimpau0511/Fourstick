@@ -1,0 +1,21 @@
+{
+  "policy_version": "payload-1.0",
+  "max_attempts": 2,
+  "request_timeout_sec": 30.0,
+  "retryable_reasons": [
+    "plan.llm_output_unparseable",
+    "plan.llm_output_schema_invalid",
+    "plan.llm_unavailable",
+    "plan.llm_timeout"
+  ],
+  "store_payloads": true,
+  "payload_max_chars": 0,
+  "payload_retention_days": 30,
+  "provenance": {
+    "max_attempts": "같은 호출을 무제한 반복하지 않는다. 형식 오류는 한 번 더 물어볼 여지가 있어 2회로 둔다",
+    "request_timeout_sec": "실제 공급자·모델이 정해지지 않아 측정값이 없다. 잠정값이며 5-02에서 실측 후 조정한다",
+    "retryable_reasons": "형식·전송 실패만 재시도한다. 미등록 리소스·미지원 스킬은 같은 입력에서 같은 결과가 나온다",
+    "store_payloads": "회귀 추적에 프롬프트·출력이 필요하다. planning/redaction.py를 지난 뒤에만 저장한다",
+    "payload_retention_days": "감사 목적 30일. 운영 정책이 정해지면 조정한다"
+  }
+}

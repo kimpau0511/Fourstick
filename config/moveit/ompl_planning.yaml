@@ -1,0 +1,28 @@
+# 계획 파이프라인 (8-07). 우리 파일이다. moveit_planners_ompl 2.15.0 기준.
+planning_plugins:
+  - ompl_interface/OMPLPlanner
+request_adapters:
+  - default_planning_request_adapters/ResolveConstraintFrames
+  - default_planning_request_adapters/ValidateWorkspaceBounds
+  - default_planning_request_adapters/CheckStartStateBounds
+  - default_planning_request_adapters/CheckStartStateCollision
+response_adapters:
+  - default_planning_response_adapters/AddTimeOptimalParameterization
+  - default_planning_response_adapters/ValidateSolution
+  - default_planning_response_adapters/DisplayMotionPath
+
+planner_configs:
+  RRTConnectkConfigDefault:
+    type: geometric::RRTConnect
+    range: 0.0            # 0.0 = OMPL 자동 설정
+  # **검증 전용 설정**이다. 확장 간격을 아주 작게 두어 같은 문제를 일부러
+  # 어렵게 만든다. 8-07의 "계획 제한시간" 항목에서 MoveIt이 TIMED_OUT(-6)을
+  # 구분해 돌려주는지 확인하는 데만 쓴다. 운영 계획 경로는 위 기본 설정을 쓴다.
+  RRTConnectTimeoutVerification:
+    type: geometric::RRTConnect
+    range: 0.0005
+
+fr3wms_arm:
+  planner_configs:
+    - RRTConnectkConfigDefault
+    - RRTConnectTimeoutVerification

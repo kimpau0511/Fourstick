@@ -1,0 +1,17 @@
+{
+  "config_version": "lowspec-1.0",
+  "profile_id": "example",
+  "verification": "candidate",
+  "model_name": "small",
+  "device": "cpu",
+  "compute_type": "int8",
+  "language": "ko",
+  "sample_rate_hz": 16000,
+  "vad_threshold": 0.5,
+  "load_timeout_sec": 600.0,
+  "transcribe_timeout_sec": 120.0,
+  "cache_dir": null,
+  "retain_eval_audio": false,
+  "eval_audio_dir": null,
+  "provenance": {}
+}

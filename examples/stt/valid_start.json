@@ -1,0 +1,6 @@
+{
+  "type": "start",
+  "sample_rate_hz": 16000,
+  "language": "ko",
+  "min_confidence": 0.6
+}

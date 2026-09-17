@@ -1,0 +1,92 @@
+{
+  "catalog_version": "fr3_2f85_workcell-0.1.0-design",
+  "entries": [
+    {
+      "resource_id": "loc_pallet_1",
+      "kind": "location",
+      "display_name": "1번 팔레트",
+      "aliases": [
+        "1번 팔레트",
+        "1번팔레트",
+        "일번 팔레트",
+        "첫번째 팔레트",
+        "1 번 팔레트"
+      ],
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 pallet_1, 프레임 pallet_1_frame. 좌표는 카탈로그에 두지 않는다"
+    },
+    {
+      "resource_id": "loc_pallet_2",
+      "kind": "location",
+      "display_name": "2번 팔레트",
+      "aliases": [
+        "2번 팔레트",
+        "2번팔레트",
+        "이번 팔레트",
+        "두번째 팔레트",
+        "2 번 팔레트"
+      ],
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 pallet_2, 프레임 pallet_2_frame. 좌표는 카탈로그에 두지 않는다"
+    },
+    {
+      "resource_id": "loc_pallet_3",
+      "kind": "location",
+      "display_name": "3번 팔레트",
+      "aliases": [
+        "3번 팔레트",
+        "3번팔레트",
+        "삼번 팔레트",
+        "세번째 팔레트",
+        "3 번 팔레트"
+      ],
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 pallet_3, 프레임 pallet_3_frame. 좌표는 카탈로그에 두지 않는다"
+    },
+    {
+      "resource_id": "loc_conveyor",
+      "kind": "location",
+      "display_name": "컨베이어",
+      "aliases": [
+        "컨베이어",
+        "컨베이어 벨트",
+        "벨트",
+        "컨베어"
+      ],
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 conveyor, 프레임 conveyor_frame. 좌표는 카탈로그에 두지 않는다"
+    },
+    {
+      "resource_id": "mat_a",
+      "kind": "object",
+      "display_name": "A자재",
+      "aliases": [
+        "A자재",
+        "a자재",
+        "에이자재",
+        "에이 자재"
+      ],
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_a, 프레임 material_a_frame. 좌표는 카탈로그에 두지 않는다"
+    },
+    {
+      "resource_id": "mat_b",
+      "kind": "object",
+      "display_name": "B자재",
+      "aliases": [
+        "B자재",
+        "b자재",
+        "비자재",
+        "비 자재"
+      ],
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_b, 프레임 material_b_frame. 좌표는 카탈로그에 두지 않는다"
+    },
+    {
+      "resource_id": "mat_c",
+      "kind": "object",
+      "display_name": "C자재",
+      "aliases": [
+        "C자재",
+        "c자재",
+        "씨자재",
+        "씨 자재"
+      ],
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_c, 프레임 material_c_frame. 좌표는 카탈로그에 두지 않는다"
+    }
+  ]
+}

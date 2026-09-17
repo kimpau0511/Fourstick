@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<!-- FR3-WMS arm-only Gazebo 검증용 래퍼 (8-03).
+
+     **제3자 자산을 복사하지 않는다.** 외부 경로의 공식 URDF를 include하고,
+     여기서 ros2_control 하드웨어(gz_ros2_control)와 Gazebo 플러그인만 얹는다.
+     외부 경로는 fr3_urdf 인자로 주입한다(기본값 없음 — 경로를 코드에 박지 않는다).
+
+     그리퍼는 여기 없다. 장착 변환(FR3 flange ↔ 2F-85 base)이 공식 자료로
+     확인되기 전에는 결합하지 않는다. -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="fr3wms_arm">
+  <xacro:arg name="fr3_urdf" default=""/>
+  <xacro:arg name="controller_yaml" default=""/>
+
+  <xacro:include filename="$(arg fr3_urdf)"/>
+
+  <!-- 상류 결함 보정: 공식 URDF는 `tool` 고정 조인트의 child로 `tool_Link`를
+       참조하지만 그 링크를 선언하지 않는다. 그래서 SDFormat 변환이 실패한다
+       ("child link [tool_Link] of joint [tool] not found").
+       기하·질량을 만들지 않고 **빈 프레임으로만** 선언해 트리가 닫히게 한다.
+       조인트 원점은 공식 URDF의 값을 그대로 쓴다(우리가 만든 값이 아니다). -->
+  <link name="tool_Link"/>
+
+  <!-- 바닥에 고정한다. 공식 URDF에는 world 링크가 없다. -->
+  <link name="world"/>
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <ros2_control name="fr3wms_arm_system" type="system">
+    <hardware>
+      <!-- 설치된 gz_ros2_control(3.0.8)과 같은 플러그인 이름을 쓴다.
+           ign_ros2_control/IgnitionSystem(구 이름)과 혼용하지 않는다. -->
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <joint name="j1">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="j2">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="j3">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="j4">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="j5">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="j6">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
+
+  <gazebo>
+    <plugin filename="gz_ros2_control-system"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(arg controller_yaml)</parameters>
+    </plugin>
+  </gazebo>
+</robot>

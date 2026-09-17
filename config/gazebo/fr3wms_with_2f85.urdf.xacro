@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<!-- FR3-WMS + GRP-CPL-062 커플링 + Robotiq 2F-85 조립 (md/개발플랜.md 8-08).
+
+     **제3자 자산을 복사하지 않는다.** FAIRINO URDF는 외부 경로로 include하고,
+     Robotiq description은 고정 버전(v1.1.0) 오버레이를 `$(find ...)`로 찾는다.
+
+     장착 값의 출처(config/profiles/fr3wms_to_robotiq_2f85_mounting.json):
+      - tool_Link = FR3 공구 플랜지면 (공식 URDF tool 조인트 z=0.1 m,
+        wrist3_Link.STL 측정으로 확인)
+      - 커플링 두께 11 mm (공식 어댑터 xacro + 시각 메시, 출처 2개 일치)
+      - 그리퍼 base는 커플링 그리퍼측 면에 맞닿는다(측정)
+      - **yaw는 미확보다.** 그래서 이 파일은 yaw를 기본값 없이 인자로 받고,
+        실행 스크립트가 명시적으로 주도록 강제한다. 값은 "선언"이며
+        검증 결과가 아니다.
+
+     arm-only 기준선(config/gazebo/fr3wms_arm.urdf.xacro)은 건드리지 않는다. -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="fr3wms_with_2f85">
+  <xacro:arg name="fr3_urdf" default=""/>
+  <xacro:arg name="arm_controller_yaml" default=""/>
+  <xacro:arg name="gripper_controller_yaml" default=""/>
+  <!-- 장착 방향. 기본값을 두지 않는다 — 실행 스크립트가 반드시 지정한다. -->
+  <xacro:arg name="gripper_yaw_rad" default="__unset__"/>
+  <!-- TCP 오프셋(그리퍼 base 기준). Profile 값에서 온다. -->
+  <xacro:arg name="tcp_xyz" default="0 0 0"/>
+
+  <xacro:include filename="$(arg fr3_urdf)"/>
+
+  <!-- 상류 결함 보정: 공식 URDF가 tool_Link를 선언하지 않는다(주석 처리됨).
+       기하·질량을 만들지 않고 빈 프레임으로만 선언한다. 주석 처리된 블록의
+       관성(19.597 kg)은 공구 플랜지 값이 아니므로 쓰지 않는다. -->
+  <link name="tool_Link"/>
+
+  <!-- world -> FR3 base. 단순 셀은 0 0 0(기존과 동일), 작업 셀은 받침대 상판
+       높이를 실행 스크립트가 넘긴다. 기본값을 바꾸지 않아 기존 셀은 그대로다. -->
+  <xacro:arg name="base_xyz" default="0 0 0"/>
+  <link name="world"/>
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="$(arg base_xyz)" rpy="0 0 0"/>
+  </joint>
+
+  <!-- 커플링: Robotiq 공식 어댑터 매크로를 그대로 쓴다.
+       로봇측 면이 tool_Link와 맞닿고, 그리퍼측 면이 +11 mm에 생긴다. -->
+  <xacro:include filename="$(find robotiq_description)/urdf/ur_to_robotiq_adapter.urdf.xacro"/>
+  <xacro:ur_to_robotiq prefix="" parent="tool_Link" child="gripper_mount_link"
+                       rotation="$(arg gripper_yaw_rad)"/>
+
+  <!-- 그리퍼: 공식 매크로(sim_gazebo). mimic 조인트·충돌 형상·관성이 모두
+       공식 값이다. -->
+  <xacro:include filename="$(find robotiq_description)/urdf/robotiq_2f_85_macro.urdf.xacro"/>
+  <xacro:robotiq_gripper name="Robotiq2F85" prefix="" parent="gripper_mount_link"
+                         sim_gazebo="true" include_ros2_control="true">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:robotiq_gripper>
+
+  <!-- TCP: 두 패드 접촉면 사이 중앙(공식 메시 측정 + FK). 개구에 따라 z가
+       달라지므로 Profile이 기준 개구를 함께 적는다. -->
+  <link name="robotiq_85_tcp"/>
+  <joint name="robotiq_85_tcp_joint" type="fixed">
+    <parent link="robotiq_85_base_link"/>
+    <child link="robotiq_85_tcp"/>
+    <origin xyz="$(arg tcp_xyz)" rpy="0 0 0"/>
+  </joint>
+
+  <!-- 팔 ros2_control: arm-only 기준선과 같은 내용이다. -->
+  <ros2_control name="fr3wms_arm_system" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <xacro:macro name="arm_joint" params="name">
+      <joint name="${name}">
+        <command_interface name="position"/>
+        <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+    </xacro:macro>
+    <xacro:arm_joint name="j1"/>
+    <xacro:arm_joint name="j2"/>
+    <xacro:arm_joint name="j3"/>
+    <xacro:arm_joint name="j4"/>
+    <xacro:arm_joint name="j5"/>
+    <xacro:arm_joint name="j6"/>
+  </ros2_control>
+
+  <gazebo>
+    <plugin filename="gz_ros2_control-system"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(arg arm_controller_yaml)</parameters>
+      <parameters>$(arg gripper_controller_yaml)</parameters>
+    </plugin>
+  </gazebo>
+</robot>

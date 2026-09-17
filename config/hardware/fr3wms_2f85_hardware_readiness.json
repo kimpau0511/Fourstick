@@ -1,0 +1,370 @@
+{
+  "schema": "forstick2.hardware_readiness/1",
+  "profile_id": "fr3wms_2f85_hardware",
+  "profile_version": "0.1.0-collecting",
+  "description": "FR3-WMS + GRP-CPL-062 + Robotiq 2F-85 **실기 전환** 준비 입력. 시뮬레이터 선언값(config/workcell/*)과 공유하지 않는다 — 여기 값은 실제 장착·연결 전에 도면·저울·측정으로 가져와야 한다.",
+  "is_simulated": false,
+  "real_hardware_connected": false,
+  "real_hardware_verified": false,
+  "how_to_fill": "각 입력의 value·unit·source·measurement_method·captured_at·verified·evidence_path·operator를 모두 채운다. 하나라도 비면 verified=true로 둘 수 없고(계약이 거부한다), 실기 준비 관문이 차단한다. measurement_method에 simulation / simulated_observation / declared를 쓰면 실기 근거로 인정되지 않는다. 근거는 evidence_requirements 목록을 모두 만족해야 한다. 기록은 scripts/record_hardware_evidence.py로 넣는다 — 손으로 고치면 계약 검사를 건너뛸 수 있다.",
+  "evidence_dir": "reports/hardware/evidence",
+  "inputs": [
+    {
+      "key": "mounting_transform_xyz",
+      "label": "FR3 flange ↔ GRP-CPL-062 ↔ 2F-85 최종 xyz",
+      "value": [
+        0.0,
+        0.0,
+        0.011
+      ],
+      "unit": "m",
+      "source": "robotiq_description v1.1.0 ur_to_robotiq_adapter.urdf.xacro (커플링 두께 11 mm) + FR3WMS wrist3_Link.STL 평면 적합",
+      "measurement_method": "cad",
+      "captured_at": "2026-09-16",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "지금 값은 **고무 패드 없는** 공식 CAD 기준이다. 실제 조립에 패드가 들어가면 z가 달라진다. mounting_pad_thickness를 확정한 뒤 최종 z를 다시 적고, 조립 후 실측(캘리퍼)으로 확인한 기록을 evidence_path에 남긴다.",
+      "note": "값이 있어도 verified가 아니다 — 최종 조립 기준 값이 아니기 때문이다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "조립 완료 상태에서 flange 면 ~ 그리퍼 base 면까지의 높이를 캘리퍼로 잰 값",
+        "측정 지점이 보이는 사진(캘리퍼 눈금 판독 가능)",
+        "고무 패드 유무와 두께 반영 여부를 적은 메모"
+      ]
+    },
+    {
+      "key": "mounting_transform_rpy",
+      "label": "FR3 flange ↔ GRP-CPL-062 ↔ 2F-85 최종 rpy",
+      "value": null,
+      "unit": "rad",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "roll·pitch는 체결면이 평행하면 0이다(조립 후 확인 필요). yaw는 mounting_yaw_evidence가 정해야 한다. 세 값을 함께 적는다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "roll·pitch가 0인 근거(체결면 평행 확인 방법)",
+        "yaw 값과 그 출처(mounting_yaw_evidence와 같은 값이어야 한다)"
+      ]
+    },
+    {
+      "key": "mounting_yaw_evidence",
+      "label": "장착 yaw 근거",
+      "value": null,
+      "unit": "rad",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "다음 중 하나가 필요하다 — (1) GRP-CPL-062 도면의 핀·키 위치 치수, (2) 핀 위치가 보이는 조립 사진(정면·위에서 각 1장), (3) 조립 후 각도 실측 기록. **추정하지 않는다.** 사진은 reports/hardware/evidence/에 넣고 경로를 적는다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "GRP-CPL-062 도면에서 **핀 구멍(또는 키) 위치 치수**가 보이는 페이지",
+        "조립 상태 사진 — **위에서 본 1장**: 핀 구멍과 기준 방향(0° 기준면)이 함께 보여야 한다",
+        "조립 상태 사진 — **정면 1장**: 그리퍼 손가락 축 방향이 로봇 base 기준 어느 방향인지 보여야 한다",
+        "사진 안에 방향 기준물(로봇 base 표식 또는 축 라벨)이 함께 찍혀 있어야 한다",
+        "각도를 실측한 경우 측정 도구(각도기·디지털 레벨)와 판독값이 보이는 사진"
+      ]
+    },
+    {
+      "key": "mounting_pad_thickness",
+      "label": "고무 패드 두께(있는 경우)",
+      "value": null,
+      "unit": "m",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "패드를 쓰지 않으면 value=0.0, measurement_method=photo로 '패드 없음'을 찍은 사진을 남긴다. 쓰면 캘리퍼 실측값(mm→m)과 사진을 남긴다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "패드를 쓰지 않으면 체결면이 맞닿은 상태 사진(패드 없음을 보여준다)",
+        "패드를 쓰면 캘리퍼로 잰 두께와 눈금이 보이는 사진"
+      ]
+    },
+    {
+      "key": "mounting_bolt_spec",
+      "label": "장착 볼트 규격·강도·길이·토크",
+      "value": null,
+      "unit": "text",
+      "numeric": false,
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "로봇측 나사 규격(예: M6 × 4, PCD 50 mm)에 맞는 볼트의 **규격·강도등급·길이·체결 토크**를 제조사 문서에서 확인해 적는다. 나사 규격 자체가 미확인이면(config/mounting/grp_cpl_062_inputs.json의 robot_side_thread_spec) 그것부터 확인한다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "로봇측 나사 규격이 적힌 제조사 문서 페이지(규격·피치·유효 깊이)",
+        "볼트 규격·강도등급 각인이 보이는 실물 사진",
+        "토크렌치 설정값이 보이는 사진"
+      ]
+    },
+    {
+      "key": "coupling_measured_mass",
+      "label": "커플링 실측 질량",
+      "value": null,
+      "unit": "kg",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "커플링을 저울에 올려 그램 단위로 재고, **저울 표시가 보이는 사진**을 남긴다. 공식 xacro의 0.01 kg은 11 mm 금속 커플링에 맞지 않아 쓸 수 없다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "커플링만 올린 저울 사진 — **표시값(g)이 판독 가능**해야 한다",
+        "영점 상태 사진(같은 저울에서 0 g 표시)",
+        "저울 모델명과 최소 눈금"
+      ]
+    },
+    {
+      "key": "coupling_center_of_mass",
+      "label": "커플링 질량 중심",
+      "value": null,
+      "unit": "m",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "제조사 CAD에서 산출하거나, 대칭 금속 디스크로 볼 수 있으면 그 근거(도면 치수 + 대칭 가정)를 적는다. 커플링 좌표계 기준 x·y·z 3개 값.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "제조사 CAD에서 산출했다면 산출 화면 또는 리포트",
+        "도면 치수로 계산했다면 쓴 가정(대칭 금속 디스크 등)과 입력 치수",
+        "커플링 좌표계 정의(어느 면·어느 축 기준인가)"
+      ]
+    },
+    {
+      "key": "coupling_inertia",
+      "label": "커플링 관성 텐서",
+      "value": null,
+      "unit": "kg*m^2",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "제조사 CAD 값 또는 **검증 가능한 산출 근거**가 필요하다(예: 실측 질량 + 도면 외경·내경·두께로 중공 원판 공식 적용 — 쓴 공식과 입력값을 함께 적는다). ixx·iyy·izz·ixy·ixz·iyz 6개 값.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "제조사 CAD 값이면 그 리포트",
+        "계산값이면 **쓴 공식과 입력값 전부**(외경·내경·두께·실측 질량)",
+        "질량은 coupling_measured_mass의 실측값을 써야 한다(공식 xacro 0.01 kg 금지)"
+      ]
+    },
+    {
+      "key": "tcp_coordinates",
+      "label": "실제 TCP 좌표",
+      "value": null,
+      "unit": "m",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "조립된 그리퍼에서 TCP를 **로봇으로 측정**한다(핀 접촉 4점법 등). flange 기준 x·y·z. 공식 URDF FK 값은 조립 오차를 포함하지 않으므로 그대로 쓰지 않는다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "측정 원본 기록 — 접촉점별 관절값과 산출된 TCP",
+        "반복 측정 3회 이상과 그 편차",
+        "측정에 쓴 지그·핀 사진"
+      ]
+    },
+    {
+      "key": "tcp_measurement_procedure",
+      "label": "TCP 측정 방법 기록",
+      "value": null,
+      "unit": "text",
+      "numeric": false,
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "어떤 방법으로 TCP를 쟀는지(접촉점 수, 기준 지그, 반복 횟수, 재현 오차)를 적고 측정 기록 파일 경로를 남긴다. 방법이 없으면 좌표만으로는 신뢰할 수 없다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "쓴 방법(접촉 4점법 등)과 절차 문서",
+        "재현 오차(반복 측정 표준편차)",
+        "측정 당시 그리퍼 개구 상태"
+      ]
+    },
+    {
+      "key": "gripper_power_interface",
+      "label": "2F-85 전원 방식",
+      "value": null,
+      "unit": "text",
+      "numeric": false,
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "전원 종류(24 VDC 등), 공급 경로(로봇 툴 커넥터 / 외부 전원), 커넥터 형번, 배선도를 적는다. 제조사 문서 쪽수까지 남긴다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "전원 종류·전압·전류 한계가 적힌 제조사 문서 페이지",
+        "커넥터 형번과 배선 사진",
+        "공급 경로(로봇 툴 커넥터 / 외부 전원) 결정과 그 이유"
+      ]
+    },
+    {
+      "key": "gripper_communication_interface",
+      "label": "2F-85 통신 방식",
+      "value": null,
+      "unit": "text",
+      "numeric": false,
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "통신 방식(RS-485 Modbus RTU / EtherNet-IP 등), 물리 배선, 주소·보율, 쓸 드라이버 패키지와 버전을 적는다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "통신 방식과 기본 주소·보율이 적힌 제조사 문서 페이지",
+        "쓸 드라이버 패키지 이름과 버전",
+        "배선 사진(종단 저항 포함 여부)"
+      ]
+    },
+    {
+      "key": "arm_controller_interface",
+      "label": "FR3 controller·SDK·ROS 연결 방식",
+      "value": null,
+      "unit": "text",
+      "numeric": false,
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "컨트롤러 모델·펌웨어 버전, 접속 방식(제조사 SDK / ros2_control 드라이버 패키지와 버전), 네트워크 구성, 안전 정지 회로 연결 방식을 적는다. **주소·인증값은 이 파일에 적지 않는다** — 실행 환경 설정으로 넣는다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "컨트롤러 모델명·펌웨어 버전 화면 사진",
+        "접속 방식 결정(제조사 SDK / ros2_control 드라이버)과 패키지 버전",
+        "안전 정지 회로 배선도",
+        "네트워크 구성도(주소는 문서에만, 이 저장소에 적지 않는다)"
+      ]
+    },
+    {
+      "key": "grasp_observation_interface",
+      "label": "실기 파지 관측 인터페이스",
+      "value": null,
+      "unit": "text",
+      "numeric": false,
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "2F-85의 object detection 상태(gOBJ) 또는 동등한 센서 근거를 읽을 경로가 필요하다 — 어떤 레지스터·토픽에서 어떤 값으로 오는지, 값별 의미, 갱신 주기를 적는다. **개구 일치는 파지 근거가 아니다.**",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "물체 감지 상태를 담은 **레지스터·비트 위치**가 적힌 제조사 문서 페이지",
+        "값별 의미 표(예: 감지 없음 / 물림 / 열림 완료)",
+        "읽기 주기와 지연",
+        "빈손 close와 물체 close에서 읽은 **원본 값 두 건**(달라야 한다)"
+      ]
+    },
+    {
+      "key": "cell_reference_frame",
+      "label": "작업 셀 기준 좌표계 정의",
+      "value": null,
+      "unit": "text",
+      "numeric": false,
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "실제 셀에서 world 원점을 무엇으로 잡을지(예: 받침대 바닥 중심)와 그 기준점을 현장에서 어떻게 재현하는지 적는다. 아래 frame 실측값이 모두 이 기준을 따른다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "world 원점을 무엇으로 잡았는지(받침대 바닥 중심 등)와 그 근거",
+        "현장에서 그 원점을 다시 찾는 방법(표식·기준면)",
+        "축 방향 정의(+x가 어디를 향하는가)"
+      ]
+    },
+    {
+      "key": "workbench_frame_measured",
+      "label": "작업대 실측 frame",
+      "value": null,
+      "unit": "m",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "기준 좌표계에서 작업대 상면 중심의 x·y·z와 회전을 실측한다. 시뮬레이터 설계값(0.78, 0, 0)은 설치 현장 실측값이 아니다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "기준 원점에서 작업대 상면 중심까지의 x·y·z 실측 기록",
+        "측정 도구(레이저 거리계·줄자)와 판독값 사진",
+        "회전이 0이 아니면 그 각도와 측정 방법"
+      ]
+    },
+    {
+      "key": "pallet_frames_measured",
+      "label": "팔레트 3개 실측 frame",
+      "value": null,
+      "unit": "m",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "팔레트 1·2·3 상면 중심을 각각 실측한다(3 × x·y·z). 자재가 놓이는 면 기준이다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "팔레트 1·2·3 상면 중심 각각의 x·y·z 실측 기록(3세트)",
+        "자재가 놓이는 면 기준임을 보여주는 사진",
+        "측정 도구와 판독값"
+      ]
+    },
+    {
+      "key": "conveyor_frame_measured",
+      "label": "컨베이어 실측 frame",
+      "value": null,
+      "unit": "m",
+      "source": "",
+      "measurement_method": "none",
+      "captured_at": "",
+      "verified": false,
+      "evidence_path": "",
+      "needed": "컨베이어 벨트 상면 중심의 x·y·z와 벨트 폭·가드레일 안쪽 간격을 실측한다. 배치 허용 구역이 이 값에서 나온다.",
+      "operator": "",
+      "derivation": "",
+      "evidence_requirements": [
+        "벨트 상면 중심 x·y·z 실측 기록",
+        "벨트 폭과 가드레일 **안쪽** 간격 실측",
+        "측정 도구와 판독값 사진"
+      ]
+    }
+  ],
+  "note": "이 파일이 채워지는 것만으로 실기 실행이 열리지 않는다. 체크리스트(config/hardware/fr3wms_2f85_mounting_checklist.json)와 실기 어댑터 설정이 함께 필요하다."
+}

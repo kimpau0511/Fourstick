@@ -1,0 +1,34 @@
+{
+  "schema_version": "2.0",
+  "plan_id": "plan_0002",
+  "robot_id": "robot_a",
+  "profile_id": "profile_a",
+  "profile_version": "1.0",
+  "created_at": 1000.0,
+  "ttl_sec": 60.0,
+  "utterance": "obj_a를 집어서 들고 있어",
+  "terminal_hold": "obj_a",
+  "steps": [
+    {
+      "skill": "home",
+      "args": {}
+    },
+    {
+      "skill": "move",
+      "args": {
+        "to": "loc_a"
+      }
+    },
+    {
+      "skill": "pick",
+      "args": {
+        "object": "obj_a",
+        "from": "loc_a"
+      }
+    },
+    {
+      "skill": "home",
+      "args": {}
+    }
+  ]
+}

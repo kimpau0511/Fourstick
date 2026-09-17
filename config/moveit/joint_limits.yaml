@@ -1,0 +1,30 @@
+# FR3-WMS arm-only 관절 제한 정책 (8-07). 우리 파일이다.
+#
+# **위치·속도 제한 수치를 여기에 적지 않는다.** 외부 공식 URDF의 <limit>이 단일
+# 출처이고, scripts/build_moveit_params.py가 URDF에서 읽어 채운다.
+# (MoveIt은 이 파일에 항목이 있으면 URDF 값을 덮어쓴다. has_velocity_limits를
+#  빼면 속도 한계가 0으로 덮여 시작 상태가 "범위 밖"이 된다 — 실측으로 확인했다.)
+#
+# 가속도: 공식 자료에 없다(URDF에도 FAIRINO 매뉴얼에도 없다). 그러나 MoveIt의
+# 시간 파라미터화(TOTG)는 가속도 제한을 요구한다. 그래서 **공식 규격이 아니라
+# 시뮬레이션 시간 파라미터화용 우리 설정값**을 아래 규칙으로 파생한다.
+# CapabilityProfile의 max_acceleration은 그대로 unavailable이다 —
+# 파생값을 로봇 규격으로 올리지 않는다.
+default_velocity_scaling_factor: 0.2
+default_acceleration_scaling_factor: 0.2
+
+velocity_limits:
+  source: urdf
+  note: 외부 공식 URDF의 velocity 값을 그대로 쓴다
+
+acceleration_limits:
+  source: derived_for_simulation
+  # 파생 규칙: URDF 속도 제한 × factor_per_sec (1초에 속도 제한의 절반에 도달)
+  rule: urdf_velocity_limit_times_factor
+  factor_per_sec: 0.5
+  basis: 공식 가속도 자료 미확보. 시뮬레이션 시간 파라미터화 전용 설정값이다
+  verified: false
+
+jerk_limits:
+  enabled: false
+  basis: 공식 자료 미확보

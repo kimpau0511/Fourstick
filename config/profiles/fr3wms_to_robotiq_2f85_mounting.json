@@ -1,0 +1,1091 @@
+{
+  "mounting_profile_id": "fr3wms_to_robotiq_2f85",
+  "mounting_profile_version": "0.3.1-measured-dense-aperture",
+  "arm_flange_frame": "tool_Link",
+  "gripper_base_frame": "robotiq_85_base_link",
+  "xyz": [
+    {
+      "value": 0.0,
+      "unit": "m",
+      "provenance": {
+        "source_kind": "mesh_measurement",
+        "source": "FAIRINO frcobot_ros2 fairino_description/urdf/FR3WMS.urdf + meshes/FR3WMS/collision/wrist3_Link.STL (측정) / robotiq/ros robotiq_description ur_to_robotiq_adapter.urdf.xacro + meshes/visual/ur_to_robotiq_adapter.dae (측정)",
+        "source_version": "main / v1.1.0",
+        "source_commit": "5bed0b0263c8 / 3ab3befccaa1",
+        "status": "verified",
+        "checked_at": 1789536513.116,
+        "note": "두 부품 모두 플랜지 축에 대해 축대칭이다(FR3 중심 구멍 ø31.5 중심 오차 <0.1 mm, 커플링 스커트 ø63/75 동심). 따라서 x=0이다"
+      }
+    },
+    {
+      "value": 0.0,
+      "unit": "m",
+      "provenance": {
+        "source_kind": "mesh_measurement",
+        "source": "FAIRINO frcobot_ros2 fairino_description/urdf/FR3WMS.urdf + meshes/FR3WMS/collision/wrist3_Link.STL (측정) / robotiq/ros robotiq_description ur_to_robotiq_adapter.urdf.xacro + meshes/visual/ur_to_robotiq_adapter.dae (측정)",
+        "source_version": "main / v1.1.0",
+        "source_commit": "5bed0b0263c8 / 3ab3befccaa1",
+        "status": "verified",
+        "checked_at": 1789536513.116,
+        "note": "x와 같은 근거(축대칭)"
+      }
+    },
+    {
+      "value": 0.011,
+      "unit": "m",
+      "provenance": {
+        "source_kind": "official_urdf_and_mesh",
+        "source": "robotiq/ros robotiq_description ur_to_robotiq_adapter.urdf.xacro + meshes/visual/ur_to_robotiq_adapter.dae (측정)",
+        "source_version": "v1.1.0",
+        "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+        "status": "verified",
+        "checked_at": 1789536513.116,
+        "note": "커플링 두께. 출처 2개가 일치한다 — 공식 xacro의 gripper_side_joint origin z=0.011과 시각 메시의 +11 mm 평면. 로봇측 접촉면(z=0)과 FR3 플랜지면이 맞닿는다(측정 z=0.100)"
+      }
+    }
+  ],
+  "rpy": [
+    {
+      "value": 0.0,
+      "unit": "rad",
+      "provenance": {
+        "source_kind": "mesh_measurement",
+        "source": "FAIRINO frcobot_ros2 fairino_description/urdf/FR3WMS.urdf + meshes/FR3WMS/collision/wrist3_Link.STL (측정) / robotiq/ros robotiq_description ur_to_robotiq_adapter.urdf.xacro + meshes/visual/ur_to_robotiq_adapter.dae (측정)",
+        "source_version": "main / v1.1.0",
+        "source_commit": "5bed0b0263c8 / 3ab3befccaa1",
+        "status": "verified",
+        "checked_at": 1789536513.116,
+        "note": "두 접촉면이 모두 축에 수직한 평면이다(측정). 기울기가 없다"
+      }
+    },
+    {
+      "value": 0.0,
+      "unit": "rad",
+      "provenance": {
+        "source_kind": "mesh_measurement",
+        "source": "FAIRINO frcobot_ros2 fairino_description/urdf/FR3WMS.urdf + meshes/FR3WMS/collision/wrist3_Link.STL (측정) / robotiq/ros robotiq_description ur_to_robotiq_adapter.urdf.xacro + meshes/visual/ur_to_robotiq_adapter.dae (측정)",
+        "source_version": "main / v1.1.0",
+        "source_commit": "5bed0b0263c8 / 3ab3befccaa1",
+        "status": "verified",
+        "checked_at": 1789536513.116,
+        "note": "roll과 같은 근거"
+      }
+    },
+    {
+      "value": null,
+      "unit": "rad",
+      "provenance": {
+        "source_kind": "",
+        "source": "",
+        "source_version": "",
+        "source_commit": "",
+        "status": "unavailable",
+        "checked_at": 1789536513.116,
+        "note": "**장착 방향(yaw) 미확보.** FR3 위치 결정 핀 구멍은 90°에 있고 (측정, 잔차 0), 커플링의 핀/키 위치는 공식 메시에 없다. 공식 어댑터 xacro의 rotation 기본값은 0이지만 실물 확인이 아니다. 도면 또는 조립 사진이 필요하다"
+      }
+    }
+  ],
+  "adapter_plate_id": "GRP-CPL-062 (robotiq_description ur_to_robotiq_adapter)",
+  "tcp_frame": "robotiq_85_tcp",
+  "tcp_xyz": [
+    {
+      "value": 0.0,
+      "unit": "m",
+      "provenance": {
+        "source_kind": "official_urdf_fk",
+        "source": "robotiq/ros robotiq_description robotiq_2f_85_macro.urdf.xacro + meshes/left_finger_tip (측정)",
+        "source_version": "v1.1.0",
+        "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+        "status": "verified",
+        "checked_at": 1789536513.116,
+        "note": "두 패드면 사이 중앙. 평행 그리퍼이므로 개구와 무관하게 축 위다"
+      }
+    },
+    {
+      "value": -0.0008,
+      "unit": "m",
+      "provenance": {
+        "source_kind": "mesh_measurement",
+        "source": "robotiq/ros robotiq_description robotiq_2f_85_macro.urdf.xacro + meshes/left_finger_tip (측정)",
+        "source_version": "v1.1.0",
+        "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+        "status": "verified",
+        "checked_at": 1789536513.116,
+        "note": "패드면 y 범위 -0.01180~0.01020의 중앙(측정). 메시 비대칭에서 온다"
+      }
+    },
+    {
+      "value": 0.130346,
+      "unit": "m",
+      "provenance": {
+        "source_kind": "official_urdf_fk",
+        "source": "robotiq/ros robotiq_description robotiq_2f_85_macro.urdf.xacro + meshes/left_finger_tip (측정)",
+        "source_version": "v1.1.0",
+        "source_commit": "3ab3befccaa10468f80803ba687105c9d224d567",
+        "status": "verified",
+        "checked_at": 1789536513.116,
+        "note": "robotiq_85_base_link 기준 패드 접촉면 중앙 z (개구 0.084997 m = 관절 0 rad 기준). 개구가 바뀌면 z도 바뀐다 — 표는 aperture_table 참조"
+      }
+    }
+  ],
+  "environment": "simulation",
+  "verified": false,
+  "unverified_items": [
+    "mounting_yaw_rotation",
+    "coupling_bolt_pattern_and_centering",
+    "coupling_real_mass_and_inertia",
+    "pad_rubber_thickness_and_friction",
+    "physical_assembly_photo_or_drawing"
+  ],
+  "notes": "**상태: 측정 기반 부분 확정(yaw 미확보).** 2026-09-16 공식 자산 측정으로 FR3 플랜지 치수(면 z=0.100 m, 외경 ø61.93, 볼트 PCD 50.0 4×ø6.06 @ 45/135/225/315, 핀 ø6.0 @90°, 중심 ø31.5)와 커플링 두께 11 mm를 확인했다. 그래서 **xyz와 roll·pitch는 verified**다. 그러나 커플링의 볼트 패턴·중심 보스·핀 위치가 공식 메시에 없어 **yaw는 unavailable**이고, 커플링 질량(공식 0.01 kg)은 ø75×14 mm 금속 부품으로서 비현실적이라 자리표로 본다. 따라서 이 Profile은 complete가 아니고 pick·place는 비활성이다. 근거 전체는 reports/mounting/interface_comparison.json에 있다.",
+  "coupling": {
+    "model": "Robotiq GRP-CPL-062",
+    "status": "measured_partial",
+    "thickness_m": 0.011,
+    "thickness_sources": [
+      "robotiq_description ur_to_robotiq_adapter.urdf.xacro gripper_side_joint z",
+      "robotiq_description meshes/visual/ur_to_robotiq_adapter.dae +11 mm 평면 측정"
+    ],
+    "outer_diameter_m": 0.075,
+    "skirt_inner_diameter_m": 0.063,
+    "skirt_depth_m": 0.003,
+    "mass_kg": 0.01,
+    "mass_status": "declared_implausible",
+    "mass_note": "공식 xacro 값 0.01 kg. ø75×14 mm 금속 커플링으로서 비현실적이다 — 실물 계량 또는 데이터시트가 필요하다",
+    "inertia_kg_m2": {
+      "ixx": 4.4e-05,
+      "ixy": 0.0,
+      "ixz": 0.0,
+      "iyy": 2.7e-05,
+      "iyz": 0.0,
+      "izz": 2.7e-05
+    },
+    "inertia_status": "declared",
+    "collision_mesh": "robotiq_description meshes/collision/ur_to_robotiq_adapter.stl",
+    "visual_mesh": "robotiq_description meshes/visual/ur_to_robotiq_adapter.dae",
+    "bolt_pattern": null,
+    "centering_feature": null,
+    "checked_at": 1789536513.116
+  },
+  "gripper_official": {
+    "command_joint": "robotiq_85_left_knuckle_joint",
+    "command_range_rad": [
+      0.0,
+      0.8
+    ],
+    "closed_position_rad": 0.7929,
+    "mimic_joints": {
+      "robotiq_85_right_knuckle_joint": {
+        "joint": "robotiq_85_left_knuckle_joint",
+        "multiplier": -1.0
+      },
+      "robotiq_85_left_inner_knuckle_joint": {
+        "joint": "robotiq_85_left_knuckle_joint",
+        "multiplier": 1.0
+      },
+      "robotiq_85_right_inner_knuckle_joint": {
+        "joint": "robotiq_85_left_knuckle_joint",
+        "multiplier": -1.0
+      },
+      "robotiq_85_left_finger_tip_joint": {
+        "joint": "robotiq_85_left_knuckle_joint",
+        "multiplier": -1.0
+      },
+      "robotiq_85_right_finger_tip_joint": {
+        "joint": "robotiq_85_left_knuckle_joint",
+        "multiplier": 1.0
+      }
+    },
+    "total_mass_kg": 0.920864,
+    "official_manual_mass_kg": 0.925,
+    "max_speed_m_s": 0.15,
+    "max_force_n": 235.0,
+    "pad_face": {
+      "x_local_m": -0.02526,
+      "z_range_local_m": [
+        0.01302,
+        0.05102
+      ],
+      "y_range_local_m": [
+        -0.0118,
+        0.0102
+      ],
+      "area_m2": 0.000827,
+      "source": "robotiq_description meshes/{collision,visual}/left_finger_tip.{stl,dae} 측정"
+    },
+    "aperture_at_open_m": 0.084997,
+    "aperture_at_closed_m": 0.000969,
+    "source": "/home/asd/external/robotiq_ros/grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+    "aperture_check": {
+      "model_pad_gap_at_open_m": 0.084997,
+      "official_max_opening_m": 0.085,
+      "difference_m": 3e-06,
+      "model_pad_gap_at_closed_m": 0.000969,
+      "verdict": "공식 최대 개구 0.085 m와 모델 패드 간격이 3 µm 안에서 일치한다",
+      "note": "이전에 기록한 0.084837 m는 patch 간격이 아니라 다른 정의(tip separation)였다. 패드 접촉면 기준으로 다시 재니 일치한다"
+    }
+  },
+  "comparison": {
+    "checked_at": 1789536999.079,
+    "conclusion": "FR3 플랜지 치수는 측정으로 확정됐고(PCD 50.0 · 4×ø6.06 · 핀 ø6.0 @90° · 중심 ø31.5 · 면 z=0.100), 커플링 두께 11 mm도 공식 출처 2개로 확인됐다. 그러나 **커플링의 볼트 패턴·중심 보스·핀 위치와 실질량, 장착 yaw는 자산으로 확인할 수 없다.** 따라서 장착은 custom adapter 조건부이며 'pick/place 활성화' 조건을 충족하지 못한다.",
+    "items": [
+      {
+        "항목": "FR3 플랜지면 위치",
+        "측정값": "wrist3_Link 기준 z = 0.1 m",
+        "기준값": "공식 URDF tool 조인트 origin z = 0.1 m",
+        "근거": "FAIRINO FR3WMS.urdf + wrist3_Link.STL 측정",
+        "판정": "일치",
+        "비고": "tool_Link 프레임이 공구 플랜지면이라는 뜻이다"
+      },
+      {
+        "항목": "FR3 플랜지 외경",
+        "측정값": "ø0.06193 m",
+        "기준값": "—(비교 기준 없음)",
+        "근거": "wrist3_Link.STL 측정",
+        "판정": "측정됨",
+        "비고": "어댑터 스커트 안지름과 대조해 간섭을 본다"
+      },
+      {
+        "항목": "FR3 볼트 PCD",
+        "측정값": "ø0.049981 m",
+        "기준값": "ISO 9409-1-50-4-M6 지정값 ø0.050 m",
+        "근거": "wrist3_Link.STL 측정 (표준 원문 미보유 — 지정 코드가 뜻하는 값)",
+        "판정": "일치",
+        "비고": ""
+      },
+      {
+        "항목": "FR3 볼트 구멍 수·지름·각도",
+        "측정값": "4개 ø0.006056 m @ [45.0, 135.01, 225.0, 315.0]",
+        "기준값": "4개 M6 @ 45°/135°/225°/315°",
+        "근거": "wrist3_Link.STL 측정 + FAIRINO 매뉴얼(4×M6, 조임 8 N·m)",
+        "판정": "일치",
+        "비고": "나사 규격(M6)은 매뉴얼 문구로만 확인된다. 메시는 나사산을 담지 않는다"
+      },
+      {
+        "항목": "FR3 위치 결정 핀 구멍",
+        "측정값": "1개 @ [90.0] (같은 PCD)",
+        "기준값": "매뉴얼: ø6 위치 결정 핀 구멍",
+        "근거": "wrist3_Link.STL 측정(잔차 0) + FAIRINO 매뉴얼",
+        "판정": "일치",
+        "비고": "핀 각도가 장착 방향(yaw)을 정한다"
+      },
+      {
+        "항목": "FR3 중심 맞춤 지름",
+        "측정값": "ø[0.0315, 0.062911, 0.078909] m (면에서는 ø[0.032463, 0.06193])",
+        "기준값": "ISO 9409-1 A50 지정값 ø0.0315 m",
+        "근거": "wrist3_Link.STL 측정",
+        "판정": "일치",
+        "비고": "플랜지면의 큰 지름은 진입 챔퍼다. 보스가 아니라 **구멍**이다"
+      },
+      {
+        "항목": "커플링 두께(로봇면→그리퍼면)",
+        "측정값": "0.011 m (메시)",
+        "기준값": "[0.0, 0.0, 0.011] m (공식 xacro)",
+        "근거": "robotiq_description 어댑터 xacro + 시각 메시 측정(출처 2개)",
+        "판정": "일치",
+        "비고": "이 값이 장착 transform의 z다"
+      },
+      {
+        "항목": "커플링 스커트 안지름 vs FR3 플랜지 외경",
+        "측정값": "스커트 안지름 øNone / 로봇면 최소 반경 0.001345",
+        "기준값": "FR3 플랜지 외경 ø0.06193",
+        "근거": "두 메시 측정",
+        "판정": "간섭 없음(추정)",
+        "비고": "스커트가 FR3 플랜지 돌출부(6 mm)를 감싼다. 실물 확인 필요"
+      },
+      {
+        "항목": "커플링 볼트 패턴·중심 보스",
+        "측정값": "메시에 없음(단순화된 형상)",
+        "기준값": "확인 불가",
+        "근거": "robotiq_description 시각·충돌 메시 측정",
+        "판정": "확인 불가",
+        "비고": "**GRP-CPL-062가 FR3에 실제로 체결되는지 자산으로 확인할 수 없다.** 도면 또는 실물 측정이 필요하다"
+      },
+      {
+        "항목": "2F-85 장착면 볼트 패턴",
+        "측정값": "[{'pcd_m': 0.062769, 'hole_count': 4, 'hole_diameter_m': 0.0055, 'hole_diameter_spread_m': 0.0, 'angles_deg': [30.65, 149.35, 210.65, 329.35]}]",
+        "기준값": "—(그리퍼 고유 패턴)",
+        "근거": "robotiq_base.dae 측정",
+        "판정": "측정됨",
+        "비고": "커플링의 그리퍼 측이 맞물릴 패턴. GRP-CPL-062 키트의 M5와 일치한다"
+      },
+      {
+        "항목": "UR5e 플랜지(교차 확인)",
+        "측정값": "면 z=0.098802",
+        "기준값": "Robotiq 어댑터가 설계된 상대",
+        "근거": "ur_description wrist3.stl 측정",
+        "판정": "확인 불가",
+        "비고": "UR 충돌 메시도 단순화돼 볼트 패턴이 없다 — 패턴 교차 확인 실패"
+      },
+      {
+        "항목": "커플링 질량",
+        "측정값": "0.01 kg (공식 xacro)",
+        "기준값": "제품 데이터시트 미확보",
+        "근거": "/home/asd/external/robotiq_ros/grippers/robotiq_description/urdf/ur_to_robotiq_adapter.urdf.xacro",
+        "판정": "값 있으나 비현실적",
+        "비고": "ø75 × 14 mm 금속 커플링이 10 g일 수 없다. 공식 기본값이지만 자리표(placeholder)로 본다 — 실물 계량 또는 데이터시트가 필요하다"
+      },
+      {
+        "항목": "2F-85 질량",
+        "측정값": "0.920864 kg (공식 URDF 링크 합)",
+        "기준값": "공식 매뉴얼 0.925 kg",
+        "근거": "/home/asd/external/robotiq_ros/grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+        "판정": "모델 오차 4.1 g",
+        "비고": "충돌·기구학은 URDF 값, API 계약은 매뉴얼 값을 쓴다"
+      },
+      {
+        "항목": "2F-85 명령 조인트",
+        "측정값": "robotiq_85_left_knuckle_joint [0.0, 0.8] rad",
+        "기준값": "닫힘 위치 0.7929 rad (공식 파라미터)",
+        "근거": "/home/asd/external/robotiq_ros/grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro",
+        "판정": "확인됨",
+        "비고": "mimic 5개"
+      },
+      {
+        "항목": "장착 방향(yaw)",
+        "측정값": "확인 불가",
+        "기준값": "공식 어댑터 xacro 기본값 rotation=0",
+        "근거": "/home/asd/external/robotiq_ros/grippers/robotiq_description/urdf/ur_to_robotiq_adapter.urdf.xacro",
+        "판정": "미확인",
+        "비고": "FR3 핀 구멍이 90°에 있고 커플링의 키/핀 위치를 알 수 없다. 도면 또는 조립 사진이 필요하다"
+      }
+    ],
+    "evidence": "reports/mounting/interface_comparison.json",
+    "measurements": "reports/mounting/flange_measurements.json"
+  },
+  "transform_derivation": {
+    "status": "translation_verified_rotation_blocked",
+    "chain": [
+      {
+        "step": 1,
+        "from": "wrist3_Link",
+        "to": "tool_Link",
+        "xyz_m": [
+          0.0,
+          -0.00038104,
+          0.1
+        ],
+        "rpy_rad": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "source": "FAIRINO FR3WMS.urdf의 tool 고정 조인트",
+        "status": "verified_from_official_urdf",
+        "note": "측정한 플랜지면 z=0.1 m와 일치"
+      },
+      {
+        "step": 2,
+        "from": "tool_Link",
+        "to": "adapter_mount_link",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rpy_rad": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "source": "두 접촉면이 같은 평면이다(FR3 플랜지면 = 커플링 로봇측 면)",
+        "status": "verified_from_measurement",
+        "note": "identity를 가정한 것이 아니라 **면이 맞닿는다는 측정 결과**다. yaw는 3단계에서 따로 다룬다"
+      },
+      {
+        "step": 3,
+        "from": "adapter_mount_link",
+        "to": "robotiq_85_base_link",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.011
+        ],
+        "rpy_rad": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "source": "robotiq_description 어댑터 xacro gripper_side_joint + 시각 메시의 +11 mm 평면",
+        "status": "verified_translation_unverified_rotation",
+        "note": "z는 출처 2개로 확인됐다. yaw는 미확인(핀·키 위치 미확보)"
+      }
+    ],
+    "aperture_table": [
+      {
+        "joint_value_rad": 0.0,
+        "left_finger_tip_origin_m": [
+          0.067759,
+          0.0,
+          0.098326
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.042499,
+        "pad_gap_m": 0.084997,
+        "tcp_pad_center_z_m": 0.130346,
+        "pad_tip_plane_z_m": 0.149346,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.02,
+        "left_finger_tip_origin_m": [
+          0.066883,
+          0.0,
+          0.099061
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.041623,
+        "pad_gap_m": 0.083246,
+        "tcp_pad_center_z_m": 0.131081,
+        "pad_tip_plane_z_m": 0.150081,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.04,
+        "left_finger_tip_origin_m": [
+          0.065993,
+          0.0,
+          0.099777
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.040733,
+        "pad_gap_m": 0.081465,
+        "tcp_pad_center_z_m": 0.131797,
+        "pad_tip_plane_z_m": 0.150797,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.06,
+        "left_finger_tip_origin_m": [
+          0.065088,
+          0.0,
+          0.100476
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.039828,
+        "pad_gap_m": 0.079656,
+        "tcp_pad_center_z_m": 0.132496,
+        "pad_tip_plane_z_m": 0.151496,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.08,
+        "left_finger_tip_origin_m": [
+          0.06417,
+          0.0,
+          0.101157
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.03891,
+        "pad_gap_m": 0.07782,
+        "tcp_pad_center_z_m": 0.133177,
+        "pad_tip_plane_z_m": 0.152177,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.1,
+        "left_finger_tip_origin_m": [
+          0.063238,
+          0.0,
+          0.101819
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.037978,
+        "pad_gap_m": 0.075956,
+        "tcp_pad_center_z_m": 0.133839,
+        "pad_tip_plane_z_m": 0.152839,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.12,
+        "left_finger_tip_origin_m": [
+          0.062293,
+          0.0,
+          0.102462
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.037033,
+        "pad_gap_m": 0.074067,
+        "tcp_pad_center_z_m": 0.134482,
+        "pad_tip_plane_z_m": 0.153482,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.14,
+        "left_finger_tip_origin_m": [
+          0.061336,
+          0.0,
+          0.103086
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.036076,
+        "pad_gap_m": 0.072152,
+        "tcp_pad_center_z_m": 0.135106,
+        "pad_tip_plane_z_m": 0.154106,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.16,
+        "left_finger_tip_origin_m": [
+          0.060366,
+          0.0,
+          0.103691
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.035106,
+        "pad_gap_m": 0.070212,
+        "tcp_pad_center_z_m": 0.135711,
+        "pad_tip_plane_z_m": 0.154711,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.18,
+        "left_finger_tip_origin_m": [
+          0.059385,
+          0.0,
+          0.104277
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.034125,
+        "pad_gap_m": 0.068249,
+        "tcp_pad_center_z_m": 0.136297,
+        "pad_tip_plane_z_m": 0.155297,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.2,
+        "left_finger_tip_origin_m": [
+          0.058391,
+          0.0,
+          0.104843
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.033131,
+        "pad_gap_m": 0.066263,
+        "tcp_pad_center_z_m": 0.136863,
+        "pad_tip_plane_z_m": 0.155863,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.22,
+        "left_finger_tip_origin_m": [
+          0.057387,
+          0.0,
+          0.105388
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.032127,
+        "pad_gap_m": 0.064254,
+        "tcp_pad_center_z_m": 0.137408,
+        "pad_tip_plane_z_m": 0.156408,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.24,
+        "left_finger_tip_origin_m": [
+          0.056372,
+          0.0,
+          0.105914
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.031112,
+        "pad_gap_m": 0.062224,
+        "tcp_pad_center_z_m": 0.137934,
+        "pad_tip_plane_z_m": 0.156934,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.26,
+        "left_finger_tip_origin_m": [
+          0.055347,
+          0.0,
+          0.106419
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.030087,
+        "pad_gap_m": 0.060174,
+        "tcp_pad_center_z_m": 0.138439,
+        "pad_tip_plane_z_m": 0.157439,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.28,
+        "left_finger_tip_origin_m": [
+          0.054312,
+          0.0,
+          0.106904
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.029052,
+        "pad_gap_m": 0.058103,
+        "tcp_pad_center_z_m": 0.138924,
+        "pad_tip_plane_z_m": 0.157924,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.3,
+        "left_finger_tip_origin_m": [
+          0.053267,
+          0.0,
+          0.107368
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.028007,
+        "pad_gap_m": 0.056014,
+        "tcp_pad_center_z_m": 0.139388,
+        "pad_tip_plane_z_m": 0.158388,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.32,
+        "left_finger_tip_origin_m": [
+          0.052213,
+          0.0,
+          0.10781
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.026953,
+        "pad_gap_m": 0.053907,
+        "tcp_pad_center_z_m": 0.13983,
+        "pad_tip_plane_z_m": 0.15883,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.34,
+        "left_finger_tip_origin_m": [
+          0.051151,
+          0.0,
+          0.108232
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.025891,
+        "pad_gap_m": 0.051782,
+        "tcp_pad_center_z_m": 0.140252,
+        "pad_tip_plane_z_m": 0.159252,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.36,
+        "left_finger_tip_origin_m": [
+          0.05008,
+          0.0,
+          0.108632
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.02482,
+        "pad_gap_m": 0.049641,
+        "tcp_pad_center_z_m": 0.140652,
+        "pad_tip_plane_z_m": 0.159652,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.38,
+        "left_finger_tip_origin_m": [
+          0.049002,
+          0.0,
+          0.109011
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.023742,
+        "pad_gap_m": 0.047484,
+        "tcp_pad_center_z_m": 0.141031,
+        "pad_tip_plane_z_m": 0.160031,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.4,
+        "left_finger_tip_origin_m": [
+          0.047916,
+          0.0,
+          0.109368
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.022656,
+        "pad_gap_m": 0.045313,
+        "tcp_pad_center_z_m": 0.141388,
+        "pad_tip_plane_z_m": 0.160388,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.42,
+        "left_finger_tip_origin_m": [
+          0.046824,
+          0.0,
+          0.109704
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.021564,
+        "pad_gap_m": 0.043127,
+        "tcp_pad_center_z_m": 0.141724,
+        "pad_tip_plane_z_m": 0.160724,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.44,
+        "left_finger_tip_origin_m": [
+          0.045724,
+          0.0,
+          0.110017
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.020464,
+        "pad_gap_m": 0.040929,
+        "tcp_pad_center_z_m": 0.142037,
+        "pad_tip_plane_z_m": 0.161037,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.46,
+        "left_finger_tip_origin_m": [
+          0.044619,
+          0.0,
+          0.110309
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.019359,
+        "pad_gap_m": 0.038718,
+        "tcp_pad_center_z_m": 0.142329,
+        "pad_tip_plane_z_m": 0.161329,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.48,
+        "left_finger_tip_origin_m": [
+          0.043508,
+          0.0,
+          0.110578
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.018248,
+        "pad_gap_m": 0.036497,
+        "tcp_pad_center_z_m": 0.142598,
+        "pad_tip_plane_z_m": 0.161598,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.5,
+        "left_finger_tip_origin_m": [
+          0.042392,
+          0.0,
+          0.110825
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.017132,
+        "pad_gap_m": 0.034265,
+        "tcp_pad_center_z_m": 0.142845,
+        "pad_tip_plane_z_m": 0.161845,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.52,
+        "left_finger_tip_origin_m": [
+          0.041272,
+          0.0,
+          0.11105
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.016012,
+        "pad_gap_m": 0.032024,
+        "tcp_pad_center_z_m": 0.14307,
+        "pad_tip_plane_z_m": 0.16207,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.54,
+        "left_finger_tip_origin_m": [
+          0.040147,
+          0.0,
+          0.111252
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.014887,
+        "pad_gap_m": 0.029774,
+        "tcp_pad_center_z_m": 0.143272,
+        "pad_tip_plane_z_m": 0.162272,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.56,
+        "left_finger_tip_origin_m": [
+          0.039018,
+          0.0,
+          0.111431
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.013758,
+        "pad_gap_m": 0.027516,
+        "tcp_pad_center_z_m": 0.143451,
+        "pad_tip_plane_z_m": 0.162451,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.58,
+        "left_finger_tip_origin_m": [
+          0.037886,
+          0.0,
+          0.111588
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.012626,
+        "pad_gap_m": 0.025252,
+        "tcp_pad_center_z_m": 0.143608,
+        "pad_tip_plane_z_m": 0.162608,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.6,
+        "left_finger_tip_origin_m": [
+          0.036751,
+          0.0,
+          0.111723
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.011491,
+        "pad_gap_m": 0.022982,
+        "tcp_pad_center_z_m": 0.143743,
+        "pad_tip_plane_z_m": 0.162743,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.62,
+        "left_finger_tip_origin_m": [
+          0.035613,
+          0.0,
+          0.111834
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.010353,
+        "pad_gap_m": 0.020707,
+        "tcp_pad_center_z_m": 0.143854,
+        "pad_tip_plane_z_m": 0.162854,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.64,
+        "left_finger_tip_origin_m": [
+          0.034474,
+          0.0,
+          0.111923
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.009214,
+        "pad_gap_m": 0.018428,
+        "tcp_pad_center_z_m": 0.143943,
+        "pad_tip_plane_z_m": 0.162943,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.66,
+        "left_finger_tip_origin_m": [
+          0.033333,
+          0.0,
+          0.111989
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.008073,
+        "pad_gap_m": 0.016145,
+        "tcp_pad_center_z_m": 0.144009,
+        "pad_tip_plane_z_m": 0.163009,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.68,
+        "left_finger_tip_origin_m": [
+          0.032191,
+          0.0,
+          0.112032
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.006931,
+        "pad_gap_m": 0.013861,
+        "tcp_pad_center_z_m": 0.144052,
+        "pad_tip_plane_z_m": 0.163052,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.7,
+        "left_finger_tip_origin_m": [
+          0.031048,
+          0.0,
+          0.112053
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.005788,
+        "pad_gap_m": 0.011575,
+        "tcp_pad_center_z_m": 0.144073,
+        "pad_tip_plane_z_m": 0.163073,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.72,
+        "left_finger_tip_origin_m": [
+          0.029905,
+          0.0,
+          0.11205
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.004645,
+        "pad_gap_m": 0.00929,
+        "tcp_pad_center_z_m": 0.14407,
+        "pad_tip_plane_z_m": 0.16307,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.74,
+        "left_finger_tip_origin_m": [
+          0.028762,
+          0.0,
+          0.112025
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.003502,
+        "pad_gap_m": 0.007004,
+        "tcp_pad_center_z_m": 0.144045,
+        "pad_tip_plane_z_m": 0.163045,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.76,
+        "left_finger_tip_origin_m": [
+          0.02762,
+          0.0,
+          0.111977
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.00236,
+        "pad_gap_m": 0.00472,
+        "tcp_pad_center_z_m": 0.143997,
+        "pad_tip_plane_z_m": 0.162997,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.78,
+        "left_finger_tip_origin_m": [
+          0.026479,
+          0.0,
+          0.111906
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.001219,
+        "pad_gap_m": 0.002439,
+        "tcp_pad_center_z_m": 0.143926,
+        "pad_tip_plane_z_m": 0.162926,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.7929,
+        "left_finger_tip_origin_m": [
+          0.025744,
+          0.0,
+          0.111848
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 0.000484,
+        "pad_gap_m": 0.000969,
+        "tcp_pad_center_z_m": 0.143868,
+        "pad_tip_plane_z_m": 0.162868,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      },
+      {
+        "joint_value_rad": 0.8,
+        "left_finger_tip_origin_m": [
+          0.02534,
+          0.0,
+          0.111812
+        ],
+        "finger_tip_frame_rotation_rad": 0.0,
+        "pad_face_x_m": 8e-05,
+        "pad_gap_m": 0.00016,
+        "tcp_pad_center_z_m": 0.143832,
+        "pad_tip_plane_z_m": 0.162832,
+        "method": "공식 2F-85 xacro의 조인트 오프셋·mimic 배수로 계산한 평면 FK + finger_tip 메시에서 측정한 패드 접촉면",
+        "note": "누적 회전이 0이므로 패드면은 모든 개구에서 base의 yz면과 평행하다(평행 그리퍼). 개구는 두 패드면 사이 거리다"
+      }
+    ],
+    "method": "공식 URDF 조인트 오프셋 + 공식 메시 평면·구멍 측정. identity를 가정하지 않았다 — 접촉면이 같은 평면이라는 측정 결과로 2단계를 0으로 둔다",
+    "blocked_inputs": [
+      {
+        "필요 입력": "GRP-CPL-062 커플링 도면(또는 실물 측정)",
+        "왜": "로봇 측 볼트 패턴·중심 보스·핀 위치를 자산에서 확인할 수 없다",
+        "받을 값": [
+          "로봇 측 볼트 PCD와 구멍 지름·개수",
+          "중심 보스/구멍 지름과 높이",
+          "위치 결정 핀 구멍 각도(로봇 측 기준)",
+          "그리퍼 측 볼트 PCD(2F-85 ø62.77과 대조)",
+          "전체 높이(로봇 접촉면 → 그리퍼 접촉면)"
+        ],
+        "대체 방법": "실물이 있으면 버니어 캘리퍼로 PCD·구멍 지름·높이를 재고, 핀 구멍 위치를 로봇 플랜지의 핀 구멍과 맞춘 사진을 남긴다"
+      },
+      {
+        "필요 입력": "커플링 실측 질량(저울) 또는 데이터시트",
+        "왜": "공식 xacro의 0.01 kg은 자리표로 보인다(ø75×14 mm 금속)",
+        "받을 값": [
+          "질량(g 단위)",
+          "가능하면 재질(알루미늄/스틸)"
+        ],
+        "대체 방법": "재질과 형상이 확인되면 부피×밀도로 계산하고 계산 근거를 남긴다"
+      },
+      {
+        "필요 입력": "조립 상태 사진 또는 도면상의 장착 방향",
+        "왜": "yaw(플랜지 기준 그리퍼 회전)를 확인할 수 없다",
+        "받을 값": [
+          "FR3 핀 구멍(90°)과 그리퍼 손가락 열림 방향의 관계",
+          "또는 조립체를 위에서 찍은 사진 1장(플랜지 핀 구멍이 보이게)"
+        ],
+        "대체 방법": "없다. yaw를 추정하면 TCP 방향과 pick 접근 방향이 틀어진다"
+      },
+      {
+        "필요 입력": "고무 패드 두께·마찰(제품 실물)",
+        "왜": "메시의 패드면은 강체 형상이다. 실제 고무 패드의 압축·마찰은 파지력 판정에 영향을 준다",
+        "받을 값": [
+          "패드 재질",
+          "압축 두께",
+          "마찰계수(시험값)"
+        ],
+        "대체 방법": "없다. 시뮬레이션에서는 형상 접촉만 관측하고 파지력을 주장하지 않는다"
+      }
+    ],
+    "aperture_table_note": "0.02 rad 간격 + 공식 닫힘 위치. 런타임(core/aperture_model)이 보간해 쓴다. 표를 만든 스크립트: scripts/analyze_mounting_interface.py"
+  }
+}

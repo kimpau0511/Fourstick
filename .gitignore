@@ -1,0 +1,18 @@
+# 가상환경과 캐시
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 평가용 원본 음성 — 용량이 크고 실행 기록과 분리 보관한다
+fixtures/stt/audio/
+
+# 문서는 저장소에 올리지 않는다
+md/
+
+# 웹 목업(Figma 산출물)과 임시 메모
+html/목업/
+html/임시.txt
+
+# 측정 산출물 — 스크립트로 재생성된다
+reports/

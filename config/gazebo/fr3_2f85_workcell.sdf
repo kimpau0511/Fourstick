@@ -1,0 +1,454 @@
+<?xml version="1.0" ?>
+<!-- **생성 파일이다. 손으로 고치지 않는다.**
+     출처: config/workcell/fr3_2f85_workcell.json
+     생성: python3 scripts/build_workcell_world.py
+
+     forstick2 8-08 FR3-WMS + GRP-CPL-062 + 2F-85 **작업 셀**.
+     기존 world를 건드리지 않는다:
+      - config/gazebo/fr3_cell.sdf       (arm-only 기준선, 체크섬 보호)
+      - config/gazebo/fr3_2f85_cell.sdf  (단순 조립 셀)
+
+     치수·좌표는 **시뮬레이션 설계값**이다. 실제 설치 현장 실측값이 아니다.
+     모든 형상에 visual과 collision을 둘 다 둔다. -->
+<sdf version="1.9">
+  <world name="forstick2_fr3_2f85_workcell">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 6 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.4 0.3 -0.9</direction>
+    </light>
+
+  <model name="floor">
+    <static>true</static>
+    <link name="link">
+      <collision name="collision">
+        <geometry><plane><normal>0 0 1</normal><size>8.0 8.0</size></plane></geometry>
+      </collision>
+      <visual name="visual">
+        <geometry><plane><normal>0 0 1</normal><size>8.0 8.0</size></plane></geometry>
+        <material>
+          <ambient>0.256 0.272 0.30400000000000005 1.0</ambient>
+          <diffuse>0.32 0.34 0.38 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="robot_pedestal">
+    <static>true</static>
+    <pose>0.0 0.0 0.0 0 0 0</pose>
+    <link name="base_plate">
+      <pose>0.0 0.0 0.015 0 0 0</pose>
+      <collision name="base_plate_collision">
+        <geometry><box><size>0.52 0.52 0.03</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="base_plate_visual">
+        <geometry><box><size>0.52 0.52 0.03</size></box></geometry>
+        <material>
+          <ambient>0.168 0.18 0.20400000000000001 1.0</ambient>
+          <diffuse>0.28 0.3 0.34 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="column">
+      <pose>0.0 0.0 0.38 0 0 0</pose>
+      <collision name="column_collision">
+        <geometry><box><size>0.36 0.36 0.7</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="column_visual">
+        <geometry><box><size>0.36 0.36 0.7</size></box></geometry>
+        <material>
+          <ambient>0.33 0.34199999999999997 0.36 1.0</ambient>
+          <diffuse>0.55 0.57 0.6 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="workbench">
+    <static>true</static>
+    <pose>0.78 0.0 0.0 0 0 0</pose>
+    <link name="top">
+      <pose>0.0 0.0 0.73 0 0 0</pose>
+      <collision name="top_collision">
+        <geometry><box><size>0.9 0.64 0.04</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="top_visual">
+        <geometry><box><size>0.9 0.64 0.04</size></box></geometry>
+        <material>
+          <ambient>0.372 0.3 0.216 1.0</ambient>
+          <diffuse>0.62 0.5 0.36 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="leg_front_left">
+      <pose>0.39 0.26 0.355 0 0 0</pose>
+      <collision name="leg_front_left_collision">
+        <geometry><box><size>0.06 0.06 0.71</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="leg_front_left_visual">
+        <geometry><box><size>0.06 0.06 0.71</size></box></geometry>
+        <material>
+          <ambient>0.21 0.222 0.24 1.0</ambient>
+          <diffuse>0.35 0.37 0.4 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="leg_front_right">
+      <pose>0.39 -0.26 0.355 0 0 0</pose>
+      <collision name="leg_front_right_collision">
+        <geometry><box><size>0.06 0.06 0.71</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="leg_front_right_visual">
+        <geometry><box><size>0.06 0.06 0.71</size></box></geometry>
+        <material>
+          <ambient>0.21 0.222 0.24 1.0</ambient>
+          <diffuse>0.35 0.37 0.4 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="leg_back_left">
+      <pose>-0.39 0.26 0.355 0 0 0</pose>
+      <collision name="leg_back_left_collision">
+        <geometry><box><size>0.06 0.06 0.71</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="leg_back_left_visual">
+        <geometry><box><size>0.06 0.06 0.71</size></box></geometry>
+        <material>
+          <ambient>0.21 0.222 0.24 1.0</ambient>
+          <diffuse>0.35 0.37 0.4 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="leg_back_right">
+      <pose>-0.39 -0.26 0.355 0 0 0</pose>
+      <collision name="leg_back_right_collision">
+        <geometry><box><size>0.06 0.06 0.71</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="leg_back_right_visual">
+        <geometry><box><size>0.06 0.06 0.71</size></box></geometry>
+        <material>
+          <ambient>0.21 0.222 0.24 1.0</ambient>
+          <diffuse>0.35 0.37 0.4 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="pallet_1">
+    <static>true</static>
+    <pose>0.5 0.2 0.79 0 0 0</pose>
+    <link name="tray">
+      <pose>0.0 0.0 -0.02 0 0 0</pose>
+      <collision name="tray_collision">
+        <geometry><box><size>0.16 0.16 0.04</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="tray_visual">
+        <geometry><box><size>0.16 0.16 0.04</size></box></geometry>
+        <material>
+          <ambient>0.144 0.27 0.40800000000000003 1.0</ambient>
+          <diffuse>0.24 0.45 0.68 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="pallet_2">
+    <static>true</static>
+    <pose>0.5 0.0 0.79 0 0 0</pose>
+    <link name="tray">
+      <pose>0.0 0.0 -0.02 0 0 0</pose>
+      <collision name="tray_collision">
+        <geometry><box><size>0.16 0.16 0.04</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="tray_visual">
+        <geometry><box><size>0.16 0.16 0.04</size></box></geometry>
+        <material>
+          <ambient>0.144 0.33 0.27 1.0</ambient>
+          <diffuse>0.24 0.55 0.45 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="pallet_3">
+    <static>true</static>
+    <pose>0.5 -0.2 0.79 0 0 0</pose>
+    <link name="tray">
+      <pose>0.0 0.0 -0.02 0 0 0</pose>
+      <collision name="tray_collision">
+        <geometry><box><size>0.16 0.16 0.04</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="tray_visual">
+        <geometry><box><size>0.16 0.16 0.04</size></box></geometry>
+        <material>
+          <ambient>0.36 0.27 0.144 1.0</ambient>
+          <diffuse>0.6 0.45 0.24 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="conveyor">
+    <static>true</static>
+    <pose>0.25 -0.5 0.7 0 0 0</pose>
+    <link name="belt">
+      <pose>0.0 0.0 -0.025 0 0 0</pose>
+      <collision name="belt_collision">
+        <geometry><box><size>0.8 0.3 0.05</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="belt_visual">
+        <geometry><box><size>0.8 0.3 0.05</size></box></geometry>
+        <material>
+          <ambient>0.096 0.108 0.12 1.0</ambient>
+          <diffuse>0.16 0.18 0.2 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="frame_left">
+      <pose>0.0 0.17 -0.01 0 0 0</pose>
+      <collision name="frame_left_collision">
+        <geometry><box><size>0.8 0.04 0.08</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="frame_left_visual">
+        <geometry><box><size>0.8 0.04 0.08</size></box></geometry>
+        <material>
+          <ambient>0.3 0.312 0.33 1.0</ambient>
+          <diffuse>0.5 0.52 0.55 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="frame_right">
+      <pose>0.0 -0.17 -0.01 0 0 0</pose>
+      <collision name="frame_right_collision">
+        <geometry><box><size>0.8 0.04 0.08</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="frame_right_visual">
+        <geometry><box><size>0.8 0.04 0.08</size></box></geometry>
+        <material>
+          <ambient>0.3 0.312 0.33 1.0</ambient>
+          <diffuse>0.5 0.52 0.55 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="leg_left">
+      <pose>0.34 0.0 -0.375 0 0 0</pose>
+      <collision name="leg_left_collision">
+        <geometry><box><size>0.06 0.06 0.65</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="leg_left_visual">
+        <geometry><box><size>0.06 0.06 0.65</size></box></geometry>
+        <material>
+          <ambient>0.21 0.222 0.24 1.0</ambient>
+          <diffuse>0.35 0.37 0.4 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+    <link name="leg_right">
+      <pose>-0.34 0.0 -0.375 0 0 0</pose>
+      <collision name="leg_right_collision">
+        <geometry><box><size>0.06 0.06 0.65</size></box></geometry>
+        <surface>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="leg_right_visual">
+        <geometry><box><size>0.06 0.06 0.65</size></box></geometry>
+        <material>
+          <ambient>0.21 0.222 0.24 1.0</ambient>
+          <diffuse>0.35 0.37 0.4 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="material_a">
+    <pose>0.5 0.2 0.8400000000000001 0 0 0</pose>
+    <link name="body">
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.00020833</ixx><iyy>0.00020833</iyy><izz>0.00008333</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
+        <surface>
+          <friction><ode><mu>0.8</mu><mu2>0.8</mu2></ode></friction>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
+        <material>
+          <ambient>0.54 0.3 0.06 1.0</ambient>
+          <diffuse>0.9 0.5 0.1 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="material_b">
+    <pose>0.5 0.0 0.8400000000000001 0 0 0</pose>
+    <link name="body">
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.00020833</ixx><iyy>0.00020833</iyy><izz>0.00008333</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
+        <surface>
+          <friction><ode><mu>0.8</mu><mu2>0.8</mu2></ode></friction>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
+        <material>
+          <ambient>0.21 0.44999999999999996 0.57 1.0</ambient>
+          <diffuse>0.35 0.75 0.95 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="material_c">
+    <pose>0.5 -0.2 0.8400000000000001 0 0 0</pose>
+    <link name="body">
+      <inertial>
+        <mass>0.2</mass>
+        <inertia>
+          <ixx>0.00020833</ixx><iyy>0.00020833</iyy><izz>0.00008333</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
+        <surface>
+          <friction><ode><mu>0.8</mu><mu2>0.8</mu2></ode></friction>
+          <contact><collide_bitmask>1</collide_bitmask></contact>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
+        <material>
+          <ambient>0.36 0.54 0.24 1.0</ambient>
+          <diffuse>0.6 0.9 0.4 1.0</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+  <model name="scene_camera">
+    <static>true</static>
+    <pose>1.375 -2.282 1.313 0 0.2800 2.0000</pose>
+    <link name="link">
+      <sensor name="camera" type="camera">
+        <update_rate>6.0</update_rate>
+        <always_on>1</always_on>
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image><width>480</width><height>360</height></image>
+          <clip><near>0.05</near><far>30</far></clip>
+          <!-- 서버가 프레임을 이 디렉터리에 저장한다. GUI와 무관하다. -->
+          <save enabled="true"><path>/tmp/forstick2_workcell/scene_camera</path></save>
+        </camera>
+      </sensor>
+    </link>
+  </model>
+
+    <gui fullscreen="0">
+      <plugin filename="MinimalScene" name="3D View">
+        <gz-gui>
+          <title>forstick2 · FR3-WMS + 2F-85 workcell</title>
+          <property type="bool" key="showTitleBar">false</property>
+        </gz-gui>
+        <!-- 실행 스크립트의 GUI 렌더 엔진 인자와 맞춘다. -->
+        <engine>ogre2</engine>
+        <scene>scene</scene>
+        <ambient_light>0.5 0.5 0.5</ambient_light>
+        <background_color>0.18 0.20 0.24</background_color>
+        <camera_pose>1.375 -2.282 1.313 0 0.2800 2.0000</camera_pose>
+      </plugin>
+      <plugin filename="GzSceneManager" name="Scene Manager"/>
+      <!-- 화면에 실제로 무엇이 그려지는지 파일로 확인한다.
+           /gui/screenshot 서비스는 인자를 디렉터리로 받는다. -->
+      <plugin filename="Screenshot" name="Screenshot"/>
+      <plugin filename="InteractiveViewControl" name="Interactive view control"/>
+      <plugin filename="CameraTracking" name="Camera Tracking"/>
+      <plugin filename="WorldControl" name="World control">
+        <gz-gui>
+          <anchors target="3D View">
+            <line own="left" target="left"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+        <use_event>true</use_event>
+      </plugin>
+      <plugin filename="WorldStats" name="World stats">
+        <gz-gui>
+          <anchors target="3D View">
+            <line own="right" target="right"/>
+            <line own="bottom" target="bottom"/>
+          </anchors>
+        </gz-gui>
+      </plugin>
+      <plugin filename="ComponentInspector" name="Component inspector"/>
+      <plugin filename="EntityTree" name="Entity tree"/>
+    </gui>
+  </world>
+</sdf>

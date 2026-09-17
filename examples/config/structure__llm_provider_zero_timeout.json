@@ -1,0 +1,26 @@
+{
+  "config_version": "timeout-1.0",
+  "base_url": "http://localhost:8000/v1",
+  "model_id": "qwen3-8b-awq",
+  "quantization": "awq",
+  "max_model_len": 3072,
+  "max_tokens": 512,
+  "request_timeout_sec": 0,
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "seed": 7,
+  "thinking_mode": "off",
+  "structured_output": "response_format_json_schema",
+  "api_key_env": null,
+  "verify_model_id": true,
+  "provenance": {
+    "model_id": "사용자가 지정한 첫 기준 모델 Qwen/Qwen3-8B-AWQ. vLLM --served-model-name qwen3-8b-awq",
+    "quantization": "config.json quantization_config.quant_method=awq (4bit, group_size 128). vLLM 로그 quantization=auto_awq",
+    "max_model_len": "3072 — 8188MiB GPU에서 KV 캐시 0.6GiB로 4096을 띄우지 못했다(필요 0.56GiB vs 가용 0.52GiB, util 0.85). util 0.86 + 3072으로 기동 성공",
+    "max_tokens": "512 — 관측된 계획 응답이 159~300 토큰. 잘림(finish_reason=length)을 피할 여유",
+    "request_timeout_sec": "180 — 실측 지연 최대값 기준으로 정한다. 평가 실행 후 측정값으로 갱신",
+    "temperature": "0.0 — 계획 생성은 재현성이 중요하다. 반복 안정성을 측정 지표로 둔다",
+    "thinking_mode": "off — 사용자가 non-thinking으로 지정. chat_template_kwargs.enable_thinking=false",
+    "structured_output": "response_format json_schema — vLLM 0.28.0에서 동작 확인. 폐기 예정 옵션(guided_json)을 쓰지 않는다"
+  }
+}

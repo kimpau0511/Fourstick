@@ -1,0 +1,752 @@
+{
+  "schema": "forstick2.workcell/1",
+  "workcell_id": "fr3_2f85_workcell",
+  "workcell_version": "0.1.0-design",
+  "world_name": "forstick2_fr3_2f85_workcell",
+  "gz_partition": "forstick2_fr3_workcell",
+  "ros_domain_id": 44,
+  "is_simulated": true,
+  "real_hardware_verified": false,
+  "note": [
+    "**시뮬레이션 작업 셀 설계값이다.** 실제 설치 현장의 실측값이 아니다.",
+    "치수·좌표는 우리가 정한 설계값이고, source_kind=simulation_workcell_design,",
+    "verified=false로 표시한다. 실제 셀을 만들면 실측값으로 대체한다.",
+    "로봇 장착 관련 값(장착 transform·yaw·질량·TCP)은 여기서 만들지 않는다 —",
+    "config/profiles/fr3wms_to_robotiq_2f85_mounting.json과",
+    "config/mounting/grp_cpl_062_inputs.json이 유일한 출처다.",
+    "SDF는 scripts/build_workcell_world.py가 이 파일에서 생성한다 —",
+    "world와 설정이 어긋나지 않게 하려고 손으로 쓰지 않는다."
+  ],
+  "provenance_defaults": {
+    "source_kind": "simulation_workcell_design",
+    "source": "forstick2 8-08 작업 셀 설계 (우리 설계값)",
+    "measurement_method": "design_choice",
+    "verified": false,
+    "captured_at": "2026-09-16"
+  },
+  "frames": {
+    "world": {
+      "parent": null,
+      "xyz_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "바닥면 z=0. 모든 좌표의 기준이다"
+    },
+    "pedestal_frame": {
+      "parent": "world",
+      "xyz_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "받침대 바닥면 중심. world 원점과 같다"
+    },
+    "fr3_base_frame": {
+      "parent": "pedestal_frame",
+      "xyz_m": [
+        0.0,
+        0.0,
+        0.73
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "받침대 상판면(베이스 플레이트 0.03 + 기둥 0.70). FR3 base_link가 여기 놓인다"
+    },
+    "workbench_frame": {
+      "parent": "world",
+      "xyz_m": [
+        0.78,
+        0.0,
+        0.0
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "작업대 바닥 중심"
+    },
+    "pallet_1_frame": {
+      "parent": "world",
+      "xyz_m": [
+        0.5,
+        0.2,
+        0.79
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "1번 팔레트 상면 중심(자재가 놓이는 면)"
+    },
+    "pallet_2_frame": {
+      "parent": "world",
+      "xyz_m": [
+        0.5,
+        0.0,
+        0.79
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "2번 팔레트 상면 중심"
+    },
+    "pallet_3_frame": {
+      "parent": "world",
+      "xyz_m": [
+        0.5,
+        -0.2,
+        0.79
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "3번 팔레트 상면 중심"
+    },
+    "conveyor_frame": {
+      "parent": "world",
+      "xyz_m": [
+        0.25,
+        -0.5,
+        0.7
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "컨베이어 벨트 상면 중심"
+    },
+    "material_a_frame": {
+      "parent": "pallet_1_frame",
+      "xyz_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "A자재 중심(팔레트 상면 + 자재 높이 절반)"
+    },
+    "material_b_frame": {
+      "parent": "pallet_2_frame",
+      "xyz_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "B자재 중심"
+    },
+    "material_c_frame": {
+      "parent": "pallet_3_frame",
+      "xyz_m": [
+        0.0,
+        0.0,
+        0.05
+      ],
+      "rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "note": "C자재 중심"
+    }
+  },
+  "models": {
+    "floor": {
+      "kind": "ground_plane",
+      "static": true,
+      "size_m": [
+        8.0,
+        8.0
+      ],
+      "color_rgba": [
+        0.32,
+        0.34,
+        0.38,
+        1.0
+      ]
+    },
+    "robot_pedestal": {
+      "kind": "pedestal",
+      "static": true,
+      "frame": "pedestal_frame",
+      "note": "실제 설치 구조물로 모델링한다. 로봇을 띄우기 위한 장치가 아니다",
+      "parts": [
+        {
+          "name": "base_plate",
+          "size_m": [
+            0.52,
+            0.52,
+            0.03
+          ],
+          "center_xyz_m": [
+            0.0,
+            0.0,
+            0.015
+          ],
+          "color_rgba": [
+            0.28,
+            0.3,
+            0.34,
+            1.0
+          ]
+        },
+        {
+          "name": "column",
+          "size_m": [
+            0.36,
+            0.36,
+            0.7
+          ],
+          "center_xyz_m": [
+            0.0,
+            0.0,
+            0.38
+          ],
+          "color_rgba": [
+            0.55,
+            0.57,
+            0.6,
+            1.0
+          ]
+        }
+      ]
+    },
+    "workbench": {
+      "kind": "furniture",
+      "static": true,
+      "frame": "workbench_frame",
+      "parts": [
+        {
+          "name": "top",
+          "size_m": [
+            0.9,
+            0.64,
+            0.04
+          ],
+          "center_xyz_m": [
+            0.0,
+            0.0,
+            0.73
+          ],
+          "color_rgba": [
+            0.62,
+            0.5,
+            0.36,
+            1.0
+          ]
+        },
+        {
+          "name": "leg_front_left",
+          "size_m": [
+            0.06,
+            0.06,
+            0.71
+          ],
+          "center_xyz_m": [
+            0.39,
+            0.26,
+            0.355
+          ],
+          "color_rgba": [
+            0.35,
+            0.37,
+            0.4,
+            1.0
+          ]
+        },
+        {
+          "name": "leg_front_right",
+          "size_m": [
+            0.06,
+            0.06,
+            0.71
+          ],
+          "center_xyz_m": [
+            0.39,
+            -0.26,
+            0.355
+          ],
+          "color_rgba": [
+            0.35,
+            0.37,
+            0.4,
+            1.0
+          ]
+        },
+        {
+          "name": "leg_back_left",
+          "size_m": [
+            0.06,
+            0.06,
+            0.71
+          ],
+          "center_xyz_m": [
+            -0.39,
+            0.26,
+            0.355
+          ],
+          "color_rgba": [
+            0.35,
+            0.37,
+            0.4,
+            1.0
+          ]
+        },
+        {
+          "name": "leg_back_right",
+          "size_m": [
+            0.06,
+            0.06,
+            0.71
+          ],
+          "center_xyz_m": [
+            -0.39,
+            -0.26,
+            0.355
+          ],
+          "color_rgba": [
+            0.35,
+            0.37,
+            0.4,
+            1.0
+          ]
+        }
+      ]
+    },
+    "pallet_1": {
+      "kind": "pallet",
+      "static": true,
+      "frame": "pallet_1_frame",
+      "resource_id": "loc_pallet_1",
+      "parts": [
+        {
+          "name": "tray",
+          "size_m": [
+            0.16,
+            0.16,
+            0.04
+          ],
+          "center_xyz_m": [
+            0.0,
+            0.0,
+            -0.02
+          ],
+          "color_rgba": [
+            0.24,
+            0.45,
+            0.68,
+            1.0
+          ]
+        }
+      ]
+    },
+    "pallet_2": {
+      "kind": "pallet",
+      "static": true,
+      "frame": "pallet_2_frame",
+      "resource_id": "loc_pallet_2",
+      "parts": [
+        {
+          "name": "tray",
+          "size_m": [
+            0.16,
+            0.16,
+            0.04
+          ],
+          "center_xyz_m": [
+            0.0,
+            0.0,
+            -0.02
+          ],
+          "color_rgba": [
+            0.24,
+            0.55,
+            0.45,
+            1.0
+          ]
+        }
+      ]
+    },
+    "pallet_3": {
+      "kind": "pallet",
+      "static": true,
+      "frame": "pallet_3_frame",
+      "resource_id": "loc_pallet_3",
+      "parts": [
+        {
+          "name": "tray",
+          "size_m": [
+            0.16,
+            0.16,
+            0.04
+          ],
+          "center_xyz_m": [
+            0.0,
+            0.0,
+            -0.02
+          ],
+          "color_rgba": [
+            0.6,
+            0.45,
+            0.24,
+            1.0
+          ]
+        }
+      ]
+    },
+    "conveyor": {
+      "kind": "conveyor",
+      "static": true,
+      "frame": "conveyor_frame",
+      "resource_id": "loc_conveyor",
+      "note": "벨트는 움직이지 않는다 — 반송 구동은 이 단계 범위가 아니다",
+      "parts": [
+        {
+          "name": "belt",
+          "size_m": [
+            0.8,
+            0.3,
+            0.05
+          ],
+          "center_xyz_m": [
+            0.0,
+            0.0,
+            -0.025
+          ],
+          "color_rgba": [
+            0.16,
+            0.18,
+            0.2,
+            1.0
+          ]
+        },
+        {
+          "name": "frame_left",
+          "size_m": [
+            0.8,
+            0.04,
+            0.08
+          ],
+          "center_xyz_m": [
+            0.0,
+            0.17,
+            -0.01
+          ],
+          "color_rgba": [
+            0.5,
+            0.52,
+            0.55,
+            1.0
+          ]
+        },
+        {
+          "name": "frame_right",
+          "size_m": [
+            0.8,
+            0.04,
+            0.08
+          ],
+          "center_xyz_m": [
+            0.0,
+            -0.17,
+            -0.01
+          ],
+          "color_rgba": [
+            0.5,
+            0.52,
+            0.55,
+            1.0
+          ]
+        },
+        {
+          "name": "leg_left",
+          "size_m": [
+            0.06,
+            0.06,
+            0.65
+          ],
+          "center_xyz_m": [
+            0.34,
+            0.0,
+            -0.375
+          ],
+          "color_rgba": [
+            0.35,
+            0.37,
+            0.4,
+            1.0
+          ]
+        },
+        {
+          "name": "leg_right",
+          "size_m": [
+            0.06,
+            0.06,
+            0.65
+          ],
+          "center_xyz_m": [
+            -0.34,
+            0.0,
+            -0.375
+          ],
+          "color_rgba": [
+            0.35,
+            0.37,
+            0.4,
+            1.0
+          ]
+        }
+      ]
+    },
+    "material_a": {
+      "kind": "material",
+      "static": false,
+      "frame": "material_a_frame",
+      "resource_id": "mat_a",
+      "size_m": [
+        0.05,
+        0.05,
+        0.1
+      ],
+      "mass_kg": 0.2,
+      "friction": 0.8,
+      "color_rgba": [
+        0.9,
+        0.5,
+        0.1,
+        1.0
+      ],
+      "note": "질량·마찰은 **시뮬레이션 전용 값**이다. 실제 자재 규격이 아니다"
+    },
+    "material_b": {
+      "kind": "material",
+      "static": false,
+      "frame": "material_b_frame",
+      "resource_id": "mat_b",
+      "size_m": [
+        0.05,
+        0.05,
+        0.1
+      ],
+      "mass_kg": 0.2,
+      "friction": 0.8,
+      "color_rgba": [
+        0.35,
+        0.75,
+        0.95,
+        1.0
+      ],
+      "note": "질량·마찰은 시뮬레이션 전용 값이다"
+    },
+    "material_c": {
+      "kind": "material",
+      "static": false,
+      "frame": "material_c_frame",
+      "resource_id": "mat_c",
+      "size_m": [
+        0.05,
+        0.05,
+        0.1
+      ],
+      "mass_kg": 0.2,
+      "friction": 0.8,
+      "color_rgba": [
+        0.6,
+        0.9,
+        0.4,
+        1.0
+      ],
+      "note": "질량·마찰은 시뮬레이션 전용 값이다"
+    }
+  },
+  "resource_map": [
+    {
+      "korean": "1번 팔레트",
+      "resource_id": "loc_pallet_1",
+      "gazebo_model": "pallet_1",
+      "frame": "pallet_1_frame"
+    },
+    {
+      "korean": "2번 팔레트",
+      "resource_id": "loc_pallet_2",
+      "gazebo_model": "pallet_2",
+      "frame": "pallet_2_frame"
+    },
+    {
+      "korean": "3번 팔레트",
+      "resource_id": "loc_pallet_3",
+      "gazebo_model": "pallet_3",
+      "frame": "pallet_3_frame"
+    },
+    {
+      "korean": "컨베이어",
+      "resource_id": "loc_conveyor",
+      "gazebo_model": "conveyor",
+      "frame": "conveyor_frame"
+    },
+    {
+      "korean": "A자재",
+      "resource_id": "mat_a",
+      "gazebo_model": "material_a",
+      "frame": "material_a_frame"
+    },
+    {
+      "korean": "B자재",
+      "resource_id": "mat_b",
+      "gazebo_model": "material_b",
+      "frame": "material_b_frame"
+    },
+    {
+      "korean": "C자재",
+      "resource_id": "mat_c",
+      "gazebo_model": "material_c",
+      "frame": "material_c_frame"
+    }
+  ],
+  "tcp_targets": {
+    "_note": "TCP(robotiq_85_tcp) 목표 자세. world 기준. 관절값은 여기 두지 않는다 — scripts/derive_workcell_poses.py가 수치 IK로 풀고 FK·충돌로 검증한 뒤 config/workcell/fr3_2f85_workcell_poses.json에 기록한다",
+    "approach_clearance_m": 0.14,
+    "place_clearance_m": 0.06,
+    "tool_down_rpy_rad": [
+      3.14159265,
+      0.0,
+      0.0
+    ],
+    "targets": {
+      "pallet_1_approach": {
+        "frame": "pallet_1_frame",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.14
+        ]
+      },
+      "pallet_1_pick": {
+        "frame": "material_a_frame",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "pallet_2_approach": {
+        "frame": "pallet_2_frame",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.14
+        ]
+      },
+      "pallet_2_pick": {
+        "frame": "material_b_frame",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "pallet_3_approach": {
+        "frame": "pallet_3_frame",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.14
+        ]
+      },
+      "pallet_3_pick": {
+        "frame": "material_c_frame",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "conveyor_approach": {
+        "frame": "conveyor_frame",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.18
+        ]
+      },
+      "conveyor_place": {
+        "frame": "conveyor_frame",
+        "xyz_m": [
+          0.0,
+          0.0,
+          0.11
+        ]
+      }
+    },
+    "conveyor_approach_clearance_m": 0.18,
+    "clearance_source": "IK 도달 가능성 훑기(scripts/derive_workcell_poses.py). 팔레트 위 +0.16 m 이상, 컨베이어 위 +0.25 m 이상에서는 TCP를 수직 하향으로 유지한 해가 허용치(0.002 m / 0.05 rad) 안에 들지 않는다 — 임의로 고른 값이 아니다",
+    "clearance_measurement_method": "ik_feasibility_sweep",
+    "clearance_verified": true,
+    "clearance_captured_at": "2026-09-16"
+  },
+  "collision_margins_m": {
+    "_note": "실행 차단 판정에 쓰는 여유. 근거는 측정 결과와 컨트롤러 허용치다",
+    "floor_clearance_min_m": 0.02,
+    "environment_clearance_min_m": 0.01,
+    "source": "arm 관절 허용치 0.05 rad에서 손목 반경 0.05 m 기준 최대 위치 오차 약 0.0025 m + 메시 점군 표본 오차 여유",
+    "measurement_method": "derived_from_controller_tolerance",
+    "verified": false
+  },
+  "gui_camera_pose": "1.375 -2.282 1.313 0 0.2800 2.0000",
+  "gui_camera_note": "FR3 arm·커플링·2F-85·받침대·작업대·팔레트 3개·자재 3개·컨베이어의 경계상자 8꼭짓점이 모두 카메라 절두체 안에 들어오는 자세다. 화면 가장자리 여유 3.0°를 요구해 골랐다. 검증: scripts/check_workcell_view.py (reports/workcell/gui_view.json)",
+  "scene_camera": {
+    "enabled": true,
+    "note": "GUI 렌더러와 **별개로 서버가 렌더링하는** 장면 카메라다. 웹 화면이 이 프레임을 실시간으로 받는다(ros_gz_bridge → rclpy). 해상도·주기는 소프트웨어 렌더링 비용과 실시간성의 절충이다 — 800×600@0.5Hz에서 480×360@6Hz로 바꿨다.",
+    "pose": "1.375 -2.282 1.313 0 0.2800 2.0000",
+    "width": 480,
+    "height": 360,
+    "update_rate_hz": 6.0,
+    "horizontal_fov_rad": 1.047,
+    "save_path": "/tmp/forstick2_workcell/scene_camera",
+    "ros_topic": "/scene_camera/image"
+  },
+  "grasp": {
+    "_note": "파지 단계 판정에 필요한 **선언**. 값을 여기서 만들지 않는다 — 링크 이름은 URDF에서, 물체 치수는 models에서 온다. 파지 높이는 scripts/derive_grasp_poses.py가 MoveIt 접촉 훑기로 측정해 config/workcell/fr3_2f85_workcell_grasp.json에 적는다",
+    "gripper_command_joint": "robotiq_85_left_knuckle_joint",
+    "tcp_link": "robotiq_85_tcp",
+    "pad_links": [
+      "robotiq_85_left_finger_tip_link",
+      "robotiq_85_right_finger_tip_link"
+    ],
+    "pad_links_source": "공식 robotiq_description URDF의 손가락 패드 링크. 물체에 닿는 것이 허용되는 링크는 이 둘뿐이다 — 몸통·너클이 물체에 닿으면 충돌로 본다",
+    "pad_links_verified": true,
+    "pad_links_captured_at": "2026-09-16",
+    "sweep_step_m": 0.005,
+    "sweep_step_source": "IK 위치 허용치 0.002 m보다 크고 자재 높이 0.1 m를 20단계로 나누는 간격. 측정 간격이며 파지 높이가 아니다"
+  }
+}

@@ -1,0 +1,38 @@
+# FR3-WMS arm-only 컨트롤러 (8-03). 우리 파일이다.
+#
+# use_sim_time을 켠다 — Gazebo가 /clock을 내보내고, 컨트롤러가 시뮬레이션
+# 시간으로 판정해야 한다. 실제 시간으로 돌면 목표 도달 판정이 어긋난다.
+controller_manager:
+  ros__parameters:
+    update_rate: 200  # Hz
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    arm_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+joint_state_broadcaster:
+  ros__parameters:
+    use_sim_time: true
+
+arm_trajectory_controller:
+  ros__parameters:
+    use_sim_time: true
+    joints:
+      - j1
+      - j2
+      - j3
+      - j4
+      - j5
+      - j6
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    # 목표 도달 판정은 우리 검증기가 Gazebo 관측값으로 한다.
+    # 컨트롤러 결과(SUCCEEDED)를 성공 근거로 쓰지 않는다.
+    allow_partial_joints_goal: false
+    open_loop_control: false
