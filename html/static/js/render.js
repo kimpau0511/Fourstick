@@ -533,6 +533,7 @@ export function renderSimCommandArea(state) {
     ? `<p class="hint"><span class="hint-mark">⬡</span>
          시뮬레이션 명령 예: "A 자재를 컨베이어로 옮겨줘" · "A 자재를 원래 자리로 돌려놔" ·
          "돌려놔"(컨베이어에 하나만 있을 때) · "이어서 해줘" · "멈춰".
+         자재는 색 이름으로도 부를 수 있습니다 — 쓸 수 있는 이름은 시연 카드의 자재 목록에 있습니다.
          그 밖의 명령은 기존 계획 생성으로 갑니다(집기·놓기 차단은 그대로입니다).</p>`
     : renderSimCommandResult(state, result);
   return `<div class="rows">${body}</div>`;

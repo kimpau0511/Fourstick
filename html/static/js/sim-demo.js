@@ -227,6 +227,13 @@ function renderRunning(state, running) {
     <button class="btn danger block" type="button" data-sim-action="stop">■ 시연 정지</button>`;
 }
 
+/** 자재를 부를 수 있는 색 이름. 서버가 셀 설정 선언에서 실어 보낸 것만 보인다. */
+function colorNames(material) {
+  const colors = material.korean_colors || [];
+  if (!colors.length) return '';
+  return ` <span class="robot-pick-sub">(${esc(colors.join(' · '))})</span>`;
+}
+
 function renderMaterials(status, locked) {
   const labels = status.action_labels || {};
   const order = ['transfer', 'return', 'resume_preflight', 'resume', 'restore'];
@@ -245,7 +252,7 @@ function renderMaterials(status, locked) {
         })
         .join('');
       return `<div style="margin-top:10px">
-          <div class="row"><span class="truncate">${esc(material.korean)} <span class="mono robot-pick-sub">${esc(material.model)}</span></span>${tag}</div>
+          <div class="row"><span class="truncate">${esc(material.korean)}${colorNames(material)} <span class="mono robot-pick-sub">${esc(material.model)}</span></span>${tag}</div>
           <div class="pill-row" style="margin-top:6px">${buttons}</div>
         </div>`;
     })

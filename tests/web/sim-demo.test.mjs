@@ -15,6 +15,7 @@ import { createSimDemoCard, renderSimDemoCard } from '../../html/static/js/sim-d
 
 const MATERIALS = [
   { model: 'material_a', korean: 'A자재', support_model: 'pallet_1',
+    korean_colors: ['주황', '오렌지'],
     record: null, actions: { transfer: true, return: false, resume_preflight: false,
       resume: false, restore: false } },
   { model: 'material_b', korean: 'B자재', support_model: 'pallet_2',
@@ -141,4 +142,11 @@ test('사전검증은 확인 없이 보내고, 시연 정지는 정지 요청을
   await h.api.stop();
   assert.ok(h.calls.some((c) => c.method === 'POST' && c.path === '/v1/sim-demo/stop'));
   assert.match(h.api.state.notice, /정지를 요청했습니다/);
+});
+
+test('자재 목록에 서버가 보낸 색 이름이 보인다', () => {
+  const html = card(status());
+  // 선언이 있는 자재만 색 이름이 붙는다 — 화면이 색 이름을 만들어 내지 않는다.
+  assert.match(html, /A자재[\s\S]*?주황 · 오렌지/);
+  assert.doesNotMatch(html, /B자재[\s\S]*?\(.*?·.*?\)<\/span> <span class="mono"/);
 });

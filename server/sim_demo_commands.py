@@ -9,6 +9,7 @@ pick/place 차단은 이 모듈과 무관하다. 여기서 만드는 것은 기�
 | 발화 | 결정 |
 |---|---|
 | "A 자재를 컨베이어로 옮겨줘" | RUN transfer(material_a) |
+| "주황 자재를 컨베이어로 옮겨줘" | 같은 것 — 색 이름은 셀 설정 선언에서 온다 |
 | "A 자재를 원래 자리로 돌려놔" | RUN return(material_a) — held_on_target일 때만 |
 | "돌려놔"(자재 생략) | RUN return — 컨베이어에 유지 중인 자재가 **하나**일 때만 |
 | "멈춰" / "정지" / "스톱" | STOP — 즉시 시연 정지 요청 |
@@ -58,7 +59,15 @@ def _normalize(text: str) -> str:
 
 
 def material_aliases(workcell: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
-    """자재 모델 → 발화에서 찾을 이름들. 셀 설정의 한글 이름에서만 만든다."""
+    """자재 모델 → 발화에서 찾을 이름들. 셀 설정의 한글 이름에서만 만든다.
+
+    색 이름도 셀 설정이 선언한 것(`resource_map[].korean_colors`)만 쓴다. 모델의
+    `color_rgba`에서 색 이름을 **추측하지 않는다** — RGB를 한국어 낱말로 옮기는
+    규칙을 코드가 만들면 그건 선언이 아니라 추측이다.
+
+    색은 항상 `<색>자재` 꼴로만 붙인다. 낱말 하나("주황")가 자재를 가리키게 하면
+    다른 대상을 말한 발화까지 자재 언급으로 끌려온다.
+    """
     out: dict[str, tuple[str, ...]] = {}
     for row in workcell.get("resource_map", ()):
         model = row.get("gazebo_model")
@@ -70,6 +79,10 @@ def material_aliases(workcell: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
         if match:
             for reading in _LETTER_READINGS.get(match.group(1), ()):
                 names.add(f"{reading}자재")
+        for color in row.get("korean_colors") or ():
+            color = _normalize(color)
+            if color:
+                names.add(f"{color}자재")
         out[model] = tuple(sorted(n for n in names if n))
     return out
 

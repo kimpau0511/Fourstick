@@ -618,19 +618,42 @@
       "korean": "A자재",
       "resource_id": "mat_a",
       "gazebo_model": "material_a",
-      "frame": "material_a_frame"
+      "frame": "material_a_frame",
+      "korean_colors": [
+        "주황",
+        "주황색",
+        "오렌지",
+        "오렌지색"
+      ]
     },
     {
       "korean": "B자재",
       "resource_id": "mat_b",
       "gazebo_model": "material_b",
-      "frame": "material_b_frame"
+      "frame": "material_b_frame",
+      "korean_colors": [
+        "파랑",
+        "파란",
+        "파란색",
+        "파랑색",
+        "하늘",
+        "하늘색",
+        "블루"
+      ]
     },
     {
       "korean": "C자재",
       "resource_id": "mat_c",
       "gazebo_model": "material_c",
-      "frame": "material_c_frame"
+      "frame": "material_c_frame",
+      "korean_colors": [
+        "초록",
+        "초록색",
+        "녹색",
+        "연두",
+        "연두색",
+        "그린"
+      ]
     }
   ],
   "tcp_targets": {

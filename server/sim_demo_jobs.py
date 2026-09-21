@@ -63,10 +63,14 @@ def materials_from_workcell(workcell: Mapping[str, Any]) -> dict[str, dict]:
         parent = (frames.get(row["frame"]) or {}).get("parent")
         support = next((m for m, r in models.items()
                         if r.get("kind") == "pallet" and r.get("frame") == parent), None)
-        korean = next((r.get("korean") for r in workcell.get("resource_map", ())
-                       if r.get("gazebo_model") == name), name)
+        resource_row = next((r for r in workcell.get("resource_map", ())
+                            if r.get("gazebo_model") == name), {})
+        korean = resource_row.get("korean") or name
+        # 색 이름도 셀 설정 선언에서만 온다. 화면이 "무엇으로 부를 수 있는지"를
+        # 보여주기 위한 것이며, 발화 해석은 `server/sim_demo_commands.py`가 한다.
         out[name] = {"model": name, "resource_id": row.get("resource_id"),
-                     "korean": korean, "support_model": support}
+                     "korean": korean, "support_model": support,
+                     "korean_colors": list(resource_row.get("korean_colors") or ())}
     return out
 
 

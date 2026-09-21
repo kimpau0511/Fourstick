@@ -1,5 +1,5 @@
 {
-  "catalog_version": "fr3_2f85_workcell-0.1.1-design",
+  "catalog_version": "fr3_2f85_workcell-0.1.2-design",
   "entries": [
     {
       "resource_id": "loc_pallet_1",
@@ -65,9 +65,13 @@
         "1번자재",
         "일번 자재",
         "첫번째 자재",
-        "1 번 자재"
+        "1 번 자재",
+        "주황 자재",
+        "주황색 자재",
+        "오렌지 자재",
+        "오렌지색 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_a, 프레임 material_a_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_a, 프레임 material_a_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준)"
     },
     {
       "resource_id": "mat_b",
@@ -82,9 +86,16 @@
         "2번자재",
         "이번 자재",
         "두번째 자재",
-        "2 번 자재"
+        "2 번 자재",
+        "파랑 자재",
+        "파란 자재",
+        "파란색 자재",
+        "파랑색 자재",
+        "하늘 자재",
+        "하늘색 자재",
+        "블루 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_b, 프레임 material_b_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_b, 프레임 material_b_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준)"
     },
     {
       "resource_id": "mat_c",
@@ -99,9 +110,15 @@
         "3번자재",
         "삼번 자재",
         "세번째 자재",
-        "3 번 자재"
+        "3 번 자재",
+        "초록 자재",
+        "초록색 자재",
+        "녹색 자재",
+        "연두 자재",
+        "연두색 자재",
+        "그린 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_c, 프레임 material_c_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_c, 프레임 material_c_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준)"
     }
   ]
 }
