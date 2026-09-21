@@ -156,12 +156,17 @@ def main() -> int:
     camera = data.get("gui_camera_pose", "1.55 -1.25 1.45 0 0.42 2.52")
 
     # 장면 카메라(선택). **GUI 렌더러와 별개로 서버가 렌더링한다.**
-    # GUI가 부하로 캡처 슬롯을 주지 못할 때도 "화면에 무엇이 있는가"를
-    # 파일로 확인할 수 있어야 한다. 끄면 센서 시스템도 올리지 않는다.
+    # 웹 장면 화면은 Gazebo 토픽을 읽는다. 끄면 센서 시스템도 올리지 않는다.
+    # PNG 저장은 `save_frames: true`일 때만 켠다. 저장 경로가 RAM 기반 /tmp라
+    # 6Hz 누적이 메모리를 채워 vLLM을 스왑으로 밀어낸 적이 있다(09-17).
     scene_camera = data.get("scene_camera") or {}
     camera_block, sensors_plugin = "", ""
     if scene_camera.get("enabled"):
-        save_path = scene_camera["save_path"]
+        save_block = ""
+        if scene_camera.get("save_frames"):
+            save_block = (
+                "\n          <!-- 서버가 프레임을 이 디렉터리에 저장한다. GUI와 무관하다. -->"
+                f'\n          <save enabled="true"><path>{scene_camera["save_path"]}</path></save>')
         width = int(scene_camera.get("width", 640))
         height = int(scene_camera.get("height", 480))
         rate = float(scene_camera.get("update_rate_hz", 1.0))
@@ -180,9 +185,7 @@ def main() -> int:
         <camera>
           <horizontal_fov>{scene_camera.get("horizontal_fov_rad", 1.047)}</horizontal_fov>
           <image><width>{width}</width><height>{height}</height></image>
-          <clip><near>0.05</near><far>30</far></clip>
-          <!-- 서버가 프레임을 이 디렉터리에 저장한다. GUI와 무관하다. -->
-          <save enabled="true"><path>{save_path}</path></save>
+          <clip><near>0.05</near><far>30</far></clip>{save_block}
         </camera>
       </sensor>
     </link>

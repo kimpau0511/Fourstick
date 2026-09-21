@@ -404,8 +404,6 @@
           <horizontal_fov>1.047</horizontal_fov>
           <image><width>480</width><height>360</height></image>
           <clip><near>0.05</near><far>30</far></clip>
-          <!-- 서버가 프레임을 이 디렉터리에 저장한다. GUI와 무관하다. -->
-          <save enabled="true"><path>/tmp/forstick2_workcell/scene_camera</path></save>
         </camera>
       </sensor>
     </link>
