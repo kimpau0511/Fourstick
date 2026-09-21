@@ -410,6 +410,62 @@ test('render()가 index.html의 컨테이너를 모두 채운다', async () => {
   delete globalThis.document;
 });
 
+test('render(): 타이핑 중에는 명령 textarea를 갈아 끼우지 않는다', async () => {
+  const textarea = { id: 'command-input', value: '', tagName: 'TEXTAREA' };
+  const button = { disabled: true, innerHTML: '◈ 계획 생성' };
+  const hints = [{}, {}];
+  const card = {
+    innerHTML: '',
+    querySelector: (sel) =>
+      sel === '#command-input' ? textarea : sel === '[data-action="generate"]' ? button : null,
+    querySelectorAll: (sel) => (sel === '.hint' ? hints : []),
+  };
+  const nodes = new Map([['card-command', card], ['command-input', textarea]]);
+  const ids = [
+    'card-robot', 'card-scene', 'card-workcell', 'card-hardware', 'card-voice', 'card-events',
+    'card-plan', 'card-verdict', 'card-block', 'goto-workspace-slot', 'stop-slot-plan',
+    'card-sim', 'card-execution', 'stop-slot-workspace', 'modal-root', 'event-list',
+  ];
+  ids.forEach((id) => nodes.set(id, { innerHTML: '', hidden: false, scrollTop: 0, scrollHeight: 0 }));
+  globalThis.document = {
+    getElementById: (id) => nodes.get(id) || null,
+    activeElement: textarea,
+    createElement: () => {
+      const fresh = { innerHTML: '' };
+      // 새로 그린 HTML에서 버튼 상태만 읽는다.
+      fresh.querySelector = (sel) =>
+        sel === '[data-action="generate"]'
+          ? { disabled: /data-action="generate" disabled/.test(fresh.innerHTML), innerHTML: '◈ 계획 생성' }
+          : null;
+      fresh.querySelectorAll = (sel) =>
+        sel === '.hint' ? Array.from(fresh.innerHTML.matchAll(/class="hint"/g)) : [];
+      return fresh;
+    },
+  };
+  const { render } = await import('../../html/static/js/render.js');
+  const store = createStore(initialState());
+  store.dispatch({ type: 'connection', state: 'ok', detail: '' });
+  // 첫 글자 — 카드의 innerHTML은 그대로이고 버튼만 풀린다.
+  store.dispatch({ type: 'command', command: '1' });
+  textarea.value = '1';
+  render(store.get(), 'server');
+  assert.equal(card.innerHTML, '');
+  assert.equal(button.disabled, false);
+  assert.equal(textarea.value, '1');
+  // 조합 중인 글자도 값이 되돌아가지 않는다.
+  store.dispatch({ type: 'command', command: '1번 팔ㄹ' });
+  textarea.value = '1번 팔ㄹ';
+  render(store.get(), 'server');
+  assert.equal(card.innerHTML, '');
+  assert.equal(textarea.value, '1번 팔ㄹ');
+  // 지우기 — 값은 상태를 따라가고 버튼은 다시 잠긴다.
+  store.dispatch({ type: 'command', command: '' });
+  render(store.get(), 'server');
+  assert.equal(textarea.value, '');
+  assert.equal(button.disabled, true);
+  delete globalThis.document;
+});
+
 // ── 정책·자원 수치의 출처 ─────────────────────────────────────────────
 test('정책 항목 수치는 서버 설정에서만 온다', async () => {
   const { policyItems } = await import('../../html/static/js/catalog.js');
