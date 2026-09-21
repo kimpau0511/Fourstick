@@ -1,17 +1,21 @@
 {
-  "catalog_version": "atomic-5-1.0",
+  "catalog_version": "atomic-5-1.1",
   "entries": [
     {
       "skill": "home",
       "description": "안전한 홈 자세로 돌아간다",
-      "arg_kinds": {}
+      "arg_kinds": {},
+      "preconditions": [],
+      "postconditions": ["로봇이 안전 홈 자세에 있다"]
     },
     {
       "skill": "move",
       "description": "지정한 위치로 이동한다",
       "arg_kinds": {
         "to": "location"
-      }
+      },
+      "preconditions": [],
+      "postconditions": ["로봇이 to 위치에 있다"]
     },
     {
       "skill": "pick",
@@ -19,7 +23,12 @@
       "arg_kinds": {
         "object": "object",
         "from": "location"
-      }
+      },
+      "preconditions": [
+        "로봇이 from 위치에 있어야 한다 — 그러려면 pick 직전 스텝이 move(to=from)여야 한다",
+        "그리퍼가 비어 있어야 한다(다른 물체를 쥐고 있지 않다)"
+      ],
+      "postconditions": ["로봇이 object를 쥐고 있다"]
     },
     {
       "skill": "place",
@@ -27,12 +36,19 @@
       "arg_kinds": {
         "object": "object",
         "to": "location"
-      }
+      },
+      "preconditions": [
+        "로봇이 to 위치에 있어야 한다 — 그러려면 place 직전 스텝이 move(to=to)여야 한다",
+        "그 object를 이미 쥐고 있어야 한다(앞선 pick의 결과)"
+      ],
+      "postconditions": ["object가 to 위치에 놓이고 그리퍼가 빈다"]
     },
     {
       "skill": "stop",
       "description": "현재 동작을 즉시 정지한다",
-      "arg_kinds": {}
+      "arg_kinds": {},
+      "preconditions": [],
+      "postconditions": ["동작이 멈춘다"]
     }
   ]
 }

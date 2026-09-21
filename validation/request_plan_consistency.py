@@ -150,6 +150,34 @@ def check_request_plan_consistency(
     request_resources = resolved_from_slots(slots, catalog)
     confirmed = {r.resource_id for r in request_resources}
     used = plan_resource_ids(plan)
+    only_in_request = tuple(r for r in sorted(confirmed) if r not in used)
+    has_stop = any(step.skill == "stop" for step in plan.steps)
+
+    # 요청이 말한 **물체**를 계획이 다루지 않으면 되묻/차단한다 — 계획이 리소스를
+    # 쓰지 않는 경우(복귀만·`[home]`)에도 본다. 이 셀에서 물체는 집기·놓기로만
+    # 다룰 수 있으므로, 확인된 물체가 계획 어디에도 없으면 그 물체 요청(이송·파지)을
+    # 이동·복귀로 얼버무린 것이다(8-13·8-15 false-PASS). 정지 계획은 안전 우선이라
+    # 제외한다. **보정하지 않는다** — 이유만 돌려주고 실행 여부는 관문이 정한다.
+    dropped_objects = tuple(
+        r for r in only_in_request
+        if catalog.has(r) and catalog.kind_of(r) is ResourceKind.OBJECT
+    )
+    if dropped_objects and not has_stop:
+        names = ", ".join(
+            f"{rid}({catalog.get(rid).display_name})" for rid in dropped_objects
+        )
+        return ConsistencyReport(
+            status=ConsistencyStatus.MISMATCH,
+            reason=ReasonCode.PLAN_RESOURCE_MISMATCH,
+            request_resources=request_resources, plan_resources=used,
+            only_in_plan=tuple(r for r in used if r not in confirmed),
+            only_in_request=only_in_request,
+            detail=(
+                f"요청이 말한 물체를 계획이 다루지 않는다: {names}."
+                " 물체를 다루려면 집기·놓기가 있어야 하는데 계획에 없다"
+                " — 이동·복귀만으로 물체 요청을 수행할 수 없다"
+            ),
+        )
 
     if not used:
         return ConsistencyReport(
@@ -170,9 +198,6 @@ def check_request_plan_consistency(
         )
 
     only_in_plan = tuple(r for r in used if r not in confirmed)
-    only_in_request = tuple(
-        r for r in sorted(confirmed) if r not in used
-    )
     if only_in_plan:
         names = ", ".join(
             f"{rid}({catalog.get(rid).display_name})" if catalog.has(rid) else rid

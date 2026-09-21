@@ -190,6 +190,31 @@ class TestStaticAndConfig(WebCase):
         self.assertTrue(payload["features"]["stt"]["detail"])
 
 
+class TestUnderspecifiedPlaceIsAsked(WebCase):
+    """놓기 요청인데 물체가 없으면, 모델이 이동 계획을 내도 ASK로 되돌린다(8-15).
+
+    dev_098 "1번 팔레트에 내려놔" 유형. 결정론적 게이트가 false-PASS를 막는다.
+    개발셋 근거만 쓴다.
+    """
+
+    # 모델이 놓기 요청을 단순 이동 계획으로 바꿔 낸 상황을 재현한다.
+    provider_outputs = [{"steps": [{"skill": "move", "args": {"to": "loc_pallet_1"}},
+                                   {"skill": "home", "args": {}}]}]
+
+    async def test_place_without_object_becomes_ask_not_pass(self):
+        payload = (await self.plan(utterance="1번 팔레트에 내려놔")).json()
+        self.assertTrue(payload["ok"])            # 계획 자체는 생성됨(이동 계획)
+        self.assertFalse(payload["executable"])   # 그러나 실행 가능이 아니다
+        self.assertEqual(payload["validation"]["decision"], "ask")
+        self.assertEqual(payload["validation"]["reason_code"],
+                         ReasonCode.PLAN_CLARIFICATION_REQUIRED.value)
+
+    async def test_move_request_is_not_affected(self):
+        payload = (await self.plan(utterance="1번 팔레트로 이동해줘")).json()
+        self.assertTrue(payload["executable"])
+        self.assertEqual(payload["validation"]["decision"], "allow")
+
+
 class TestPlanFlow(WebCase):
     async def test_plan_creates_records_but_does_not_execute(self):
         response = await self.plan()

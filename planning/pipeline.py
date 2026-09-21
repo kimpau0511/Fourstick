@@ -49,6 +49,7 @@ from planning.slot_extractor import (
     check_plan_resources,
     extract_slots,
 )
+from validation.safety_validator import RULE_REASONS, place_without_matching_pick
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,19 @@ def plan_from_utterance(
             failure=PlanningFailure(
                 ReasonCode.PLAN_UNKNOWN_RESOURCE,
                 f"목표 종료 상태가 카탈로그에 없는 물체다: {draft.terminal_hold!r}",
+            ),
+        )
+
+    # 4-1. 구조: place는 같은 물체를 앞에서 pick한 뒤에만 온다(E-HOLD-001).
+    # Profile 관문(아래)보다 먼저 본다 — 관문에 막힌 초안이라도 pick 없는
+    # place를 정상 초안처럼 남기지 않는다. 보정·삽입하지 않는다.
+    hold_issues = place_without_matching_pick(draft.steps)
+    if hold_issues:
+        return PlanningOutcome(
+            slots=slots, draft=draft,
+            failure=PlanningFailure(
+                RULE_REASONS["E-HOLD-001"],
+                "E-HOLD-001 " + "; ".join(hold_issues),
             ),
         )
 

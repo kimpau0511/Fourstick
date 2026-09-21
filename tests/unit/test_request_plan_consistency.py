@@ -148,6 +148,61 @@ class TestConsistentPlansPass(Case):
         self.assertIs(report.status, ConsistencyStatus.NOT_APPLICABLE)
 
 
+class TestDroppedObjectIsBlocked(Case):
+    """요청이 말한 물체를 계획이 다루지 않으면 차단한다 (8-14 false-PASS 방지)."""
+
+    def test_transfer_request_rendered_as_move_only_is_blocked(self):
+        # 물체를 옮기라 했는데 계획이 이동만 하고 집기·놓기가 없다.
+        report = self.check(
+            "1번 팔레트에서 A자재를 집어서 컨베이어에 올려줘",
+            [("move", {"to": "loc_pallet_1"}),
+             ("move", {"to": "loc_conveyor"}),
+             ("home", {})],
+        )
+        self.assertIs(report.status, ConsistencyStatus.MISMATCH)
+        self.assertIs(report.reason, ReasonCode.PLAN_RESOURCE_MISMATCH)
+        self.assertFalse(report.allowed)
+        self.assertIn("obj_a", report.only_in_request)
+
+    def test_place_request_without_object_step_is_blocked(self):
+        report = self.check(
+            "A자재를 컨베이어에 놓아줘",
+            [("move", {"to": "loc_conveyor"}), ("home", {})],
+        )
+        self.assertIs(report.status, ConsistencyStatus.MISMATCH)
+        self.assertFalse(report.allowed)
+
+    def test_object_handled_by_pick_is_not_dropped(self):
+        report = self.check("1번 팔레트에서 A자재를 집어서 컨베이어에 올려줘", TRANSFER)
+        self.assertIs(report.status, ConsistencyStatus.CONSISTENT)
+
+    def test_pure_move_request_without_object_is_not_dropped(self):
+        report = self.check("1번 팔레트로 이동해줘",
+                            [("move", {"to": "loc_pallet_1"}), ("home", {})])
+        self.assertIs(report.status, ConsistencyStatus.CONSISTENT)
+
+    def test_home_only_plan_dropping_a_named_object_is_blocked(self):
+        # 8-15: 물체를 말했는데 계획이 복귀(home)만 하면 그 물체를 빠뜨린 것이다.
+        # dev_080 "A자재를 잡고 있어" → [home] 유형. 되묻/차단한다(PASS 아님).
+        report = self.check("A자재", [("home", {})])
+        self.assertIs(report.status, ConsistencyStatus.MISMATCH)
+        self.assertIs(report.reason, ReasonCode.PLAN_RESOURCE_MISMATCH)
+        self.assertFalse(report.allowed)
+        self.assertIn("obj_a", report.only_in_request)
+
+    def test_home_only_plan_without_an_object_stays_not_applicable(self):
+        # 물체가 없는 복귀/정지는 그대로 통과(대상 아님).
+        report = self.check("홈으로 보내줘", [("home", {})])
+        self.assertIs(report.status, ConsistencyStatus.NOT_APPLICABLE)
+        self.assertTrue(report.allowed)
+
+    def test_stop_plan_with_an_object_is_not_blocked(self):
+        # 정지는 안전 우선이라 dropped-object 검사에서 제외한다.
+        report = self.check("A자재 정지", [("stop", {})])
+        self.assertIs(report.status, ConsistencyStatus.NOT_APPLICABLE)
+        self.assertTrue(report.allowed)
+
+
 class TestUnverifiable(Case):
     def test_plan_with_resources_but_request_had_none(self):
         """확인할 근거가 없으면 통과로 보지 않는다."""

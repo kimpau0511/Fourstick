@@ -35,6 +35,7 @@ from typing import Any, Callable
 from core.constants import TASK_PLAN_SCHEMA_VERSION
 from core.execution_result import ExecutionResult
 from core.execution_state import ExecutionState
+from core.grasp_observation import GraspAvailability
 from core.reason_codes import ReasonCode
 from core.task_plan import TaskPlan
 from core.geometry import GeometryDecision, GeometryRequest, GeometryVerdict
@@ -63,6 +64,7 @@ from storage.repository import (
 from validation.capability_precheck import capability_decision, evaluate_capability
 from validation.execution_permit import PermitContext, check_execution_permit
 from validation.geometry_check import check_geometry, geometry_rule_result
+from validation.place_intent import evaluate_place_intent
 from validation.outcome_verifier import (
     StopOutcome,
     finalize_plan_result,
@@ -710,6 +712,21 @@ class Api:
         self.emit({"type": "plan", "payload": payload}, session_id=session_id)
         return payload
 
+    def _confirmed_held_object(self) -> str | None:
+        """실제 파지 관측이 **측정값으로 지목한** 물체만 돌려준다.
+
+        시뮬레이션 attachment·개구(aperture)·과거 계획으로 추정하지 않는다.
+        관측이 measured가 아니거나(unavailable/simulated) 쥔 물체가 없으면 None이다.
+        이 셀의 관측은 unavailable이라 실제로는 항상 None이다.
+        """
+        try:
+            obs = self.runtime.grasp_observation()
+        except Exception:  # noqa: BLE001 — 관측 실패는 "확인 안 됨"이다
+            return None
+        if getattr(obs, "availability", None) is GraspAvailability.MEASURED and obs.held:
+            return obs.object_id
+        return None
+
     # ── 관문 (안전 + 리소스 일치 + Capability + 기하) ──────────────────
     def gate_for(self, plan: TaskPlan, slots) -> GateOutcome:
         """네 검증을 같은 입력으로 다시 계산한다. **저장하지 않는다.**
@@ -755,6 +772,28 @@ class Api:
         decision, reason, detail = _aggregate_gate(
             safety_decision, consistency.to_dict(), capability_status, geometry
         )
+        # 놓기(place) 요청인데 놓을 물체가 확인되지 않았으면 되묻는다.
+        #
+        # 발화가 "…에 내려놔"처럼 놓기 의도인데 모델이 물체를 빼고 단순 이동
+        # `[move, home]`으로 만들면 관문은 안전한 이동으로 보고 통과시킨다(8-15
+        # false-PASS). 발화의 놓기 의도를 결정론적으로 읽어, 물체·목적지가 확인되지
+        # 않은 놓기 요청은 실행 가능(ALLOW)에서 ASK로 되돌린다. **계획을 고치거나
+        # 기본 위치를 배정하지 않는다** — 무엇을 놓을지 물어볼 뿐이다. 이미 BLOCK/ASK인
+        # 판정은 낮추지 않는다(더 강한 차단을 유지한다).
+        if decision is ValidationDecision.ALLOW:
+            place = evaluate_place_intent(
+                utterance=plan.utterance or "", slots=slots,
+                catalog=runtime.resource_catalog,
+                held_object_id=self._confirmed_held_object(),
+            )
+            if place.underspecified:
+                decision = ValidationDecision.ASK
+                reason = ReasonCode.PLAN_CLARIFICATION_REQUIRED
+                detail = (
+                    "놓기 요청인데 무엇을 놓을지"
+                    + ("" if place.destination_confirmed else "·어디에 놓을지")
+                    + " 확인되지 않았다 — 놓을 물체를 말해 달라"
+                )
         # 계획이 만들어질 때의 Profile과 지금 Profile이 다르면 통과시키지 않는다.
         if runtime.profile is not None and (
             plan.profile_id != runtime.profile.profile_id

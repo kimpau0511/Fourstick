@@ -37,6 +37,12 @@ class SkillEntry:
     description: str
     #: 인자 이름 -> 받는 리소스 종류. 허용 인자 전부를 선언해야 한다.
     arg_kinds: Mapping[str, ResourceKind]
+    #: 이 스킬을 실행하기 전에 성립해야 하는 상태. 모델에게 문장으로 보여준다.
+    #: **자동 삽입의 근거가 아니다** — 계획이 이를 어기면 검증이 이유와 함께
+    #: 거부한다(예: pick 전에 from 위치로의 move). 선택 항목이며 비어 있어도 된다.
+    preconditions: tuple[str, ...] = ()
+    #: 이 스킬을 실행한 뒤에 성립하는 상태. 후속 스킬의 선행 조건을 잇는다.
+    postconditions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.skill not in ATOMIC_SKILLS:

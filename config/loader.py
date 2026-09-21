@@ -438,6 +438,10 @@ class SkillEntryModel(BaseModel):
     description: str = Field(min_length=1)
     #: 인자 이름 -> 리소스 종류 문자열. 의미 계층에서 열거형으로 바꾼다.
     arg_kinds: dict[str, str] = Field(default_factory=dict)
+    #: 선행·후속 조건(선택). 모델에게 계약을 문장으로 보여주기 위한 것이며
+    #: 자동 삽입의 근거가 아니다.
+    preconditions: list[str] = Field(default_factory=list)
+    postconditions: list[str] = Field(default_factory=list)
 
 
 class SkillCatalogModel(BaseModel):
@@ -473,6 +477,8 @@ def load_skill_catalog(payload: dict[str, Any]) -> SkillCatalog:
                     arg_kinds={
                         arg: kind(raw, e.skill, arg) for arg, raw in e.arg_kinds.items()
                     },
+                    preconditions=tuple(e.preconditions),
+                    postconditions=tuple(e.postconditions),
                 )
                 for e in m.entries
             ),

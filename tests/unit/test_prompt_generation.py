@@ -281,6 +281,82 @@ class TestValidatorAndPromptShareTheRule(unittest.TestCase):
         self.assertNotIn("SKILL_HOME", source)
 
 
+class TestCompositionAndPreconditions(unittest.TestCase):
+    """8-14: 선행 조건과 이송 골격이 프롬프트에 카탈로그에서 나온다."""
+
+    def test_preconditions_are_shown_from_the_catalog(self):
+        _, skills, _ = catalogs()
+        # 카탈로그에 pick 선행 조건이 선언돼 있으면 프롬프트에 나온다.
+        pick = next(e for e in skills.entries if e.skill == "pick")
+        text = render().system
+        self.assertTrue(pick.preconditions, "픽스처 카탈로그에 pick 선행 조건이 없다")
+        for pre in pick.preconditions:
+            self.assertIn(pre, text)
+        self.assertIn("선행 조건", text)
+
+    def test_transfer_skeleton_is_present_and_starts_with_an_approach_move(self):
+        text = render().system
+        self.assertIn("4-2", text)
+        self.assertIn("골격", text)
+        # 골격 예시는 move로 시작해 출발지 접근을 강제한다.
+        line = next(l for l in text.splitlines() if "→" in l and "골격" not in l)
+        self.assertTrue(line.strip().startswith("move("),
+                        f"골격이 접근 move로 시작하지 않는다: {line!r}")
+
+    def test_object_must_be_handled_rule_is_present(self):
+        text = render().system
+        self.assertIn("4-3", text)
+        self.assertIn("반드시 계획에서 다룬다", text)
+
+    def test_location_only_request_is_a_move_not_a_transfer_question(self):
+        # 1.5: 위치만 있고 물체가 없으면 이동이다(되묻지 않는다) 규칙이 있다.
+        text = render().system
+        self.assertIn("4-4", text)
+        self.assertIn("위치만 있고 물체가 없는", text)
+        # 자원 불명확 요청은 계속 되묻는다는 문구도 남아 있어야 한다.
+        self.assertIn("그거 저기로", text)
+
+    def test_rule_3_1_takes_precedence_over_4_3_and_4_4(self):
+        # 1.6: 식별자가 없으면 3-1이 4-3·4-4보다 먼저라는 우선순위가 4-3 앞에 온다.
+        text = render().system
+        self.assertIn("4-0", text)
+        self.assertIn("규칙 3-1이 4-3·4-4보다 먼저다", text)
+        self.assertLess(text.index("4-0."), text.index("4-3."))
+        self.assertLess(text.index("4-0."), text.index("4-4."))
+        # 4-4는 확인된 위치 식별자가 있을 때만 적용한다고 한정돼 있다.
+        rule_4_4 = text[text.index("4-4."):]
+        self.assertIn("위치 식별자가 하나 이상 있을 때만", rule_4_4)
+        self.assertIn("4-0을 따른다", rule_4_4)
+
+    def test_no_identifier_safe_pose_request_is_the_final_skill_alone(self):
+        # 식별자 없는 안전 자세 요청은 인자 없는 종료 스킬 단독이다. 이름은 정책에서 온다.
+        _, skills, _ = catalogs()
+        text = render().system
+        rule_4_0 = text[text.index("4-0."):text.index("4-1.")]
+        self.assertIn("home 한 스텝뿐이다", rule_4_0)
+        self.assertIn("그 앞에 move를 넣지 않고", rule_4_0)
+        # args가 있는 스킬은 카탈로그에서 뽑아 금지 목록으로 보인다.
+        for entry in skills.entries:
+            if entry.arg_kinds:
+                self.assertIn(entry.skill, rule_4_0)
+        # 종료 스킬이 바뀌면 문장도 바뀐다(스킬 이름을 박지 않았다).
+        loose = render(safety=policy(
+            required_final_skill=None,
+            provenance={"max_steps": "f", "approach_skill": "f"})).system
+        loose_4_0 = loose[loose.index("4-0."):loose.index("4-1.")]
+        self.assertNotIn("한 스텝뿐이다", loose_4_0)
+        self.assertIn("args가 없는 스킬로 뜻이 통하면", loose_4_0)
+        # 식별자가 없을 때 사용자 블록 앞에 '없음'이 실려 4-0이 적용될 수 있다.
+        self.assertIn("일치한 식별자: 없음", render("home").user)
+
+    def test_skeleton_uses_catalog_ids_not_hardcoded(self):
+        res, _, _ = catalogs()
+        text = render().system
+        locations = list(res.ids_of_kind(ResourceKind.LOCATION))
+        # 예시가 실제 카탈로그의 첫 위치를 쓴다(리소스 이름을 코드에 박지 않는다).
+        self.assertIn(locations[0], text)
+
+
 class TestCatalogDrivenContent(unittest.TestCase):
     def test_prompt_lists_the_current_catalog_values_and_versions(self):
         resources, skills, _ = catalogs()

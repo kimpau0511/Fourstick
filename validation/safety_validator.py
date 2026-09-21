@@ -99,6 +99,42 @@ def _insufficient(code: str, message: str) -> RuleResult:
                       ReasonCode.SAFETY_INSUFFICIENT_DATA)
 
 
+def _trace_hold(steps) -> tuple[str | None, list[str], list[str]]:
+    """스텝을 따라가며 파지 상태를 추적한다. 계획과 초안이 같은 판정을 쓴다.
+
+    돌려주는 값: (종료 시 쥔 물체, E-HOLD-001 위반, E-HOLD-002 위반).
+    `args`에 object가 없으면 None으로 본다 — 초안은 아직 계약 검사 전이다.
+    """
+    held: str | None = None
+    hold1: list[str] = []   # 들고 있지 않은데 place, 또는 다른 물체를 place
+    hold2: list[str] = []   # 들고 있는데 또 pick
+    for i, s in enumerate(steps):
+        obj = s.args.get("object")
+        if s.skill == SKILL_PICK:
+            if held is not None:
+                hold2.append(f"스텝{i+1}: {held!r}를 든 채 {obj!r}를 또 집는다")
+            held = obj
+        elif s.skill == SKILL_PLACE:
+            if held is None:
+                hold1.append(f"스텝{i+1}: 아무것도 들지 않은 채 {obj!r}를 놓는다")
+            elif held != obj:
+                hold1.append(f"스텝{i+1}: {held!r}를 들었는데 {obj!r}를 놓는다")
+                held = None
+            else:
+                held = None
+    return held, hold1, hold2
+
+
+def place_without_matching_pick(steps) -> list[str]:
+    """E-HOLD-001: 같은 물체를 앞에서 pick하지 않은 place를 찾는다.
+
+    계획 초안 단계(`planning/pipeline.py`)도 이 함수를 쓴다. pick/place가
+    Profile 관문에 막혀 TaskPlan이 되지 못하는 초안도 구조 결함을 먼저 드러내기
+    위해서다. **보정하지 않는다** — pick을 끼워 넣지 않고 위반만 돌려준다.
+    """
+    return _trace_hold(steps)[1]
+
+
 def evaluate(
     plan: TaskPlan,
     policy: SafetyPolicy,
@@ -162,22 +198,7 @@ def evaluate(
                        else _ok("E-ARG-001", "모든 인자가 Catalog 안에 있음"))
 
     # E-HOLD-001/002/003: 파지 상태 추적
-    held: str | None = None
-    hold1: list[str] = []   # 들고 있지 않은데 place
-    hold2: list[str] = []   # 들고 있는데 또 pick
-    for i, s in enumerate(steps):
-        if s.skill == SKILL_PICK:
-            if held is not None:
-                hold2.append(f"스텝{i+1}: {held!r}를 든 채 {s.args['object']!r}를 또 집는다")
-            held = s.args["object"]
-        elif s.skill == SKILL_PLACE:
-            if held is None:
-                hold1.append(f"스텝{i+1}: 아무것도 들지 않은 채 {s.args['object']!r}를 놓는다")
-            elif held != s.args["object"]:
-                hold1.append(f"스텝{i+1}: {held!r}를 들었는데 {s.args['object']!r}를 놓는다")
-                held = None
-            else:
-                held = None
+    held, hold1, hold2 = _trace_hold(steps)
 
     results.append(_block("E-HOLD-001", "; ".join(hold1)) if hold1
                    else _ok("E-HOLD-001", "들지 않은 물체를 놓는 스텝 없음"))

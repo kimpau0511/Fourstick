@@ -1,5 +1,5 @@
 {
-  "catalog_version": "fr3_2f85_workcell-0.1.0-design",
+  "catalog_version": "fr3_2f85_workcell-0.1.1-design",
   "entries": [
     {
       "resource_id": "loc_pallet_1",
@@ -60,9 +60,14 @@
         "A자재",
         "a자재",
         "에이자재",
-        "에이 자재"
+        "에이 자재",
+        "1번 자재",
+        "1번자재",
+        "일번 자재",
+        "첫번째 자재",
+        "1 번 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_a, 프레임 material_a_frame. 좌표는 카탈로그에 두지 않는다"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_a, 프레임 material_a_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가"
     },
     {
       "resource_id": "mat_b",
@@ -72,9 +77,14 @@
         "B자재",
         "b자재",
         "비자재",
-        "비 자재"
+        "비 자재",
+        "2번 자재",
+        "2번자재",
+        "이번 자재",
+        "두번째 자재",
+        "2 번 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_b, 프레임 material_b_frame. 좌표는 카탈로그에 두지 않는다"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_b, 프레임 material_b_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가"
     },
     {
       "resource_id": "mat_c",
@@ -84,9 +94,14 @@
         "C자재",
         "c자재",
         "씨자재",
-        "씨 자재"
+        "씨 자재",
+        "3번 자재",
+        "3번자재",
+        "삼번 자재",
+        "세번째 자재",
+        "3 번 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_c, 프레임 material_c_frame. 좌표는 카탈로그에 두지 않는다"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_c, 프레임 material_c_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가"
     }
   ]
 }
