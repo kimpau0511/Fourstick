@@ -1,19 +1,21 @@
 """
 포스틱 L1~L2 파이프라인 공통 로직.
-test_taskplan.py(CLI 테스트)와 api_server.py(FastAPI 서버) 양쪽에서 이 모듈을 가져다 쓴다.
+gazebo_robot/taskplan_bridge.py(CLI 테스트)와 api_server.py(FastAPI 서버) 양쪽에서 이 모듈을 가져다 쓴다.
 """
 
 import hashlib
 import json
+import logging
 import math
 import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from logging.handlers import RotatingFileHandler
 from typing import Literal, Union, Annotated, Optional
 
 import requests
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 # ============================================================
 # Capability Profile — 이 로봇/설비가 실제로 알고 있는 위치·물건 목록.
@@ -37,10 +39,26 @@ ObjectName = Literal[tuple(CAPABILITY_PROFILE["objects"])]
 # ============================================================
 
 AUDIT_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audit_log.jsonl")
+# 크기 기준 자동 회전 — 기본 10MB x 5개(최대 약 50MB). 무기한 누적 방지.
+# 회전되어 밀려난 과거분은 audit_log.jsonl.1, .2 ... 로 보관됨(삭제 아님).
+AUDIT_LOG_MAX_BYTES = int(os.environ.get("FORSTICK_AUDIT_LOG_MAX_BYTES", 10 * 1024 * 1024))
+AUDIT_LOG_BACKUP_COUNT = int(os.environ.get("FORSTICK_AUDIT_LOG_BACKUP_COUNT", 5))
+
+_audit_logger = logging.getLogger("forstick.audit")
+_audit_logger.setLevel(logging.INFO)
+_audit_logger.propagate = False
+if not _audit_logger.handlers:
+    _audit_handler = RotatingFileHandler(
+        AUDIT_LOG_PATH, maxBytes=AUDIT_LOG_MAX_BYTES,
+        backupCount=AUDIT_LOG_BACKUP_COUNT, encoding="utf-8",
+    )
+    _audit_handler.setFormatter(logging.Formatter("%(message)s"))
+    _audit_logger.addHandler(_audit_handler)
 
 def write_audit_log(event: str, reason_code: Optional[str], utterance: str,
                      confidence: float, detail: Optional[dict] = None):
-    """event: 'SUCCESS' | 'GATED' | 'ERROR'. 한 줄 = 이벤트 하나(JSONL)."""
+    """계획 생성·거부·실행·STOP 이벤트를 JSONL 한 줄로 기록한다.
+    RotatingFileHandler가 파일 쓰기 자체의 스레드 안전성을 보장한다."""
     entry = {
         "logged_at": datetime.now(timezone.utc).isoformat(),
         "event": event,
@@ -49,8 +67,7 @@ def write_audit_log(event: str, reason_code: Optional[str], utterance: str,
         "stt_confidence": confidence,
         "detail": detail or {},
     }
-    with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    _audit_logger.info(json.dumps(entry, ensure_ascii=False))
 
 def print_audit_log_tail(n: int = 5):
     """최근 n개 감사 로그 항목을 콘솔에 출력 (동작 확인용 편의 함수)."""
@@ -143,9 +160,11 @@ def _find_locations_with_role(text: str) -> tuple[Optional[str], Optional[str]]:
     대신 그 문자열이 어디 있는지 직접 찾는 게 훨씬 다양한 표현에 강하다."""
     found = []
     for loc in CAPABILITY_PROFILE["locations"]:
-        idx = text.find(loc)
-        if idx != -1:
-            found.append((idx, loc))
+        # "11번 팔레트"가 "1번 팔레트"를 부분 문자열로 포함해버리는 오탐을
+        # 막기 위해, 매칭 시작 위치 바로 앞이 숫자면 그 매칭은 버린다.
+        m = re.search(r"(?<!\d)" + re.escape(loc), text)
+        if m:
+            found.append((m.start(), loc))
     found.sort()
 
     src, dst = None, None
@@ -210,7 +229,7 @@ def check_slots_complete(slots: Slots) -> Optional[str]:
     """필수 슬롯이 부족하면 되물음 사유 코드를 반환. 충분하면 None."""
     if not slots.object:
         return "A-SLOT"
-    if not slots.from_location and not slots.to_location:
+    if not slots.from_location or not slots.to_location:
         return "A-SLOT"
     return None
 
@@ -233,39 +252,41 @@ def check_slots_known(slots: Slots) -> Optional[str]:
 # target/object/from/to는 Capability Profile의 enum으로 제약된다.
 # ============================================================
 
-class MoveArgs(BaseModel):
-    target: LocationName
-    speed: str | None = None
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-class PickArgs(BaseModel):
+
+class MoveArgs(StrictModel):
+    target: LocationName
+
+class PickArgs(StrictModel):
     object: ObjectName
     from_: LocationName | None = Field(None, alias="from")
 
-class PlaceArgs(BaseModel):
+class PlaceArgs(StrictModel):
     object: ObjectName
     to: LocationName
-    orientation: str | None = None
 
-class EmptyArgs(BaseModel):
+class EmptyArgs(StrictModel):
     pass
 
-class HomeStep(BaseModel):
+class HomeStep(StrictModel):
     skill: Literal["home"]
     args: EmptyArgs
 
-class MoveStep(BaseModel):
+class MoveStep(StrictModel):
     skill: Literal["move"]
     args: MoveArgs
 
-class PickStep(BaseModel):
+class PickStep(StrictModel):
     skill: Literal["pick"]
     args: PickArgs
 
-class PlaceStep(BaseModel):
+class PlaceStep(StrictModel):
     skill: Literal["place"]
     args: PlaceArgs
 
-class StopStep(BaseModel):
+class StopStep(StrictModel):
     skill: Literal["stop"]
     args: EmptyArgs
 
@@ -274,13 +295,13 @@ Step = Annotated[
     Field(discriminator="skill"),
 ]
 
-class TaskPlanDraft(BaseModel):
-    intent: str
-    steps: list[Step]
+class TaskPlanDraft(StrictModel):
+    intent: Literal["transfer"]
+    steps: list[Step] = Field(min_length=1)
 
 schema = TaskPlanDraft.model_json_schema()
 
-MODEL_ID = "/home/asd/models/exaone-3.5-7.8b-awq"
+MODEL_ID = os.environ.get("FORSTICK_MODEL_ID", "/home/asd/models/exaone-3.5-7.8b-awq")
 
 SYSTEM_PROMPT = (
     "너는 산업용 로봇의 작업 계획을 세우는 도우미다. "
@@ -288,15 +309,6 @@ SYSTEM_PROMPT = (
     "위치나 물건 이름은 절대 지어내지 말고, 사용자 지시문에 언급된 이름만 그대로 사용한다. "
     "불필요한 중간 이동 없이 최소 단계로 구성한다."
 )
-
-def normalize_plan(plan: dict) -> dict:
-    """LLM 출력은 신뢰하지 않는다 — 마지막 스텝이 정확히 home 스킬인지
-    코드로 강제 검사/보정한다. 프롬프트 지시만으로는 보장이 안 되기 때문."""
-    steps = plan.get("steps", [])
-    if not steps or steps[-1].get("skill") != "home":
-        steps.append({"skill": "home", "args": {}})
-        plan["steps"] = steps
-    return plan
 
 # ============================================================
 # Task Plan v1.0 봉투(envelope) — 백엔드/통합 계층
@@ -307,6 +319,7 @@ def normalize_plan(plan: dict) -> dict:
 SCHEMA_VERSION = "1.0"
 ROBOT_ID = "robot-01"          # 임시값. 실제 로봇/설비 등록 체계 나오면 교체
 PLAN_TTL_SECONDS = 300          # 계획 유효시간(초). 만료 후 실행 계층에서 거부해야 함
+STT_MIN_CONFIDENCE = float(os.environ.get("FORSTICK_STT_MIN_CONFIDENCE", "0.35"))
 
 def compute_plan_hash(intent: str, steps: list) -> str:
     """intent+steps를 정규화된 JSON으로 직렬화한 뒤 SHA-256 해시.
@@ -318,7 +331,8 @@ def compute_plan_hash(intent: str, steps: list) -> str:
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-def wrap_task_plan(draft: dict, utterance: str, confidence: float, model_id: str) -> dict:
+def wrap_task_plan(draft: dict, utterance: str, confidence: float, model_id: str,
+                   robot_id: str = ROBOT_ID) -> dict:
     """L2 결과(intent+steps)를 Task Plan v1.0 전체 스키마로 감싼다."""
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(seconds=PLAN_TTL_SECONDS)
@@ -330,7 +344,7 @@ def wrap_task_plan(draft: dict, utterance: str, confidence: float, model_id: str
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat(),
         "utterance": utterance,
-        "robot_id": ROBOT_ID,
+        "robot_id": robot_id,
         "intent": draft["intent"],
         "steps": draft["steps"],
         "ref_versions": {
@@ -343,9 +357,73 @@ def wrap_task_plan(draft: dict, utterance: str, confidence: float, model_id: str
         },
     }
 
+
+def check_plan_matches_slots(plan: dict, slots: Slots) -> list[dict]:
+    """LLM 계획이 결정론적으로 추출한 단일 이송 슬롯과 같은지 확인한다."""
+    steps = plan.get("steps", [])
+    picks = [s for s in steps if s.get("skill") == "pick"]
+    places = [s for s in steps if s.get("skill") == "place"]
+    violations = []
+
+    if len(picks) != 1 or len(places) != 1:
+        violations.append({
+            "code": "E-SEM-001",
+            "message": "단일 이송 계획에는 pick/place가 각각 정확히 1개여야 함",
+        })
+        return violations
+
+    pick_args = picks[0].get("args", {}) or {}
+    place_args = places[0].get("args", {}) or {}
+    expected = (slots.object, slots.from_location, slots.to_location)
+    actual = (pick_args.get("object"), pick_args.get("from"), place_args.get("to"))
+    if actual != expected or place_args.get("object") != slots.object:
+        violations.append({
+            "code": "E-SEM-002",
+            "message": "생성된 계획의 물체·출발지·도착지가 원래 명령과 다름",
+        })
+    if any(s.get("skill") == "stop" for s in steps):
+        violations.append({
+            "code": "E-SEM-003",
+            "message": "일반 작업 계획에 STOP 스킬을 포함할 수 없음",
+        })
+    return violations
+
+
+def validate_task_plan_for_execution(task_plan: dict, expected_robot_id: str,
+                                     now: Optional[datetime] = None) -> list[dict]:
+    """실행 직전 단일 진입점에서 형식·동일성·유효기간·안전규칙을 재검증한다."""
+    violations = []
+    try:
+        validated = TaskPlanDraft.model_validate({
+            "intent": task_plan.get("intent"),
+            "steps": task_plan.get("steps"),
+        })
+        steps = validated.model_dump(mode="json", by_alias=True)["steps"]
+    except (AttributeError, ValidationError) as exc:
+        return [{"code": "E-EXEC-SCHEMA", "message": str(exc)}]
+
+    if task_plan.get("schema_version") != SCHEMA_VERSION:
+        violations.append({"code": "E-EXEC-VERSION", "message": "지원하지 않는 Task Plan 버전"})
+    if task_plan.get("robot_id") != expected_robot_id:
+        violations.append({"code": "E-EXEC-ROBOT", "message": "현재 실행 로봇과 계획의 robot_id가 다름"})
+    if task_plan.get("plan_hash") != compute_plan_hash(task_plan.get("intent"), steps):
+        violations.append({"code": "E-EXEC-HASH", "message": "Task Plan 내용과 plan_hash가 다름"})
+
+    try:
+        expires_at = datetime.fromisoformat(task_plan["expires_at"].replace("Z", "+00:00"))
+        current = now or datetime.now(timezone.utc)
+        if expires_at <= current:
+            violations.append({"code": "E-EXEC-EXPIRED", "message": "Task Plan 유효기간이 만료됨"})
+    except (KeyError, AttributeError, TypeError, ValueError):
+        violations.append({"code": "E-EXEC-EXPIRY", "message": "expires_at이 없거나 잘못됨"})
+
+    from safety_guard import check_plan_safety
+    violations.extend(check_plan_safety({**task_plan, "steps": steps}))
+    return violations
+
 # ============================================================
 # 파이프라인 본체 — 프린트하지 않고 결과를 dict로 반환한다.
-# CLI(test_taskplan.py)와 API 서버(api_server.py) 양쪽에서 이 반환값을
+# CLI(taskplan_bridge.py)와 API 서버(api_server.py) 양쪽에서 이 반환값을
 # 각자 방식(콘솔 출력 vs HTTP 응답)으로 소비한다.
 #
 # 반환 형태:
@@ -354,8 +432,26 @@ def wrap_task_plan(draft: dict, utterance: str, confidence: float, model_id: str
 #   오류  : {"status": "error", "reason_code": "...", "message": "..."}
 # ============================================================
 
-def process_utterance(raw_text: str, confidence: float) -> dict:
+def process_utterance(raw_text: str, confidence: float, robot_id: str = ROBOT_ID) -> dict:
     slots = extract_slots(raw_text)
+
+    # STOP은 LLM과 일반 계획 게이트를 거치지 않는 별도 우선 경로다.
+    if slots.action == "stop":
+        return {
+            "status": "stop_requested",
+            "reason_code": "USER_STOP",
+            "message": "정지 요청을 실행기로 전달합니다.",
+            "slots": vars(slots),
+        }
+
+    if confidence < STT_MIN_CONFIDENCE:
+        write_audit_log("GATED", "A-STT-CONFIDENCE", raw_text, confidence)
+        return {
+            "status": "gated",
+            "reason_code": "A-STT-CONFIDENCE",
+            "message": "음성 인식 신뢰도가 낮습니다. 다시 말씀해 주세요.",
+            "slots": vars(slots),
+        }
 
     reason = check_slots_complete(slots)
     if reason:
@@ -374,6 +470,15 @@ def process_utterance(raw_text: str, confidence: float) -> dict:
             "status": "gated",
             "reason_code": reason,
             "message": "몇 번 팔레트인지, 정확한 위치를 다시 말씀해 주세요.",
+            "slots": vars(slots),
+        }
+
+    if slots.quantity != 1:
+        write_audit_log("GATED", "A-QUANTITY", raw_text, confidence, {"slots": vars(slots)})
+        return {
+            "status": "gated",
+            "reason_code": "A-QUANTITY",
+            "message": "현재는 한 번에 자재 1개만 처리할 수 있습니다.",
             "slots": vars(slots),
         }
 
@@ -403,26 +508,32 @@ def process_utterance(raw_text: str, confidence: float) -> dict:
             },
             timeout=60,
         )
-    except requests.RequestException as e:
+        resp.raise_for_status()
+        result = resp.json()
+    except (requests.RequestException, ValueError) as e:
         write_audit_log("ERROR", "LLM_UNREACHABLE", raw_text, confidence, {"error": str(e)})
         return {"status": "error", "reason_code": "LLM_UNREACHABLE",
                 "message": f"vLLM 서버에 연결할 수 없음: {e}"}
 
-    result = resp.json()
-
-    if "choices" not in result:
+    if not isinstance(result.get("choices"), list) or not result["choices"]:
         write_audit_log("ERROR", "NO_CHOICES", raw_text, confidence,
                          {"raw_response": str(result)[:500]})
         return {"status": "error", "reason_code": "NO_CHOICES",
                 "message": "vLLM 서버가 정상 응답을 주지 않음.", "raw": str(result)[:500]}
 
     choice = result["choices"][0]
-    content = choice["message"]["content"]
-    finish_reason = choice.get("finish_reason")
+    content = (choice.get("message") or {}).get("content") if isinstance(choice, dict) else None
+    finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+
+    if not isinstance(content, str):
+        write_audit_log("ERROR", "INVALID_LLM_RESPONSE", raw_text, confidence,
+                        {"raw_response": str(result)[:500]})
+        return {"status": "error", "reason_code": "INVALID_LLM_RESPONSE",
+                "message": "vLLM 응답에 문자열 content가 없음."}
 
     try:
         parsed = json.loads(content)
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, TypeError) as e:
         write_audit_log("ERROR", "JSON_DECODE_ERROR", raw_text, confidence,
                          {"error": str(e), "content_len": len(content), "finish_reason": finish_reason})
         return {"status": "error", "reason_code": "JSON_DECODE_ERROR",
@@ -437,8 +548,20 @@ def process_utterance(raw_text: str, confidence: float) -> dict:
                          {"error": str(e)})
         return {"status": "error", "reason_code": "SCHEMA_VALIDATION_ERROR", "message": str(e)}
 
-    draft = normalize_plan(validated.model_dump(mode="json", by_alias=True))
-    task_plan = wrap_task_plan(draft, raw_text, confidence, MODEL_ID)
+    draft = validated.model_dump(mode="json", by_alias=True)
+    semantic_violations = check_plan_matches_slots(draft, slots)
+    if semantic_violations:
+        write_audit_log("REJECTED", semantic_violations[0]["code"], raw_text, confidence, {
+            "violations": semantic_violations,
+        })
+        return {
+            "status": "rejected",
+            "reason_code": semantic_violations[0]["code"],
+            "message": "생성된 계획이 원래 명령과 일치하지 않아 거부됨",
+            "violations": semantic_violations,
+        }
+
+    task_plan = wrap_task_plan(draft, raw_text, confidence, MODEL_ID, robot_id=robot_id)
 
     # L3 Safety Guard — 여기까지 통과한 계획이라도 다시 처음부터 독립 검사한다.
     # (import는 함수 안에서: safety_guard.py가 pipeline.py를 가져다 쓰므로

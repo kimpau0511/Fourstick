@@ -4,7 +4,8 @@ Task Plan JSON(pipeline.py의 process_utterance() 출력)을 읽어서
 관절 이름/그리퍼/컨트롤러 액션/IK 그룹 등 로봇마다 다른 값은
 robot_config.py의 RobotConfig로 분리돼 있음 — TaskPlanExecutor 자체는
 로봇-무관 스킬 실행 로직(exec_home/move/pick/place/stop)만 갖고 있다.
-지금 지원하는 로봇: panda(기본값), ur5e(robot_config.UR5E_CONFIG).
+지금 지원하는 로봇: ur5e(robot_config.UR5E_CONFIG, 기본값). 새 로봇은
+robot_config.py에 RobotConfig를 추가하면 됨(robot_config.py 상단 참고).
 
 사용법:
   1) 발화 텍스트로 바로 실행 (vLLM 서버가 떠 있어야 함, pipeline.py를
@@ -18,7 +19,7 @@ robot_config.py의 RobotConfig로 분리돼 있음 — TaskPlanExecutor 자체�
        python3 taskplan_bridge.py --plan-file my_plan.json
 
 사전 조건 (로봇에 맞는 launch 파일이 떠 있어야 함 —
-panda_gazebo_moveit.launch.py 또는 ur5e_robotiq_gazebo.launch.py):
+ur5e_robotiq_gazebo.launch.py):
   source /opt/ros/lyrical/setup.bash
   export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
   (이 두 줄은 launch 터미널뿐 아니라 이 스크립트를 실행하는 터미널에도 필요)
@@ -51,7 +52,7 @@ from builtin_interfaces.msg import Duration
 from rosgraph_msgs.msg import Clock
 import numpy as np
 
-from robot_config import PANDA_CONFIG, ROBOT_CONFIGS, RobotConfig
+from robot_config import ROBOT_CONFIGS, RobotConfig, UR5E_CONFIG
 import vision_locator
 
 # Task Plan의 물체 슬롯(CAPABILITY_PROFILE["objects"], pipeline.py) ->
@@ -73,7 +74,7 @@ GRASP_LIFT_THRESHOLD_M = 0.03
 
 class TaskPlanExecutor(Node):
     def __init__(self, config: RobotConfig = None, context=None):
-        self.config = config or PANDA_CONFIG
+        self.config = config or UR5E_CONFIG
         super().__init__(f"taskplan_bridge_{self.config.robot_id}", context=context)
         self.ik_client = self.create_client(GetPositionIK, "/compute_ik")
         self.cartesian_client = self.create_client(GetCartesianPath, "/compute_cartesian_path")
@@ -85,6 +86,8 @@ class TaskPlanExecutor(Node):
         )
         self._last_joint_positions = list(self.config.ready_pose)
         self._stopped = False
+        self._active_goal_handle = None
+        self._goal_lock = threading.Lock()
         # 실측 결과 이 환경(WSL2 + Gazebo Jetty)은 real_time_factor가 1.0이
         # 아니라 부하에 따라 0.6 정도(심하면 더 낮게)로 떨어짐 — 팔/그리퍼
         # 액션의 duration_sec(트래젝토리 목표 시간)은 시뮬레이션 시간
@@ -305,10 +308,19 @@ class TaskPlanExecutor(Node):
         # real_time_factor가 1.0보다 낮으면(이 환경에서 흔함) 그만큼 벽시계
         # 기준으로 늘려서 컨트롤러가 정상적으로 abort하기 전에 클라이언트가
         # 먼저 포기해버리는 걸 방지한다(_rtf_scaled_timeout 참고).
-        result_future = goal_handle.get_result_async()
-        action_result = self._wait_for_future(
-            result_future, timeout_sec=self._rtf_scaled_timeout(duration_sec + 15.0)
-        )
+        with self._goal_lock:
+            self._active_goal_handle = goal_handle
+        try:
+            if self._stopped:
+                self._wait_for_future(goal_handle.cancel_goal_async(), timeout_sec=2.0)
+                return False
+            result_future = goal_handle.get_result_async()
+            action_result = self._wait_for_future(
+                result_future, timeout_sec=self._rtf_scaled_timeout(duration_sec + 15.0)
+            )
+        finally:
+            with self._goal_lock:
+                self._active_goal_handle = None
         if action_result is None:
             print("[브릿지] 팔 이동 결과 응답 타임아웃")
             return False
@@ -414,8 +426,17 @@ class TaskPlanExecutor(Node):
         if goal_handle is None or not goal_handle.accepted:
             print(f"[브릿지] 그리퍼 목표 거부됨 ({label})")
             return False
-        result_future = goal_handle.get_result_async()
-        result = self._wait_for_future(result_future, timeout_sec=self._rtf_scaled_timeout(10.0))
+        with self._goal_lock:
+            self._active_goal_handle = goal_handle
+        try:
+            if self._stopped:
+                self._wait_for_future(goal_handle.cancel_goal_async(), timeout_sec=2.0)
+                return False
+            result_future = goal_handle.get_result_async()
+            result = self._wait_for_future(result_future, timeout_sec=self._rtf_scaled_timeout(10.0))
+        finally:
+            with self._goal_lock:
+                self._active_goal_handle = None
         if result is None:
             print(f"[브릿지] 그리퍼 결과 응답 타임아웃 ({label})")
             return False
@@ -651,13 +672,23 @@ class TaskPlanExecutor(Node):
         self._stopped = True
         return True
 
-    def run_plan(self, task_plan: dict):
-        # 중요: _stopped는 exec_stop()이 한 번 True로 세팅하면 계속 True로
-        # 남는다. 이 노드(특히 api_server.py처럼 서버 생명주기 동안 하나의
-        # 객체를 재사용하는 경우)가 이전에 stop 스킬이 포함된 계획을 한 번이라도
-        # 실행했다면, 리셋 안 해줄 경우 이후의 모든 계획이 스텝 0에서 곧바로
-        # 멈춰버린다. 그래서 매 실행 시작 시 항상 초기화한다.
+    def request_stop(self):
+        """일반 계획 큐를 기다리지 않고 현재 ROS 2 Action 취소를 요청한다."""
+        self._stopped = True
+        with self._goal_lock:
+            goal_handle = self._active_goal_handle
+        if goal_handle is None:
+            return False
+        cancel_result = self._wait_for_future(goal_handle.cancel_goal_async(), timeout_sec=2.0)
+        return bool(cancel_result and cancel_result.goals_canceling)
+
+    def clear_stop(self):
+        """새 실행을 claim하기 직전에만 이전 STOP 상태를 해제한다."""
         self._stopped = False
+
+    def run_plan(self, task_plan: dict):
+        # 이전 STOP 해제는 api_server가 실행 락 안에서 clear_stop()으로 수행한다.
+        # 여기서 초기화하면 claim 직후 들어온 STOP을 덮어쓰는 경쟁조건이 생긴다.
         print(f"[브릿지] plan_id={task_plan.get('plan_id')} "
               f"intent={task_plan.get('intent')!r}")
         handlers = {
@@ -670,13 +701,13 @@ class TaskPlanExecutor(Node):
         for i, step in enumerate(task_plan["steps"]):
             if self._stopped:
                 print(f"[브릿지] stop으로 인해 스텝 {i} 이후 중단")
-                break
+                return False
             skill = step["skill"]
             args = step.get("args", {})
             handler = handlers.get(skill)
             if handler is None:
-                print(f"[브릿지] 알 수 없는 skill '{skill}', 건너뜀")
-                continue
+                print(f"[브릿지] 알 수 없는 skill '{skill}', 실행 거부")
+                return False
             ok = handler(args)
             if not ok:
                 print(f"[브릿지] 스텝 {i} ('{skill}') 실패 — 실행 중단")

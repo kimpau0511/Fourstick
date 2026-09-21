@@ -78,6 +78,7 @@ button,input,textarea{font:inherit}
         <div class="pill"><span class="dot"></span><strong id="topRobotName">robot-01</strong>&nbsp; <span id="topRobotState">확인 중</span></div>
         <div class="pill">CELL v1.0</div>
         <button class="stop" id="stopBtn">■ STOP</button>
+        <button class="stop" id="resumeBtn" style="display:none;background:#2a9d3a">▶ 재개(RESUME)</button>
       </div>
     </header>
 
@@ -96,7 +97,10 @@ button,input,textarea{font:inherit}
             <div class="field"><label>물건(OBJECTS)</label><div class="robot-kpi" id="robotObjects">-</div></div>
           </div>
           <div style="margin-top:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <button class="secondary" id="robotSwitchPanda" onclick="switchRobot('panda')">Panda로 전환</button>
+            <!-- 현재 등록된 로봇이 UR5e 하나뿐이라 전환 버튼도 하나뿐임.
+                 두 번째 로봇(FR3-WMS 등)이 robot_config.py에 추가되면
+                 여기 버튼을 하나 더 넣으면 됨 — switchRobot()/checkHealth()의
+                 전환 로직 자체는 로봇 종류에 무관하게 이미 동작함. -->
             <button class="secondary" id="robotSwitchUr5e" onclick="switchRobot('ur5e')">UR5e로 전환</button>
             <span class="muted" id="robotSwitchStatus" style="font-size:11px"></span>
           </div>
@@ -164,7 +168,7 @@ button,input,textarea{font:inherit}
         <div class="sim">
           <div><div class="viewport"><div class="sim-badge" id="simBadge">robot-01 · CELL-01</div><div class="live"><i class="dot"></i>LIVE</div><img id="gazeboView" src="/gazebo-stream.mjpeg" alt="Gazebo 화면을 불러올 수 없습니다 (서버/시뮬레이션 상태 확인 필요)"></div></div>
           <div class="sim-controls">
-            <div class="card card-pad"><h3>현재 작업</h3><div class="info-list" id="simTaskInfo"></div><div class="progress"><i id="simProgress" style="width:0%"></i></div><p class="muted" style="font-size:11px" id="simProgressText">실행한 작업이 없습니다.</p><button class="stop" style="width:100%;margin-top:8px" id="simStopBtn">■ EMERGENCY STOP</button></div>
+            <div class="card card-pad"><h3>현재 작업</h3><div class="info-list" id="simTaskInfo"></div><div class="progress"><i id="simProgress" style="width:0%"></i></div><p class="muted" style="font-size:11px" id="simProgressText">실행한 작업이 없습니다.</p><button class="stop" style="width:100%;margin-top:8px" id="simStopBtn">■ EMERGENCY STOP</button><button class="stop" style="width:100%;margin-top:8px;background:#2a9d3a;display:none" id="simResumeBtn">▶ 재개(RESUME)</button></div>
             <div class="card card-pad"><h3>Event Stream</h3><div id="simEvents" class="muted" style="font-size:12px">아직 이벤트가 없습니다.</div></div>
           </div>
         </div>
@@ -198,6 +202,23 @@ button,input,textarea{font:inherit}
 </div>
 <div class="toast" id="toast"></div>
 <script>
+// ============================================================
+// 인증 — 서버가 요구하는 API 토큰을 브라우저 로컬에 보관하고, 로봇을
+// 움직이거나 멈추거나 계획을 만드는 요청에는 항상 Authorization 헤더로 붙인다.
+// ============================================================
+function getApiToken(){
+  let token = localStorage.getItem('forstick_api_token');
+  if(!token){
+    token = prompt('포스틱 API 토큰을 입력하세요 (서버 관리자에게 문의):') || '';
+    if(token) localStorage.setItem('forstick_api_token', token);
+  }
+  return token;
+}
+function authFetch(url, options={}){
+  const headers = {...(options.headers||{}), 'Authorization': 'Bearer '+getApiToken()};
+  return fetch(url, {...options, headers});
+}
+
 // ============================================================
 // 화면 전환
 // ============================================================
@@ -240,18 +261,20 @@ function stepInfo(step){
 // 로봇 상태 (GET /health) + Capability Profile (GET /v1/capability-profile)
 // ============================================================
 let robotSwitching = false;
-// start_dual_robots.sh로 띄우면 Panda=8090/UR5e=8091이 동시에 떠 있는다 —
-// 이 경우 굳이 start_robot.sh로 죽였다 재기동할 필요 없이, 이미 떠 있는
-// 다른 포트로 바로 이동하면 전환이 즉시 끝난다(재기동은 원래 로봇 하나만
-// 띄우는 start_robot.sh 단일 모드에서만 필요).
-const ROBOT_PORTS = {panda: 8090, ur5e: 8091};
+// 로봇을 두 대 이상 동시에(듀얼 모드로) 띄우면, 굳이 start_robot.sh로
+// 죽였다 재기동할 필요 없이 이미 떠 있는 다른 포트로 바로 이동하면
+// 전환이 즉시 끝난다(재기동은 로봇 하나만 띄우는 단일 모드에서만 필요).
+// 지금은 UR5e 하나뿐이라 사실상 안 쓰이지만, 두 번째 로봇이 추가되면
+// 여기에 포트를 등록하면 그대로 동작한다.
+const ROBOT_PORTS = {ur5e: 8091};
+const ROBOT_LABELS = {ur5e: 'UR5e'};
 async function switchRobot(target){
   if(robotSwitching) return;
   robotSwitching = true;
-  const btnPanda=document.getElementById('robotSwitchPanda'), btnUr5e=document.getElementById('robotSwitchUr5e');
+  const btnUr5e=document.getElementById('robotSwitchUr5e');
   const statusEl=document.getElementById('robotSwitchStatus');
-  btnPanda.disabled = true; btnUr5e.disabled = true;
-  const targetLabel = target === 'panda' ? 'Panda' : 'UR5e';
+  btnUr5e.disabled = true;
+  const targetLabel = ROBOT_LABELS[target] || target;
   const finish = (msg) => {
     robotSwitching = false;
     statusEl.textContent = msg;
@@ -287,7 +310,7 @@ async function switchRobot(target){
   // 2) 단일 모드 폴백: 기존처럼 start_robot.sh 기반 전환(재기동 필요).
   statusEl.textContent = `${targetLabel}로 전환 요청 중...`;
   try{
-    const res = await fetch('/v1/robot/switch', {
+    const res = await authFetch('/v1/robot/switch', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({robot: target})
     });
@@ -329,11 +352,14 @@ async function checkHealth(){
     document.getElementById('robotIdBox').textContent=robotType;
     document.getElementById('profileRobot').textContent=robotLabel;
     document.getElementById('simBadge').textContent=`${robotLabel} · CELL-01`;
+    const stopped=!!data.stopped;
+    document.getElementById('stopBtn').style.display=stopped?'none':'';
+    document.getElementById('resumeBtn').style.display=stopped?'':'none';
+    document.getElementById('simStopBtn').style.display=stopped?'none':'';
+    document.getElementById('simResumeBtn').style.display=stopped?'':'none';
     if(!robotSwitching){
-      const btnPanda=document.getElementById('robotSwitchPanda'), btnUr5e=document.getElementById('robotSwitchUr5e');
-      btnPanda.disabled = (robotType === 'panda');
+      const btnUr5e=document.getElementById('robotSwitchUr5e');
       btnUr5e.disabled = (robotType === 'ur5e');
-      btnPanda.textContent = robotType === 'panda' ? 'Panda (현재)' : 'Panda로 전환';
       btnUr5e.textContent = robotType === 'ur5e' ? 'UR5e (현재)' : 'UR5e로 전환';
     }
   }catch(err){
@@ -383,7 +409,7 @@ async function sendText(text){
   if(!text.trim())return;
   makePlanBtn.disabled=true;makePlanBtn.textContent='생성 중...';
   try{
-    const res=await fetch('/v1/task-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,execute:false})});
+    const res=await authFetch('/v1/task-plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
     const data=await res.json();
     onPlanResponse(data);
   }catch(err){
@@ -397,8 +423,7 @@ async function sendAudio(blob){
   try{
     const formData=new FormData();
     formData.append('file',blob,'recording.webm');
-    formData.append('execute','false');
-    const res=await fetch('/v1/task-plan/audio',{method:'POST',body:formData});
+    const res=await authFetch('/v1/task-plan/audio',{method:'POST',body:formData});
     const data=await res.json();
     if(data.utterance) cmdInput.value=data.utterance;
     onPlanResponse(data);
@@ -446,8 +471,32 @@ micBtn.addEventListener('mouseleave',()=>{if(mediaRecorder&&mediaRecorder.state=
 micBtn.addEventListener('touchstart',e=>{e.preventDefault();startRecording()});
 micBtn.addEventListener('touchend',e=>{e.preventDefault();stopRecording()});
 
-document.getElementById('stopBtn').addEventListener('click',()=>toast('STOP은 이번 콘솔에서 별도 API가 연결되어 있지 않습니다 — "정지"라고 명령해 보세요.'));
-document.getElementById('simStopBtn').addEventListener('click',()=>toast('STOP은 이번 콘솔에서 별도 API가 연결되어 있지 않습니다 — "정지"라고 명령해 보세요.'));
+async function requestStop(){
+  try{
+    const res=await authFetch('/v1/stop',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:'ui'})});
+    const data=await res.json();
+    toast(data.message||'정지 요청 처리 완료');
+  }catch(err){
+    toast('정지 요청 실패: '+err);
+  }finally{
+    checkHealth();
+  }
+}
+async function requestResume(){
+  try{
+    const res=await authFetch('/v1/resume',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:'ui'})});
+    const data=await res.json();
+    toast(data.message||'재개 처리 완료');
+  }catch(err){
+    toast('재개 요청 실패: '+err);
+  }finally{
+    checkHealth();
+  }
+}
+document.getElementById('stopBtn').addEventListener('click',requestStop);
+document.getElementById('simStopBtn').addEventListener('click',requestStop);
+document.getElementById('resumeBtn').addEventListener('click',requestResume);
+document.getElementById('simResumeBtn').addEventListener('click',requestResume);
 
 // ============================================================
 // Task Plan 화면
@@ -539,7 +588,7 @@ async function runExecute(){
   // 응답을 기다렸다가 화면을 옮기면 로봇이 이미 다 움직인 뒤라 아무것도 못 본다.
   showScreen('simulation');
   try{
-    const res=await fetch('/v1/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task_plan:currentPlanData.task_plan})});
+    const res=await authFetch('/v1/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan_id:currentPlanData.task_plan.plan_id})});
     executeResponse=await res.json();
   }catch(err){
     executeResponse={success:false,message:String(err)};
@@ -665,7 +714,7 @@ const logDate=document.getElementById('logDate'),logResult=document.getElementBy
       logBody=document.getElementById('logBody'),logDetail=document.getElementById('logDetail');
 async function refreshLogsScreen(){
   try{
-    const res=await fetch('/v1/audit-log?limit=500');
+    const res=await authFetch('/v1/audit-log?limit=500');
     auditEntries=await res.json();
   }catch(err){
     logBody.innerHTML=`<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--sub)">로그를 불러올 수 없습니다: ${err}</td></tr>`;

@@ -8,6 +8,8 @@ EXAONE은 대체로 무난한 계획만 만들어서 자연스럽게 위반 케�
 실행: python3 test_safety_guard.py
 """
 
+import sys
+
 from safety_guard import check_plan_safety
 
 
@@ -81,6 +83,31 @@ CASES = [
          {"skill": "home", "args": {}},
      ]},
      {"E-ARG-001"}),
+
+    ("E-HOLD-003: 물건을 든 채 계획 종료",
+     {"steps": [
+         {"skill": "move", "args": {"target": "2번 팔레트"}},
+         {"skill": "pick", "args": {"object": "A자재", "from": "2번 팔레트"}},
+         {"skill": "home", "args": {}},
+     ]},
+     {"E-HOLD-003"}),
+
+    ("E-ARG-002: 출발지와 도착지가 같음",
+     {"steps": [
+         {"skill": "move", "args": {"target": "2번 팔레트"}},
+         {"skill": "pick", "args": {"object": "A자재", "from": "2번 팔레트"}},
+         {"skill": "move", "args": {"target": "2번 팔레트"}},
+         {"skill": "place", "args": {"object": "A자재", "to": "2번 팔레트"}},
+         {"skill": "home", "args": {}},
+     ]},
+     {"E-ARG-002"}),
+
+    ("E-SKILL-001: 허용되지 않은 스킬",
+     {"steps": [
+         {"skill": "dance", "args": {}},
+         {"skill": "home", "args": {}},
+     ]},
+     {"E-SKILL-001"}),
 ]
 
 
@@ -99,3 +126,4 @@ if __name__ == "__main__":
         print(f"       기대: {expected_codes or '(없음)'} / 실제: {actual_codes or '(없음)'}")
 
     print(f"\n{passed}/{len(CASES)} 통과")
+    sys.exit(0 if passed == len(CASES) else 1)

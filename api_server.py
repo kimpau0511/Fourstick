@@ -3,24 +3,30 @@
 
 실행 순서:
   1) vLLM 서버가 이미 8000번 포트에서 떠 있어야 함 (별도 터미널)
-  2) (execute=true로 로봇 실행까지 하려면) panda_gazebo_moveit.launch.py가
+  2) (별도 /v1/execute 승인 후 로봇 실행까지 하려면) ur5e_robotiq_gazebo.launch.py가
      이미 떠 있어야 함 (별도 터미널) — 그 터미널과 동일하게 아래 env가
      이 서버를 실행하는 터미널에도 필요:
        source /opt/ros/lyrical/setup.bash
        export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-  3) 이 서버 실행: uvicorn api_server:app --host 0.0.0.0 --port 8080 --reload
+  3) 로봇을 실제로 움직이는 API라 인증 토큰이 필수임 — 토큰 없이는 서버가
+     기동조차 안 됨:
+       export FORSTICK_API_TOKEN=<임의의 긴 무작위 문자열>
+  4) 이 서버 실행: uvicorn api_server:app --host 0.0.0.0 --port 8080 --reload
      (--reload는 rclpy 노드를 파일 변경마다 재시작시켜 문제가 될 수 있으니
      로봇 실행 기능을 테스트할 때는 --reload 빼고 실행 권장)
 
-동작 확인 (계획만 생성, 로봇 실행 안 함 — 기존과 동일):
+동작 확인 (계획만 생성, 로봇 실행 안 함 — 기존과 동일. 계획/실행/정지/로봇전환
+POST 엔드포인트는 모두 Authorization: Bearer <FORSTICK_API_TOKEN> 헤더 필요):
   curl -X POST http://localhost:8080/v1/task-plan \
        -H "Content-Type: application/json" \
+       -H "Authorization: Bearer $FORSTICK_API_TOKEN" \
        -d '{"text": "2번 팔레트에서 A자재를 집어서 컨베이어에 올려줘"}'
 
-동작 확인 (계획 생성 + 실제 Gazebo 로봇 실행까지, 풀 루프):
-  curl -X POST http://localhost:8080/v1/task-plan \
+동작 확인 (서버가 발급한 plan_id로 실제 Gazebo 로봇 실행):
+  curl -X POST http://localhost:8080/v1/execute \
        -H "Content-Type: application/json" \
-       -d '{"text": "1번 팔레트에서 A자재를 집어서 컨베이어에 올려줘", "execute": true}'
+       -H "Authorization: Bearer $FORSTICK_API_TOKEN" \
+       -d '{"plan_id": "<계획 생성 응답의 plan_id>"}'
 
 Gazebo 화면 실시간 스트리밍 (MJPEG):
   WSLg 화면(x11grab)을 직접 캡처하는 방식은 WSLg가 창을 Windows 쪽으로
@@ -34,6 +40,7 @@ Gazebo 화면 실시간 스트리밍 (MJPEG):
 import io
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -42,10 +49,10 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from PIL import Image as PILImage
 from sensor_msgs.msg import Image as RosImage
 
@@ -55,6 +62,8 @@ from pipeline import (
     transcribe_text_stub,
     transcribe_audio,
     process_utterance,
+    validate_task_plan_for_execution,
+    write_audit_log,
 )
 
 # gazebo_robot/taskplan_bridge.py의 TaskPlanExecutor를 재사용 (코드 중복 방지).
@@ -69,23 +78,26 @@ from robot_config import ROBOT_CONFIGS
 
 app = FastAPI(title="포스틱 Task Plan API", version="1.1")
 
-# 콘솔 UI(forstick_ex.html)가 듀얼 로봇 모드(start_dual_robots.sh, Panda=8090/
-# UR5e=8091)에서 "다른 로봇 포트가 이미 떠 있는지" 확인하려고 자기 origin이
-# 아닌 다른 포트로 fetch를 날린다(예: 8090 페이지에서 8091/health 확인) —
-# 기본적으로 브라우저 CORS에 막히므로 두 포트 origin을 명시적으로 허용한다.
-# 인증/쿠키가 없는 로컬 데모 API라 자격증명 없는 GET 몇 개만 열어주는 수준의
-# 위험도임. LAN IP로 접속하는 경우도 있어서(README 참고) 호스트는 와일드카드,
-# 포트만 8090/8091로 고정.
+# 콘솔 UI(forstick_ex.html)는 로봇을 여러 대 동시에 띄우는 듀얼 모드에서
+# "다른 로봇 포트가 이미 떠 있는지" 확인하려고 자기 origin이 아닌 다른
+# 포트로 fetch를 날린다(예: 8090 페이지에서 8091/health 확인) — 기본적으로
+# 브라우저 CORS에 막히므로 허용할 포트를 명시적으로 열어준다.
+# GET 몇 개만 열어주는 수준이라 위험도는 낮지만, POST 계열은 어차피 토큰
+# 인증(require_api_token)으로 막혀 있음. Panda+UR5e 듀얼 구성(8090/8091)은
+# Panda 제거로 현재는 안 쓰지만, 나중에 두 번째 로봇(FR3-WMS 등)을 추가하면
+# 그대로 재사용할 수 있게 포트는 하드코딩 대신 환경변수로 남겨둔다.
+_CORS_PORTS = os.environ.get("FORSTICK_CORS_PORTS", "8090|8091")
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://[^/]+:(8090|8091)$",
+    allow_origin_regex=rf"^https?://[^/]+:({_CORS_PORTS})$",
     allow_methods=["GET"],
     allow_headers=["*"],
 )
 
-# 실행할 로봇 선택 — FORSTICK_ROBOT 환경변수(기본값 ur5e — 2026-09-09, 기획서가
-# 명시한 실제 검증 대상 로봇으로 재정렬. Panda는 이번 스코프 재정렬 전 먼저
-# 만들어져 있던 로봇이라 여전히 지원은 하되 기본값은 아님). Gazebo 쪽은 로봇마다
+# 실행할 로봇 선택 — FORSTICK_ROBOT 환경변수(기본값이자 현재 유일한 지원
+# 로봇은 ur5e — 2026-09-09, 기획서가 명시한 실제 검증 대상 로봇. 개발 초기에
+# 먼저 만들었던 Panda는 스코프 재정렬 후 제거함, robot_config.py 참고).
+# Gazebo 쪽은 로봇마다
 # 독립된 Gazebo 서버 + 네임스페이스 없는 동일 이름 노드(move_group 등)를 띄우므로
 # 한 번에 하나의 로봇 스택만 가동 가능하다 — 그래서 로봇 선택은 요청 단위가 아니라
 # 서버 기동 시점에 결정된다. 오타로 조용히 엉뚱한 로봇으로 도는 걸 막기 위해
@@ -98,6 +110,31 @@ if _ROBOT_TYPE not in ROBOT_CONFIGS:
     )
 _ROBOT_CONFIG = ROBOT_CONFIGS[_ROBOT_TYPE]
 
+# 실제 배포에서는 인증 없이 로봇을 움직이거나 멈출 수 있으면 안 되므로,
+# FORSTICK_ROBOT과 동일한 fail-fast 패턴으로 토큰을 필수 환경변수로 요구한다.
+# 로컬 개발 편의를 위한 기본값은 일부러 두지 않는다 — 빈 값이면 시작 자체를 막는다.
+_API_TOKEN = os.environ.get("FORSTICK_API_TOKEN", "")
+if not _API_TOKEN:
+    raise RuntimeError(
+        "FORSTICK_API_TOKEN 환경변수가 설정되지 않았습니다. "
+        "로봇을 실제로 움직이는 API이므로 인증 토큰 없이는 기동하지 않습니다."
+    )
+
+
+def require_api_token(authorization: str | None = Header(default=None)):
+    """POST 엔드포인트(계획 생성/실행/정지/로봇 전환)에 붙는 인증 의존성.
+    'Authorization: Bearer <token>' 형식만 허용하고, secrets.compare_digest로
+    비교해 타이밍 사이드채널로 토큰이 조금씩 새는 걸 방지한다."""
+    prefix = "Bearer "
+    if not authorization or not authorization.startswith(prefix):
+        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
+    token = authorization[len(prefix):]
+    if not secrets.compare_digest(token, _API_TOKEN):
+        raise HTTPException(status_code=401, detail="유효하지 않은 인증 토큰입니다.")
+
+
+require_auth = Depends(require_api_token)
+
 # 파이프라인 결과의 status를 HTTP 상태 코드로 매핑.
 # gated는 클라이언트 잘못이 아니라 "정보가 더 필요하다"는 뜻이라 422(Unprocessable Entity)로,
 # error는 우리 쪽/LLM 쪽 문제라 502(Bad Gateway)로 구분한다.
@@ -105,6 +142,7 @@ STATUS_TO_HTTP = {
     "success": 200,
     "gated": 422,    # 정보 부족/미등록 — 클라이언트가 다시 물어봐야 함
     "rejected": 422, # 완성된 계획이지만 L3 Safety Guard 규칙 위반
+    "stop_requested": 200,
     "error": 502,    # 백엔드/LLM 쪽 문제
 }
 
@@ -115,6 +153,17 @@ STATUS_TO_HTTP = {
 
 _robot_executor: TaskPlanExecutor | None = None
 _executor_lock = threading.Lock()
+
+# ponytail: 단일 프로세스 데모용 저장소. 다중 인스턴스/재시작 보존이 필요하면 DB로 교체.
+_issued_plans: dict[str, dict] = {}
+_issued_plans_lock = threading.Lock()
+_active_plan_id: str | None = None
+# STOP은 "그 순간의 동작 하나만 멈춤"이 아니라 산업용 비상정지처럼 래칭된다 —
+# 한 번 세팅되면 /v1/resume으로 운영자가 명시적으로 풀기 전까지 그 어떤
+# plan_id claim도 통과하지 못한다. 대기 중이던 실행 요청이 STOP 직후
+# 자동으로 이어받는 걸 막기 위한 장치(_issued_plans_lock으로 claim과
+# 같은 락을 공유해 경쟁조건 없이 동기화됨).
+_global_stopped: bool = False
 
 # ============================================================
 # 카메라 뷰어 — scene_camera 토픽을 구독하는 전용 노드.
@@ -177,7 +226,7 @@ def startup_ros():
         # ROS2가 source 안 된 환경이거나 rclpy 관련 문제일 경우, 서버 자체는
         # 계속 뜨게 하되(계획 생성 기능은 로봇 없이도 유효) 실행/스트리밍
         # 요청만 실패시킨다.
-        print(f"[api_server] 초기화 실패 (execute=true / 카메라 스트리밍 요청은 실패할 것): {e}")
+        print(f"[api_server] 초기화 실패 (실행 API / 카메라 스트리밍 요청은 실패할 것): {e}")
         _robot_executor = None
         _camera_node = None
         _camera_executor = None
@@ -196,16 +245,147 @@ def shutdown_ros():
         rclpy.shutdown()
 
 
-def _execute_task_plan(task_plan: dict) -> dict:
+def _register_issued_plan(task_plan: dict):
+    with _issued_plans_lock:
+        _issued_plans[task_plan["plan_id"]] = {"task_plan": task_plan, "status": "issued"}
+
+
+def _claim_issued_plan(plan_id: str) -> tuple[dict | None, dict | None]:
+    global _active_plan_id
+    with _issued_plans_lock:
+        if _global_stopped:
+            return None, {"success": False, "reason_code": "E-EXEC-STOPPED-LATCHED",
+                          "message": "정지 상태입니다. /v1/resume으로 재개한 뒤 다시 시도하세요."}
+        record = _issued_plans.get(plan_id)
+        if record is None:
+            return None, {"success": False, "reason_code": "E-EXEC-UNKNOWN",
+                          "message": "서버가 발급한 Task Plan을 찾을 수 없음"}
+        if record["status"] != "issued":
+            return None, {"success": False, "reason_code": "E-EXEC-REPLAY",
+                          "message": f"이미 처리된 Task Plan임: {record['status']}"}
+
+        task_plan = record["task_plan"]
+        violations = validate_task_plan_for_execution(task_plan, _ROBOT_CONFIG.robot_id)
+        if violations:
+            record["status"] = "rejected"
+            return None, {"success": False, "reason_code": violations[0]["code"],
+                          "message": violations[0]["message"], "violations": violations}
+
+        record["status"] = "executing"
+        _active_plan_id = plan_id
+        return task_plan, None
+
+
+def _finish_plan(plan_id: str, status: str):
+    global _active_plan_id
+    with _issued_plans_lock:
+        record = _issued_plans.get(plan_id)
+        if record is not None and record["status"] != "stopped":
+            record["status"] = status
+        if _active_plan_id == plan_id:
+            _active_plan_id = None
+
+
+def _plan_status(plan_id: str) -> str | None:
+    with _issued_plans_lock:
+        record = _issued_plans.get(plan_id)
+        return record["status"] if record is not None else None
+
+
+def _execute_task_plan(plan_id: str) -> dict:
     if _robot_executor is None:
         return {
             "success": False,
+            "reason_code": "E-EXEC-NOT-READY",
             "message": "로봇 실행기가 초기화되지 않음 — 서버가 ROS2 환경에서 "
                        "시작되지 않았거나 Gazebo 시뮬레이션이 안 떠 있을 수 있음",
         }
+
     with _executor_lock:
-        ok = _robot_executor.run_plan(task_plan)
-    return {"success": ok}
+        # clear_stop()은 여기서 자동으로 부르지 않는다 — STOP은 래칭되므로
+        # /v1/resume이 명시적으로 풀어주기 전까지는 애초에 _claim_issued_plan에서
+        # 걸러진다(아래 참고). 여기서 자동으로 풀면 "정지했는데 다음 계획이
+        # 바로 이어받는" 원래 버그가 다시 생긴다.
+        task_plan, error = _claim_issued_plan(plan_id)
+        if error:
+            return error
+
+        utterance = task_plan.get("utterance", "")
+        confidence = (task_plan.get("audit") or {}).get("stt_confidence", 1.0)
+        write_audit_log("EXECUTION_STARTED", None, utterance, confidence, {"plan_id": plan_id})
+        try:
+            ok = _robot_executor.run_plan(task_plan)
+        except Exception as exc:
+            _finish_plan(plan_id, "failed")
+            write_audit_log("EXECUTION_FAILED", "E-EXEC-ERROR", utterance, confidence,
+                            {"plan_id": plan_id, "error": str(exc)})
+            return {"success": False, "reason_code": "E-EXEC-ERROR", "message": str(exc)}
+
+    stopped = _plan_status(plan_id) == "stopped"
+    _finish_plan(plan_id, "completed" if ok else "failed")
+    event = "EXECUTION_COMPLETED" if ok else ("EXECUTION_STOPPED" if stopped else "EXECUTION_FAILED")
+    reason_code = None if ok else ("E-EXEC-STOPPED" if stopped else "E-EXEC-FAILED")
+    write_audit_log(event, reason_code, utterance, confidence,
+                    {"plan_id": plan_id})
+    return {"success": ok, "plan_id": plan_id, "reason_code": reason_code,
+            "message": "실행 완료" if ok else ("정지 요청으로 실행 중단" if stopped else "실행 실패")}
+
+
+def _request_stop(source: str, utterance: str = "", confidence: float = 1.0) -> dict:
+    global _global_stopped
+    if _robot_executor is None:
+        return {"success": False, "reason_code": "E-STOP-NOT-READY",
+                "message": "로봇 실행기가 초기화되지 않음"}
+
+    # 래칭: 실행 중인 계획이 있든 없든 항상 먼저 세운다 — 이 시점에 다른
+    # 요청이 아직 claim하지 않은 계획을 들고 _executor_lock을 기다리고
+    # 있었다면, 그 claim은 (같은 _issued_plans_lock으로 직렬화되는)
+    # _claim_issued_plan에서 이 플래그를 보고 반드시 거부된다.
+    with _issued_plans_lock:
+        _global_stopped = True
+        plan_id = _active_plan_id
+
+    goal_cancelled = None
+    if plan_id is not None:
+        goal_cancelled = _robot_executor.request_stop()
+        with _issued_plans_lock:
+            if plan_id in _issued_plans:
+                _issued_plans[plan_id]["status"] = "stopped"
+
+    write_audit_log("STOP_REQUESTED", None, utterance, confidence,
+                    {"plan_id": plan_id, "source": source,
+                     "active_goal_cancelled": goal_cancelled, "latched": True})
+    return {
+        "success": True,
+        "plan_id": plan_id,
+        "latched": True,
+        "active_goal_cancel_confirmed": goal_cancelled,
+        "message": "정지 상태로 전환됨 — /v1/resume으로 재개하기 전까지 새 계획을 실행할 수 없습니다."
+                   if plan_id is not None else
+                   "정지 상태로 전환됨(실행 중인 계획 없음) — 대기 중이던 실행 요청도 차단됩니다.",
+    }
+
+
+def _request_resume(source: str = "ui") -> dict:
+    global _global_stopped
+    if _robot_executor is None:
+        return {"success": False, "reason_code": "E-RESUME-NOT-READY",
+                "message": "로봇 실행기가 초기화되지 않음"}
+    with _issued_plans_lock:
+        was_stopped = _global_stopped
+        _global_stopped = False
+    _robot_executor.clear_stop()
+    write_audit_log("RESUMED", None, "", 1.0, {"source": source, "was_stopped": was_stopped})
+    return {"success": True, "was_stopped": was_stopped,
+            "message": "정지 상태를 해제했습니다. 이제 새 계획을 실행할 수 있습니다."}
+
+
+def _finalize_pipeline_result(result: dict, utterance: str, confidence: float) -> dict:
+    if result["status"] == "success":
+        _register_issued_plan(result["task_plan"])
+    elif result["status"] == "stop_requested":
+        result["stop"] = _request_stop("voice", utterance, confidence)
+    return result
 
 
 # ============================================================
@@ -246,8 +426,8 @@ def gazebo_stream():
 
 
 class TextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     text: str
-    execute: bool = False  # true면 계획 생성 후 바로 Gazebo 로봇 실행까지 수행
 
 
 @app.get("/health")
@@ -255,8 +435,9 @@ def health():
     return {
         "status": "ok",
         "robot_connected": _robot_executor is not None,
-        "robot_type": _ROBOT_CONFIG.robot_id,   # "panda" | "ur5e"
-        "robot_label": _ROBOT_CONFIG.label,     # "Panda" | "UR5e + Robotiq 2F-85"
+        "robot_type": _ROBOT_CONFIG.robot_id,   # "ur5e" (등록된 로봇, robot_config.ROBOT_CONFIGS 참고)
+        "robot_label": _ROBOT_CONFIG.label,     # "UR5e + Robotiq 2F-85"
+        "stopped": _global_stopped,             # true면 /v1/resume 전까지 실행 전부 거부됨
     }
 
 
@@ -267,8 +448,18 @@ class SwitchRobotRequest(BaseModel):
 _switch_in_progress = False
 _switch_lock = threading.Lock()
 
+LOG_RETENTION_COUNT = int(os.environ.get("FORSTICK_LOG_RETENTION_COUNT", 20))
 
-@app.post("/v1/robot/switch")
+
+def _prune_old_logs(log_dir: Path, pattern: str, keep: int = LOG_RETENTION_COUNT):
+    """이벤트별로 새 파일이 생기는 로그(전환/기동 로그 등)는 회전이 아니라
+    개수 상한이 맞다 — 오래된 파일부터 지워서 최근 keep개만 남긴다."""
+    files = sorted(log_dir.glob(pattern), key=lambda p: p.stat().st_mtime)
+    for old in files[:-keep] if keep > 0 else files:
+        old.unlink(missing_ok=True)
+
+
+@app.post("/v1/robot/switch", dependencies=[require_auth])
 def switch_robot(req: SwitchRobotRequest):
     """웹 UI에서 로봇을 바꾸는 엔드포인트. 실제로는 start_robot.sh를 백그라운드로
     실행시킬 뿐이다 — start_robot.sh가 지금 떠 있는 Gazebo+MoveIt/이 API 서버
@@ -285,6 +476,12 @@ def switch_robot(req: SwitchRobotRequest):
         )
     if req.robot == _ROBOT_TYPE:
         return {"success": True, "already": True, "message": f"이미 {_ROBOT_CONFIG.label}로 떠 있습니다."}
+    with _issued_plans_lock:
+        if _active_plan_id is not None:
+            return JSONResponse(
+                status_code=409,
+                content={"success": False, "message": "계획 실행 중에는 로봇을 전환할 수 없습니다."},
+            )
     with _switch_lock:
         if _switch_in_progress:
             return JSONResponse(status_code=409, content={"success": False, "message": "이미 다른 전환이 진행 중입니다."})
@@ -294,6 +491,7 @@ def switch_robot(req: SwitchRobotRequest):
     script = forstick_dir / "start_robot.sh"
     log_dir = forstick_dir / "logs"
     log_dir.mkdir(exist_ok=True)
+    _prune_old_logs(log_dir, "switch_*.log")
     switch_log = log_dir / f"switch_{req.robot}_{int(time.time())}.log"
     with open(switch_log, "w") as logf:
         subprocess.Popen(
@@ -335,7 +533,7 @@ def get_capability_profile():
     return CAPABILITY_PROFILE
 
 
-@app.get("/v1/audit-log")
+@app.get("/v1/audit-log", dependencies=[require_auth])
 def get_audit_log(limit: int = 200):
     """pipeline.write_audit_log()가 쌓아온 audit_log.jsonl을 최신순으로 반환.
     파일 자체가 진실의 원천 — 여기서는 그대로 읽어서 파싱만 한다."""
@@ -356,29 +554,54 @@ def get_audit_log(limit: int = 200):
 
 
 class ExecuteRequest(BaseModel):
-    task_plan: dict
+    model_config = ConfigDict(extra="forbid")
+    plan_id: str
 
 
-@app.post("/v1/execute")
+class StopRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: str = "ui"
+
+
+class ResumeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: str = "ui"
+
+
+@app.post("/v1/execute", dependencies=[require_auth])
 def execute_existing_plan(req: ExecuteRequest):
-    """/v1/task-plan(execute=false)로 이미 만들어둔 task_plan을 그대로 실행.
-    새로 계획을 생성하지 않으므로 plan_id/plan_hash가 그대로 유지된다."""
-    return _execute_task_plan(req.task_plan)
+    """서버가 발급·보관한 계획만 실행하고 실행 직전 전체 검증을 다시 수행한다."""
+    result = _execute_task_plan(req.plan_id)
+    return JSONResponse(status_code=200 if result["success"] else 409, content=result)
 
 
-@app.post("/v1/task-plan")
+@app.post("/v1/stop", dependencies=[require_auth])
+def stop_active_execution(req: StopRequest):
+    """정지 상태는 래칭된다 — /v1/resume 전까지 어떤 plan_id claim도 통과 못 함."""
+    result = _request_stop(req.source)
+    return JSONResponse(status_code=200 if result["success"] else 409, content=result)
+
+
+@app.post("/v1/resume", dependencies=[require_auth])
+def resume_from_stop(req: ResumeRequest):
+    """운영자가 명시적으로 정지 래치를 해제한다. 이 호출 전까지는 /v1/execute가
+    E-EXEC-STOPPED-LATCHED로 전부 거부된다."""
+    result = _request_resume(req.source)
+    return JSONResponse(status_code=200 if result["success"] else 409, content=result)
+
+
+@app.post("/v1/task-plan", dependencies=[require_auth])
 def create_task_plan_from_text(req: TextRequest):
     raw_text, confidence = transcribe_text_stub(req.text)
-    result = process_utterance(raw_text, confidence)
-    if req.execute and result["status"] == "success":
-        result["execution"] = _execute_task_plan(result["task_plan"])
+    result = process_utterance(raw_text, confidence, robot_id=_ROBOT_CONFIG.robot_id)
+    result = _finalize_pipeline_result(result, raw_text, confidence)
     status_code = STATUS_TO_HTTP.get(result["status"], 500)
     return JSONResponse(status_code=status_code, content=result)
 
 
-@app.post("/v1/task-plan/audio")
-def create_task_plan_from_audio(file: UploadFile = File(...), execute: bool = Form(False)):
-    suffix = Path(file.filename).suffix or ".wav"
+@app.post("/v1/task-plan/audio", dependencies=[require_auth])
+def create_task_plan_from_audio(file: UploadFile = File(...)):
+    suffix = Path(file.filename or "").suffix or ".wav"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
@@ -388,8 +611,7 @@ def create_task_plan_from_audio(file: UploadFile = File(...), execute: bool = Fo
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
-    result = process_utterance(raw_text, confidence)
-    if execute and result["status"] == "success":
-        result["execution"] = _execute_task_plan(result["task_plan"])
+    result = process_utterance(raw_text, confidence, robot_id=_ROBOT_CONFIG.robot_id)
+    result = _finalize_pipeline_result(result, raw_text, confidence)
     status_code = STATUS_TO_HTTP.get(result["status"], 500)
     return JSONResponse(status_code=status_code, content={**result, "utterance": raw_text})

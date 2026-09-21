@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # 로봇 스택(Gazebo+MoveIt + API 서버) 전환 스크립트.
 #
-#   ./start_robot.sh panda
 #   ./start_robot.sh ur5e
 #
 # 지금 떠 있는 로봇 스택(있다면)을 내리고, 지정한 로봇의 Gazebo+MoveIt을
@@ -9,18 +8,21 @@
 # vLLM은 로봇과 무관하므로 건드리지 않는다 — 따로 이미 떠 있어야 함
 # (CLAUDE.md "실행 방법" 1번 참고).
 #
-# 한 번에 하나의 로봇 스택만 가동 가능하다 — panda_gazebo_moveit.launch.py와
-# ur5e_robotiq_gazebo.launch.py는 각자 독립된 Gazebo 서버 + 네임스페이스
-# 없는 동일 이름 노드(move_group, robot_state_publisher 등)를 띄우기 때문에
-# 동시 실행 시 충돌한다.
-
+# 한 번에 하나의 로봇 스택만 가동 가능하다 — 로봇마다 각자 독립된 Gazebo
+# 서버 + 네임스페이스 없는 동일 이름 노드(move_group, robot_state_publisher
+# 등)를 띄우기 때문에 동시 실행 시 충돌한다.
+#
+# 지금은 ur5e만 지원한다(개발 초기의 panda는 스코프 재정렬 후 제거함,
+# gazebo_robot/robot_config.py 참고). 새 로봇(예: FR3-WMS)을 추가하려면
+# 아래 if/else에 launch 파일 분기를 하나 더 넣으면 된다.
+#
 # -u(nounset)는 안 씀 — /opt/ros/lyrical/setup.bash 자체가 내부적으로
 # unset 변수(AMENT_TRACE_SETUP_FILES 등)를 참조해서 nounset과 호환 안 됨.
 set -eo pipefail
 
 ROBOT="${1:-}"
-if [[ "$ROBOT" != "panda" && "$ROBOT" != "ur5e" ]]; then
-    echo "사용법: $0 {panda|ur5e}" >&2
+if [[ "$ROBOT" != "ur5e" ]]; then
+    echo "사용법: $0 {ur5e}" >&2
     exit 1
 fi
 
@@ -32,13 +34,25 @@ mkdir -p "$RUN_DIR" "$LOG_DIR"
 API_PID_FILE="$RUN_DIR/api_server.pid"
 GAZEBO_PID_FILE="$RUN_DIR/gazebo.pid"
 
-if [[ "$ROBOT" == "panda" ]]; then
-    LAUNCH_FILE="$FORSTICK_DIR/gazebo_robot/panda_gazebo_moveit.launch.py"
-    READY_PATTERN="You can start planning now!"
-else
-    LAUNCH_FILE="$FORSTICK_DIR/gazebo_robot/ur5e_robotiq_gazebo.launch.py"
-    READY_PATTERN="You can start planning now!"
-fi
+# 전환마다 gazebo_*.log/api_server_*.log가 새로 쌓여서 무기한 늘어난다 —
+# 회전이 아니라 개수 상한: 이 패턴들은 최근 N개(기본 20개)만 남기고 지운다.
+# nullglob으로 매칭 0개일 때 빈 배열이 되게 해서, set -eo pipefail 아래에서
+# "ls: no matches"가 파이프 실패로 번져 스크립트 전체가 죽는 걸 방지한다.
+LOG_RETENTION_COUNT="${FORSTICK_LOG_RETENTION_COUNT:-20}"
+prune_old_logs() {
+    local pattern="$1"
+    shopt -s nullglob
+    local files=("$LOG_DIR"/$pattern)
+    shopt -u nullglob
+    if (( ${#files[@]} > LOG_RETENTION_COUNT )); then
+        printf '%s\n' "${files[@]}" | xargs -r ls -t | tail -n "+$((LOG_RETENTION_COUNT + 1))" | xargs -r rm -f --
+    fi
+}
+prune_old_logs "gazebo_*.log"
+prune_old_logs "api_server_*.log"
+
+LAUNCH_FILE="$FORSTICK_DIR/gazebo_robot/ur5e_robotiq_gazebo.launch.py"
+READY_PATTERN="You can start planning now!"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 GAZEBO_LOG="$LOG_DIR/gazebo_${ROBOT}_${TIMESTAMP}.log"

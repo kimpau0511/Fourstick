@@ -17,6 +17,7 @@ from typing import Optional
 from pipeline import CAPABILITY_PROFILE
 
 MAX_STEPS = 20
+ALLOWED_SKILLS = {"home", "move", "pick", "place"}
 
 
 def check_plan_safety(task_plan: dict) -> list[dict]:
@@ -25,9 +26,14 @@ def check_plan_safety(task_plan: dict) -> list[dict]:
     violations: list[dict] = []
 
     # E-SEQ-001: 빈 계획 금지
-    if not steps:
+    if not isinstance(steps, list) or not steps:
         violations.append({"code": "E-SEQ-001", "message": "빈 작업 계획"})
         return violations  # 더 검사할 스텝이 없음
+
+    if any(not isinstance(step, dict) for step in steps):
+        return [{"code": "E-SEQ-005", "message": "모든 스텝은 객체여야 함"}]
+    if any(not isinstance(step.get("args", {}), dict) for step in steps):
+        return [{"code": "E-ARG-003", "message": "모든 args는 객체여야 함"}]
 
     # E-SEQ-002: 반드시 home 스킬로 종료
     if steps[-1].get("skill") != "home":
@@ -44,6 +50,9 @@ def check_plan_safety(task_plan: dict) -> list[dict]:
     for i, step in enumerate(steps):
         skill = step.get("skill")
         args = step.get("args", {}) or {}
+        if skill not in ALLOWED_SKILLS:
+            violations.append({"code": "E-SKILL-001",
+                               "message": f"steps[{i}] 허용되지 않은 skill: {skill!r}"})
         if skill == "move" and args.get("target") not in CAPABILITY_PROFILE["locations"]:
             violations.append({"code": "E-ARG-001",
                                 "message": f"steps[{i}] move.target이 Capability Profile 밖: {args.get('target')!r}"})
@@ -75,6 +84,19 @@ def check_plan_safety(task_plan: dict) -> list[dict]:
                 violations.append({"code": "E-HOLD-002",
                                     "message": f"steps[{i}]: {held!r}를 들고 있는데 {args.get('object')!r}를 놓으려 함"})
             held = None
+
+    if held is not None:
+        violations.append({"code": "E-HOLD-003",
+                           "message": f"계획 종료 시 {held!r}를 아직 들고 있음"})
+
+    picks = [s for s in steps if s.get("skill") == "pick"]
+    places = [s for s in steps if s.get("skill") == "place"]
+    if len(picks) == 1 and len(places) == 1:
+        source = (picks[0].get("args") or {}).get("from")
+        destination = (places[0].get("args") or {}).get("to")
+        if source is not None and source == destination:
+            violations.append({"code": "E-ARG-002",
+                               "message": "출발지와 도착지가 같음"})
 
     # E-SEQ-003: pick 직전에는 반드시 같은 위치로의 move가 있어야 함
     for i, step in enumerate(steps):

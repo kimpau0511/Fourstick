@@ -1,7 +1,11 @@
-"""로봇별 설정 — taskplan_bridge.TaskPlanExecutor가 여러 로봇(Panda, UR5e...)을
+"""로봇별 설정 — taskplan_bridge.TaskPlanExecutor가 여러 로봇(UR5e, 추후 FR3-WMS...)을
 같은 스킬 실행 로직(exec_home/move/pick/place/stop, run_plan)으로 다룰 수 있게
 하는 어댑터 설정. 로봇마다 다른 건 전부 여기 값으로만 표현한다 — 관절 이름,
 그리퍼 열림/닫힘 값, 컨트롤러 액션 이름, IK 플래닝 그룹/기준 프레임, 위치 좌표.
+
+새 로봇을 추가하려면: 이 파일에 RobotConfig 인스턴스를 하나 더 만들고
+ROBOT_CONFIGS에 등록하면 된다 — taskplan_bridge.py/api_server.py는
+robot_id 문자열로만 다루므로 다른 코드를 고칠 필요는 없다.
 """
 from dataclasses import dataclass, field
 
@@ -36,33 +40,6 @@ class RobotConfig:
     # 선언돼 있어야 함(ur5e_robotiq_gazebo.urdf.xacro 참고).
     use_detachable_joint: bool = False
 
-
-PANDA_CONFIG = RobotConfig(
-    robot_id="panda",
-    label="Panda",
-    joint_names=[
-        "panda_joint1", "panda_joint2", "panda_joint3",
-        "panda_joint4", "panda_joint5", "panda_joint6", "panda_joint7",
-    ],
-    # ready 자세 (panda.srdf 값) - home 스킬 및 IK seed로 사용
-    ready_pose=[0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785],
-    # panda_finger_joint1 기준, limit [0, 0.04]. 0.014는 material_a/b/c
-    # (0.035m 정육면체)를 뚫지 않고 살짝 눌러 무는 값.
-    gripper_joint_name="panda_finger_joint1",
-    gripper_open=0.04,
-    gripper_close=0.014,
-    gripper_max_effort=20.0,
-    arm_action="/panda_arm_controller/follow_joint_trajectory",
-    gripper_action="/panda_hand_controller/gripper_cmd",
-    ik_group_name="panda_arm",
-    ik_frame_id="panda_link0",
-    location_poses={
-        "1번 팔레트": (0.4, 0.3, 0.30, 0.118),
-        "2번 팔레트": (0.5, 0.0, 0.30, 0.118),
-        "3번 팔레트": (0.4, -0.3, 0.30, 0.118),
-        "컨베이어": (0.0, 0.55, 0.40, 0.218),
-    },
-)
 
 UR5E_CONFIG = RobotConfig(
     robot_id="ur5e",
@@ -104,4 +81,4 @@ UR5E_CONFIG = RobotConfig(
     use_detachable_joint=True,
 )
 
-ROBOT_CONFIGS = {"panda": PANDA_CONFIG, "ur5e": UR5E_CONFIG}
+ROBOT_CONFIGS = {"ur5e": UR5E_CONFIG}

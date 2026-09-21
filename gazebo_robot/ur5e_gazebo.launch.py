@@ -6,8 +6,9 @@ panda_gazebo.launch.py와 같은 구조: 로봇 설명(URDF)/컨트롤러 설정
 참조한다.
 
 Phase 1(모델 스폰 + 관절 제어 검증)만 다룬다 — MoveIt, Task Plan 파이프라인
-연동은 아직 없음 (taskplan_bridge.py는 여전히 Panda 전용이고 이 launch 파일과
-무관).
+연동은 이 파일 작성 당시엔 아직 없었음(이후 taskplan_bridge.py가 다중 로봇을
+지원하게 됐지만, 실제 파이프라인 연동은 MoveIt까지 갖춘
+ur5e_robotiq_gazebo.launch.py 쪽에서 이뤄진다 — 이 파일과는 무관).
 
 [버그 우회] 설치된 ur_simulation_gz가 제공하는 ur_sim_control.launch.py를 그대로
 include했더니, controller_manager가 joint_trajectory_controller 노드를

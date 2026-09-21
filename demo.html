@@ -161,7 +161,7 @@
   <div class="page-head">
     <div class="eyebrow">VOICE / TEXT → TASK PLAN</div>
     <h1>포스틱 Task Plan 데모</h1>
-    <p>텍스트 입력 또는 마이크로 말하면 L1→L2(EXAONE)→L3 안전 검증을 거친 Task Plan을 생성하고, 원하면 실제 Gazebo 로봇까지 바로 실행합니다.</p>
+    <p>텍스트 입력 또는 마이크로 말하면 L1→L2(EXAONE)→L3 안전 검증을 거친 Task Plan을 생성합니다. 실행은 계획 확인 후 별도 승인합니다.</p>
   </div>
 
   <div class="grid two">
@@ -182,11 +182,7 @@
         <div class="mic-hint">누르고 있는 동안 녹음 · 떼면 전송</div>
       </div>
 
-      <label class="toggle-row">
-        <input type="checkbox" id="executeToggle" checked>
-        <span>실제 로봇 실행까지 진행</span>
-      </label>
-      <p class="toggle-hint">체크 해제 시 계획만 생성하고 로봇은 움직이지 않습니다.</p>
+      <p class="toggle-hint">계획 생성만 수행하며 이 화면에서 로봇을 바로 실행하지 않습니다.</p>
     </div>
 
     <div class="card viewport-card">
@@ -226,10 +222,21 @@
 </div>
 
 <script>
+function getApiToken(){
+  let token = localStorage.getItem('forstick_api_token');
+  if(!token){
+    token = prompt('포스틱 API 토큰을 입력하세요 (서버 관리자에게 문의):') || '';
+    if(token) localStorage.setItem('forstick_api_token', token);
+  }
+  return token;
+}
+function authFetch(url, options={}){
+  const headers = {...(options.headers||{}), 'Authorization': 'Bearer '+getApiToken()};
+  return fetch(url, {...options, headers});
+}
 const textInput = document.getElementById('textInput');
 const sendTextBtn = document.getElementById('sendTextBtn');
 const micBtn = document.getElementById('micBtn');
-const executeToggle = document.getElementById('executeToggle');
 const loading = document.getElementById('loading');
 const resultBox = document.getElementById('result');
 const resultHero = document.getElementById('resultHero');
@@ -294,6 +301,7 @@ replayBtn.addEventListener('click', () => speak(lastSpeech));
 
 function statusMeta(status){
   switch(status){
+    case 'stop_requested': return {cls:'block', icon:'■', label:'STOP', title:'정지 요청을 전달했습니다'};
     case 'success':  return {cls:'pass',  icon:'✓', label:'PASS',  title:'실행 가능한 계획입니다'};
     case 'gated':    return {cls:'ask',   icon:'?', label:'ASK',   title:'추가 정보가 필요합니다'};
     case 'rejected': return {cls:'block', icon:'!', label:'BLOCK', title:'안전 규칙 위반으로 차단됨'};
@@ -377,10 +385,10 @@ async function sendText(text){
   if (!text.trim()) return;
   setLoading(true);
   try {
-    const res = await fetch('/v1/task-plan', {
+    const res = await authFetch('/v1/task-plan', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({text, execute: executeToggle.checked}),
+      body: JSON.stringify({text}),
     });
     const data = await res.json();
     renderResult(data);
@@ -396,8 +404,7 @@ async function sendAudio(blob){
   try {
     const formData = new FormData();
     formData.append('file', blob, 'recording.webm');
-    formData.append('execute', executeToggle.checked ? 'true' : 'false');
-    const res = await fetch('/v1/task-plan/audio', { method: 'POST', body: formData });
+    const res = await authFetch('/v1/task-plan/audio', { method: 'POST', body: formData });
     const data = await res.json();
     renderResult(data);
   } catch (err) {
