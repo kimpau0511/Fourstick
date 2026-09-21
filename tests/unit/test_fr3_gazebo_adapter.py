@@ -252,6 +252,17 @@ class TestPickPlaceStaysBlocked(unittest.TestCase):
         self.assertFalse(adapter.supports("place"))
 
 
+def ticking(start=0.0, step=0.05):
+    """호출할 때마다 흐르는 시계. 정지 확인은 timeout까지 안정 창을 찾으므로
+    멈춘 시계를 쓰면 끝나지 않는다."""
+    clock = {"t": start - step}
+
+    def now():
+        clock["t"] += step
+        return clock["t"]
+    return now
+
+
 class TestStopIsObserved(unittest.TestCase):
     def _samples(self, count, *, gripper_velocities=None, gripper_positions=None,
                  arm_velocity=0.0, start=200.0, step=0.01):
@@ -278,7 +289,7 @@ class TestStopIsObserved(unittest.TestCase):
 
     def test_isolated_velocity_spike_with_static_position_is_stopped(self):
         """고립 1표본 스파이크는 잡음이다(reports/workcell/stop_observation.json)."""
-        adapter, transport, _, _ = build(now=lambda: 0.0)
+        adapter, transport, _, _ = build(now=ticking())
         velocities = [0.0] * 10
         velocities[4] = 0.05        # 고립 스파이크 1표본
         transport.samples = self._samples(10, gripper_velocities=velocities)
@@ -290,7 +301,7 @@ class TestStopIsObserved(unittest.TestCase):
             1)
 
     def test_consecutive_velocity_exceed_is_not_stopped(self):
-        adapter, transport, _, _ = build(now=lambda: 0.0)
+        adapter, transport, _, _ = build(now=ticking())
         velocities = [0.0] * 10
         velocities[4] = velocities[5] = 0.05   # 연속 2표본 → 운동
         transport.samples = self._samples(10, gripper_velocities=velocities)
@@ -300,7 +311,7 @@ class TestStopIsObserved(unittest.TestCase):
 
     def test_displacement_beyond_tolerance_is_not_stopped(self):
         """속도가 조용해도 위치가 움직였으면 정지가 아니다."""
-        adapter, transport, _, _ = build(now=lambda: 0.0)
+        adapter, transport, _, _ = build(now=ticking())
         positions = [index * STOP_DISPLACEMENT_RAD for index in range(10)]
         transport.samples = self._samples(10, gripper_positions=positions)
         result = adapter.confirm_stopped(5.0)
@@ -309,7 +320,7 @@ class TestStopIsObserved(unittest.TestCase):
                            STOP_DISPLACEMENT_RAD)
 
     def test_missing_gripper_observation_is_unconfirmed_not_stopped(self):
-        adapter, transport, _, _ = build(now=lambda: 0.0)
+        adapter, transport, _, _ = build(now=ticking())
         samples = self._samples(10)
         for sample in samples:
             del sample.velocities[GRIPPER_JOINT]
@@ -319,7 +330,7 @@ class TestStopIsObserved(unittest.TestCase):
         self.assertFalse(result.evidence["gripper_observed"])
 
     def test_too_few_samples_is_unconfirmed(self):
-        adapter, transport, _, _ = build(now=lambda: 0.0)
+        adapter, transport, _, _ = build(now=ticking())
         transport.samples = self._samples(3)
         transport.observation_valid = False
         result = adapter.confirm_stopped(1.0)
@@ -335,11 +346,104 @@ class TestStopIsObserved(unittest.TestCase):
         self.assertEqual(result.reason.value, "exec.stop_unconfirmed")
 
     def test_arm_motion_keeps_stop_unconfirmed(self):
-        adapter, transport, _, _ = build(now=lambda: 0.0)
+        adapter, transport, _, _ = build(now=ticking())
         transport.samples = self._samples(10, arm_velocity=0.5)
         result = adapter.confirm_stopped(5.0)
         self.assertEqual(result.reason.value, "exec.stop_unconfirmed")
         self.assertTrue(result.evidence["arm"]["moving"])
+
+
+class TestStopWaitsForSettling(unittest.TestCase):
+    """취소 ACK 직후 첫 창만 보고 결론 내리지 않는다. timeout 안에서 안정 창을 찾는다."""
+
+    def _obs(self, at, *, arm_velocity=0.0, arm_position=0.0):
+        velocities = {name: arm_velocity for name in ARM_JOINTS}
+        velocities[GRIPPER_JOINT] = 0.0
+        positions = {name: arm_position for name in ARM_JOINTS}
+        positions[GRIPPER_JOINT] = 0.0
+        return JointObservation(positions=positions, velocities=velocities,
+                                observed_at=at)
+
+    def test_settling_samples_then_stable_window_is_confirmed(self):
+        adapter, transport, _, _ = build(now=ticking(start=199.0))
+        adapter.connect(1.0)
+        adapter.stop(1.0)                       # 취소 ACK 시각을 남긴다
+        moving = [self._obs(200.0 + i * 0.005, arm_velocity=0.04,
+                            arm_position=i * 0.0002) for i in range(15)]
+        still = [self._obs(200.075 + i * 0.005, arm_position=15 * 0.0002)
+                 for i in range(10)]
+        transport.samples = moving + still
+        result = adapter.confirm_stopped(10.0)
+        self.assertEqual(result.state.value, "stopped")
+        self.assertIsNone(result.reason)
+        self.assertTrue(result.verified)
+        ev = result.evidence
+        self.assertEqual(ev["stop_verdict"], "stop_confirmed")
+        # 첫 창(이동 표본)은 탈락했고 사유가 남는다.
+        self.assertGreater(ev["rejected_windows"], 0)
+        self.assertIn("arm_velocity_consecutive_exceed", ev["rejected_window_runs"][0]["reason"])
+        # 첫 안정 창: 마지막 이동 표본 1개(고립 1표본 초과는 잡음 규칙상 운동 아님,
+        # 변위도 허용치 안) + 정지 표본 9개.
+        self.assertEqual(ev["stable_window_start_at"], round(moving[-1].observed_at, 6))
+        self.assertEqual(ev["stable_window_end_at"], round(still[8].observed_at, 6))
+        self.assertIsNotNone(ev["cancel_ack_at"])
+        self.assertEqual(ev["seconds_to_confirm_from"], "cancel_ack")
+        self.assertAlmostEqual(ev["seconds_to_confirm"],
+                               still[8].observed_at - ev["cancel_ack_at"], places=3)
+        self.assertEqual(ev["arm"]["moving"], False)
+
+    def test_motion_until_timeout_is_unconfirmed(self):
+        adapter, transport, _, _ = build(now=ticking(start=0.0, step=0.05))
+        transport.samples = [self._obs(200.0 + i * 0.005, arm_velocity=0.04,
+                                       arm_position=i * 0.0002) for i in range(400)]
+        result = adapter.confirm_stopped(2.0)
+        self.assertEqual(result.reason.value, "exec.stop_unconfirmed")
+        self.assertNotEqual(result.state.value, "stopped")
+        ev = result.evidence
+        self.assertEqual(ev["stop_verdict"], "stop_unconfirmed")
+        self.assertGreater(ev["rejected_windows"], 0)
+        self.assertNotIn("stable_window_start_at", ev)
+        self.assertGreaterEqual(ev["searched_until"], ev["search_started_at"] + 2.0)
+
+    def test_stale_samples_cannot_complete_a_stable_window(self):
+        adapter, transport, _, _ = build(now=ticking())
+        fresh = [self._obs(300.0 + i * 0.005) for i in range(9)]
+        repeated = [self._obs(fresh[-1].observed_at) for _ in range(5)]   # 새 표본 아님
+        transport.samples = fresh + repeated
+        result = adapter.confirm_stopped(2.0)
+        self.assertEqual(result.reason.value, "exec.stop_unconfirmed")
+        self.assertEqual(result.evidence["fresh_samples"], 9)
+        self.assertGreaterEqual(result.evidence["stale_samples_skipped"], 5)
+
+    def test_gap_resets_the_window(self):
+        adapter, transport, _, _ = build(now=ticking())
+        before = [self._obs(400.0 + i * 0.005) for i in range(9)]
+        after = [self._obs(401.0 + i * 0.005) for i in range(10)]        # 간격 약 1초
+        transport.samples = before + after
+        result = adapter.confirm_stopped(5.0)
+        self.assertEqual(result.state.value, "stopped")
+        # 간격 앞의 표본은 안정 창에 들어가지 않는다.
+        self.assertEqual(result.evidence["stable_window_start_at"], round(after[0].observed_at, 6))
+        self.assertEqual(result.evidence["rejected_window_runs"][0]["reason"], "sample_gap_exceeded")
+
+    def test_stop_criteria_values_are_unchanged(self):
+        self.assertEqual(STOP_DISPLACEMENT_RAD, 0.001)
+        self.assertEqual(CONSECUTIVE_EXCEED_FOR_MOTION, 2)
+        adapter, _, _, _ = build()
+        self.assertEqual(adapter._stop_velocity, 0.01)
+        self.assertEqual(adapter._stop_samples, 10)
+        self.assertEqual(adapter._max_sample_gap_sec, 0.2)
+        # 작업 셀 서버가 실제로 넘기는 값: 속도 0.01(정책에 arm 키가 없어 기본값),
+        # 표본 간격은 정지 정책 값, 확인 timeout은 API 상수.
+        policy = json.loads((ROOT / "examples/config/valid_stop_policy.json")
+                            .read_text(encoding="utf-8"))
+        self.assertNotIn("arm", policy["position_tolerance"])
+        self.assertEqual(policy["max_sample_gap_sec"], 0.5)
+        runtime_source = (ROOT / "server/runtime.py").read_text(encoding="utf-8")
+        self.assertIn('stop_policy.position_tolerance.get("arm", 0.01)', runtime_source)
+        self.assertIn("max_sample_gap_sec=stop_policy.max_sample_gap_sec", runtime_source)
+        source = (ROOT / "server/api.py").read_text(encoding="utf-8")
+        self.assertIn("ADAPTER_TIMEOUT_SEC = 10.0", source)
 
 
 class TestEverythingIsMarkedSimulated(unittest.TestCase):

@@ -57,7 +57,7 @@ async def handle(
     if path == "/v1/scene.raw":
         # **인코딩하지 않는다.** 원본 RGB를 그대로 보내고 브라우저가 canvas에
         # 그린다 — 실시간 표시에서 PNG 인코딩 비용을 쓰지 않기 위해서다.
-        live = viewer.raw()
+        live = await _first_raw(viewer)
         if live is None:
             return json_response({
                 "available": False,
@@ -99,6 +99,14 @@ async def handle(
     )
 
 
+async def _first_raw(viewer) -> tuple | None:
+    """첫 프레임. 뷰어가 기다릴 수 있으면 상한 안에서 기다린다(루프를 막지 않는다)."""
+    wait = getattr(viewer, "wait_raw", None)
+    if wait is None:
+        return viewer.raw()
+    return await wait()
+
+
 async def scene_socket(ctx: RouteContext, receive, send) -> None:
     """`/v1/scene/stream` — 장면 프레임을 **서버가 밀어 보낸다.**
 
@@ -133,7 +141,7 @@ async def scene_socket(ctx: RouteContext, receive, send) -> None:
         await send({"type": "websocket.close", "code": 4404})
         return
 
-    first = viewer.raw()
+    first = await _first_raw(viewer)
     if first is None:
         await send({"type": "websocket.send", "text": _json.dumps({
             "type": "scene_unavailable",

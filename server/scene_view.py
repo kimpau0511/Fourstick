@@ -14,6 +14,7 @@ Gazebo **서버가 렌더링하는** 장면 카메라 프레임을 받아 PNG로
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -26,6 +27,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+#: 첫 프레임 대기 상한(초). 구독 직후에는 DDS 매칭까지 0.2~2.5초가 걸린다(실측
+#: 2026-09-18). 이 안에 오지 않으면 기존처럼 "프레임 없음"으로 거절한다.
+FIRST_FRAME_WAIT_SEC = 3.0
+#: 첫 프레임을 기다리는 동안 확인하는 주기(초). 이벤트 루프를 막지 않는다.
+FIRST_FRAME_POLL_SEC = 0.05
 
 
 @dataclass(frozen=True)
@@ -162,18 +169,44 @@ class SceneViewer:
         self._max_age = max_age_sec
         self._cached: SceneFrame | None = None
         self._source: RosFrameSource | None = None
+        self._source_lock = threading.Lock()
+
+    def _topic(self) -> str | None:
+        camera = (self._config() or {}).get("scene_camera") or {}
+        return camera.get("ros_topic") or None
+
+    def start_live(self) -> bool:
+        """구독을 **백그라운드에서** 바로 시작한다. 호출자를 막지 않는다.
+
+        첫 요청이 구독을 만들고 빈 버퍼를 읽던 문제(재시작 직후 503/4503)를
+        없앤다. 시작하는 동안 `raw()`는 기다리지 않고 None을 돌려준다.
+        """
+        with self._source_lock:
+            if self._source is not None:
+                return True
+            topic = self._topic()
+            if not topic:
+                return False
+            source = RosFrameSource(topic)
+            self._source = source
+        threading.Thread(target=source.start, name="scene-live-start",
+                         daemon=True).start()
+        return True
 
     def _live_source(self) -> RosFrameSource | None:
-        if self._source is not None:
-            return self._source if self._source._started else None
-        data = self._config()
-        camera = (data or {}).get("scene_camera") or {}
-        topic = camera.get("ros_topic")
-        if not topic:
-            return None
-        source = RosFrameSource(topic)
-        self._source = source
-        return source if source.start() else None
+        source = self._source
+        if source is not None:
+            return source if source._started else None
+        with self._source_lock:
+            if self._source is not None:
+                return self._source if self._source._started else None
+            topic = self._topic()
+            if not topic:
+                return None
+            source = RosFrameSource(topic)
+            self._source = source
+            started = source.start()
+        return source if started else None
 
     def raw(self) -> tuple | None:
         """실시간 표시용 원본 프레임. 인코딩하지 않는다(CPU를 쓰지 않는다)."""
@@ -181,6 +214,21 @@ class SceneViewer:
         if source is None:
             return None
         return source.latest(self._max_age)
+
+    async def wait_raw(self, timeout_sec: float = FIRST_FRAME_WAIT_SEC) -> tuple | None:
+        """최신 프레임. 없으면 **최대 `timeout_sec`** 동안 첫 프레임을 기다린다.
+
+        프레임이 이미 있으면 바로 돌려준다. 이벤트 루프를 막지 않도록
+        `asyncio.sleep`으로 기다린다. 상한 안에 오지 않으면 None이다 — 빈
+        프레임을 만들지 않는다.
+        """
+        deadline = time.monotonic() + timeout_sec
+        while True:
+            frame = self.raw()
+            remaining = deadline - time.monotonic()
+            if frame is not None or remaining <= 0:
+                return frame
+            await asyncio.sleep(min(FIRST_FRAME_POLL_SEC, remaining))
 
     def live_detail(self) -> str:
         source = self._source

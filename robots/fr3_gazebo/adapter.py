@@ -271,9 +271,12 @@ class StopLatch:
     def __init__(self, live_goals: Callable[[], int]):
         self._live_goals = live_goals
         self.stopped = False
+        #: 래치를 건 전역 STOP이 멈춘 실행. 호출자가 알려 주지 않으면 None이다.
+        self.execution_id: str | None = None
 
-    def latch(self) -> None:
+    def latch(self, execution_id: str | None = None) -> None:
         self.stopped = True
+        self.execution_id = execution_id
 
     def reset_for_new_plan(self) -> None:
         live = self._live_goals()
@@ -281,6 +284,15 @@ class StopLatch:
             raise RuntimeError(
                 f"추적 중인 goal이 {live}개 남아 있어 정지 래치를 풀지 않는다")
         self.stopped = False
+        self.execution_id = None
+
+    def diagnostics(self) -> dict:
+        """읽기 전용 진단값. 메모리 값만 읽는다 — 해제·취소·외부 호출이 없다."""
+        return {
+            "tracked_goal_count": self._live_goals(),
+            "stop_latch_active": self.stopped,
+            "stop_latch_execution_id": self.execution_id,
+        }
 
 
 class Fr3GazeboAdapter(RobotAdapter):
@@ -317,6 +329,8 @@ class Fr3GazeboAdapter(RobotAdapter):
         self._world: WorldStatus | None = None
         # 정지 래치는 계약(core/stop_contract)의 해제 규칙을 따른다.
         self.tracker = StopLatch(lambda: transport_live_goals(transport))
+        #: 마지막 취소 ACK를 받은 시각(`now` 시계). 정지 확인 기록에 남긴다.
+        self._cancel_ack_at: float | None = None
         #: 마지막으로 성공한 재검증의 snapshot. 실행 사이에 씬이 바뀌면 막는다.
         self._last_snapshot: tuple[str, str] | None = None
 
@@ -352,6 +366,15 @@ class Fr3GazeboAdapter(RobotAdapter):
     def disconnect(self) -> None:
         self._connected = False
         self._transport.disconnect()
+
+    def stop_diagnostics(self) -> dict:
+        """추적 goal 수와 정지 래치 상태. **읽기 전용**이다.
+
+        전송 계층의 추적 목록과 래치의 메모리 값만 읽는다. 관절 관측·Gazebo
+        서비스 조회·goal 취소·래치 해제를 하지 않는다.
+        """
+        return {**self.tracker.diagnostics(),
+                "is_simulated": True, "real_hardware": False}
 
     # ── 상태 ────────────────────────────────────────────────────────────
     def state(self) -> RobotStateSnapshot:
@@ -594,9 +617,11 @@ class Fr3GazeboAdapter(RobotAdapter):
         return success(evidence)
 
     # ── 정지 ────────────────────────────────────────────────────────────
-    def stop(self, timeout_sec: float) -> ExecutionResult:
-        self.tracker.latch()
+    def stop(self, timeout_sec: float,
+             execution_id: str | None = None) -> ExecutionResult:
+        self.tracker.latch(execution_id)
         outcome = self._transport.cancel_all(timeout_sec)
+        self._cancel_ack_at = self._now() if outcome.cancel_ack is True else None
         # **요청 접수만으로 정지를 주장하지 않는다.**
         return ExecutionResult(
             state=ExecutionState.STOPPING,
@@ -611,6 +636,7 @@ class Fr3GazeboAdapter(RobotAdapter):
 
     def cancel(self, timeout_sec: float) -> ExecutionResult:
         outcome = self._transport.cancel_all(timeout_sec)
+        self._cancel_ack_at = self._now() if outcome.cancel_ack is True else None
         if outcome.cancel_ack is not True:
             return unverifiable(ReasonCode.EXEC_STOP_UNCONFIRMED, {
                 "cancel_ack": outcome.cancel_ack,
@@ -622,100 +648,192 @@ class Fr3GazeboAdapter(RobotAdapter):
                       "goals_canceling": outcome.goals_canceling,
                       "is_simulated": True})
 
+    def _stop_channel(self, samples: list[JointObservation],
+                      names: tuple[str, ...]) -> dict | None:
+        """채널 하나의 정지 근거. **속도와 변위를 함께 본다.**
+
+        속도 채널에는 위치가 정지한 상태에서도 **고립 1표본 스파이크**가
+        섞인다(측정 근거: reports/workcell/stop_observation.json — 2767표본
+        동안 관절 이동 49.8 µrad인데 0.01 rad/s 초과가 115표본, 모두 길이 1).
+        그래서 허용치 초과를 **연속 2표본 이상**일 때만 운동으로 보고,
+        변위 조건을 하나 더 요구한다. 허용치를 늘리지 않는다.
+        """
+        present = [name for name in names
+                   if all(name in s.velocities for s in samples)]
+        if not present:
+            return None
+        peaks, runs, displacement = 0.0, 0, 0.0
+        for name in present:
+            values = [abs(s.velocities[name]) for s in samples]
+            peaks = max(peaks, max(values))
+            run = best = 0
+            for value in values:
+                run = run + 1 if value >= self._stop_velocity else 0
+                best = max(best, run)
+            runs = max(runs, best)
+            positions = [s.positions.get(name) for s in samples
+                         if s.positions.get(name) is not None]
+            if positions:
+                displacement = max(displacement, max(positions) - min(positions))
+        return {
+            "joints": present,
+            "peak_rad_s": round(peaks, 6),
+            "longest_consecutive_exceed_samples": runs,
+            "displacement_rad": round(displacement, 8),
+            "velocity_moving": runs >= CONSECUTIVE_EXCEED_FOR_MOTION,
+            "displacement_moving": displacement > STOP_DISPLACEMENT_RAD,
+            "moving": runs >= CONSECUTIVE_EXCEED_FOR_MOTION
+                      or displacement > STOP_DISPLACEMENT_RAD,
+        }
+
+    @staticmethod
+    def _window_reject_reasons(arm: dict | None, gripper: dict | None) -> list[str]:
+        """창이 안정 창이 아닌 사유. 비어 있으면 안정 창이다."""
+        reasons: list[str] = []
+        for label, channel in (("arm", arm), ("gripper", gripper)):
+            if channel is None:
+                reasons.append(f"{label}_unobserved")
+                continue
+            if channel["velocity_moving"]:
+                reasons.append(f"{label}_velocity_consecutive_exceed")
+            if channel["displacement_moving"]:
+                reasons.append(f"{label}_displacement_exceed")
+        return reasons
+
     def confirm_stopped(self, timeout_sec: float) -> ExecutionResult:
-        """관측 속도로 정지를 확인한다. 표본이 부족하면 확인 불가다."""
-        samples: list[JointObservation] = []
-        deadline = self._now() + timeout_sec
+        """관측으로 정지를 확인한다. **안정 창이 나올 때까지 timeout 안에서 기다린다.**
+
+        취소 ACK 직후의 첫 표본 10개만으로 결론 내리지 않는다. controller는
+        취소 ACK 시점에 goal을 끝내지만 물리적 정착은 그 뒤에 온다
+        (2026-09-17 domain 44 실측: 취소 뒤 1초 넘게 0.01 rad/s 초과).
+
+        - 서로 다른 fresh 표본만 창에 넣는다. 이전 표본보다 새롭지 않은 표본은
+          버리고, 표본 간격이 `max_sample_gap_sec`를 넘으면 창을 비운다.
+        - 연속 표본 `stop_samples`개 창을 한 표본씩 밀며, 속도·변위 기준을 모두
+          만족하는 **첫 창**에서 확인한다. 기준값·표본 수·timeout은 바꾸지 않는다.
+        - timeout까지 안정 창이 없을 때만 `exec.stop_unconfirmed`다.
+        - controller 완료 신호로 확인하지 않는다. 관측 창만 근거다.
+        """
+        started_at = self._now()
+        deadline = started_at + timeout_sec
+        window: list[JointObservation] = []
         last_at: float | None = None
-        while len(samples) < self._stop_samples and self._now() < deadline:
-            # **서로 다른 표본만 센다.** 같은 표본을 반복해서 세면 "연속으로
-            # 멈춰 있었다"는 근거가 되지 않는다.
+        fresh_count = 0
+        stale_count = 0
+        invalid_count = 0
+        # 탈락 창 사유. 같은 사유가 이어지면 한 구간으로 묶는다(창 하나도 빠뜨리지 않는다).
+        rejections: list[dict] = []
+        rejected_windows = 0
+        last_arm: dict | None = None
+        last_gripper: dict | None = None
+        last_window: list[JointObservation] = []
+
+        def reject(reason: str, at: float) -> None:
+            nonlocal rejected_windows
+            rejected_windows += 1
+            if rejections and rejections[-1]["reason"] == reason:
+                rejections[-1]["last_at"] = round(at, 6)
+                rejections[-1]["windows"] += 1
+            else:
+                rejections.append({"reason": reason, "first_at": round(at, 6),
+                                   "last_at": round(at, 6), "windows": 1})
+
+        stable: list[JointObservation] | None = None
+        while self._now() < deadline:
             observation = self._transport.joint_observation(1.0, after=last_at)
             if not observation.valid:
-                break
-            if last_at is not None:
-                gap = observation.observed_at - last_at
-                if gap > self._max_sample_gap_sec:
-                    # 표본 사이가 벌어지면 연속으로 누적하지 않는다.
-                    samples = []
-            samples.append(observation)
+                # 관측이 끊겼다. 창을 이어 붙이지 않는다.
+                invalid_count += 1
+                if window:
+                    window = []
+                continue
+            if last_at is not None and observation.observed_at <= last_at:
+                # **새 표본이 아니다.** 같은 표본을 반복해서 세지 않는다.
+                stale_count += 1
+                continue
+            if last_at is not None and observation.observed_at - last_at > self._max_sample_gap_sec:
+                reject("sample_gap_exceeded", observation.observed_at)
+                window = []
+            fresh_count += 1
+            window.append(observation)
             last_at = observation.observed_at
-        if len(samples) < self._stop_samples:
-            return unverifiable(ReasonCode.EXEC_STOP_UNCONFIRMED, {
-                "samples": len(samples), "required": self._stop_samples,
-                "detail": "서로 다른 표본이 부족해 정지를 확인할 수 없다",
-                "is_simulated": True})
-        def channel(names: tuple[str, ...]) -> dict | None:
-            """채널 하나의 정지 근거. **속도와 변위를 함께 본다.**
+            if len(window) > self._stop_samples:
+                window.pop(0)
+            if len(window) < self._stop_samples:
+                continue
+            arm = self._stop_channel(window, ARM_JOINTS)
+            gripper = self._stop_channel(window, (GRIPPER_JOINT,))
+            last_arm, last_gripper, last_window = arm, gripper, list(window)
+            reasons = self._window_reject_reasons(arm, gripper)
+            if reasons:
+                reject("+".join(reasons), window[-1].observed_at)
+                continue
+            stable = list(window)
+            break
 
-            속도 채널에는 위치가 정지한 상태에서도 **고립 1표본 스파이크**가
-            섞인다(측정 근거: reports/workcell/stop_observation.json — 2767표본
-            동안 관절 이동 49.8 µrad인데 0.01 rad/s 초과가 115표본, 모두 길이 1).
-            그래서 허용치 초과를 **연속 2표본 이상**일 때만 운동으로 보고,
-            변위 조건을 하나 더 요구한다. 허용치를 늘리지 않는다.
-            """
-            present = [name for name in names
-                       if all(name in s.velocities for s in samples)]
-            if not present:
-                return None
-            peaks, runs, displacement = 0.0, 0, 0.0
-            for name in present:
-                values = [abs(s.velocities[name]) for s in samples]
-                peaks = max(peaks, max(values))
-                run = best = 0
-                for value in values:
-                    run = run + 1 if value >= self._stop_velocity else 0
-                    best = max(best, run)
-                runs = max(runs, best)
-                positions = [s.positions.get(name) for s in samples
-                             if s.positions.get(name) is not None]
-                if positions:
-                    displacement = max(displacement, max(positions) - min(positions))
-            return {
-                "joints": present,
-                "peak_rad_s": round(peaks, 6),
-                "longest_consecutive_exceed_samples": runs,
-                "displacement_rad": round(displacement, 8),
-                "moving": runs >= CONSECUTIVE_EXCEED_FOR_MOTION
-                          or displacement > STOP_DISPLACEMENT_RAD,
-            }
-
-        arm = channel(ARM_JOINTS)
-        gripper = channel((GRIPPER_JOINT,))
-        evidence = {
-            "samples": len(samples),
+        base = {
             "tolerance_rad_s": self._stop_velocity,
             "displacement_tolerance_rad": STOP_DISPLACEMENT_RAD,
             "consecutive_exceed_for_motion": CONSECUTIVE_EXCEED_FOR_MOTION,
+            "required": self._stop_samples,
             "criterion": "속도 허용치 초과가 연속 2표본 이상이거나 변위가"
                          " 허용치를 넘으면 운동으로 본다"
                          " (근거: reports/workcell/stop_observation.json)",
             "max_sample_gap_sec": self._max_sample_gap_sec,
-            "observation_span_sec": round(
-                samples[-1].observed_at - samples[0].observed_at, 4),
-            "arm": arm,
-            "gripper_channel": gripper,
+            "timeout_sec": timeout_sec,
+            "search": "timeout 안에서 연속 표본 창을 한 표본씩 밀며 첫 안정 창을 찾는다",
+            "cancel_ack_at": self._cancel_ack_at,
+            "search_started_at": round(started_at, 6),
+            "fresh_samples": fresh_count,
+            "stale_samples_skipped": stale_count,
+            "invalid_observations": invalid_count,
+            "rejected_windows": rejected_windows,
+            "rejected_window_runs": rejections,
             "unobservable_mimic_joints": 5,
             "unobservable_detail": "mimic 관절은 state_interface가 없어 관측할 수"
                                    " 없다 — 따라 멈췄는지 확인하지 못했다",
+            "is_simulated": True,
+        }
+        shown = stable if stable is not None else last_window
+        arm = self._stop_channel(shown, ARM_JOINTS) if shown else None
+        gripper = self._stop_channel(shown, (GRIPPER_JOINT,)) if shown else None
+        evidence = {
+            **base,
+            "samples": len(shown) if shown else len(window),
+            "observation_span_sec": (round(shown[-1].observed_at - shown[0].observed_at, 4)
+                                     if shown else None),
+            "arm": arm,
+            "gripper_channel": gripper,
             "arm_peak_rad_s": None if arm is None else arm["peak_rad_s"],
             "gripper_peak_rad_s": None if gripper is None else gripper["peak_rad_s"],
             "gripper_observed": gripper is not None,
-            "gripper": self._gripper_observation(samples[-1]),
-            "is_simulated": True,
+            "gripper": self._gripper_observation(shown[-1]) if shown else None,
         }
-        if arm is None:
+
+        if stable is None:
+            if not shown:
+                detail = "서로 다른 표본이 부족해 정지를 확인할 수 없다"
+            elif last_arm is None:
+                detail = "팔 속도를 관측하지 못했다 — 정지 미확인"
+            elif last_gripper is None:
+                # 그리퍼 정지를 관측하지 못했다. **정지로 주장하지 않는다.**
+                detail = "그리퍼 속도를 관측하지 못했다 — 정지 미확인"
+            else:
+                detail = "정지 미확인 — timeout까지 안정 창이 없었다(관측값이 움직이고 있다)"
             return unverifiable(ReasonCode.EXEC_STOP_UNCONFIRMED, {
-                **evidence, "detail": "팔 속도를 관측하지 못했다 — 정지 미확인"})
-        if gripper is None:
-            # 그리퍼 정지를 관측하지 못했다. **정지로 주장하지 않는다.**
-            return unverifiable(ReasonCode.EXEC_STOP_UNCONFIRMED, {
-                **evidence,
-                "detail": "그리퍼 속도를 관측하지 못했다 — 정지 미확인"})
-        if arm["moving"] or gripper["moving"]:
-            return unverifiable(ReasonCode.EXEC_STOP_UNCONFIRMED, {
-                **evidence,
-                "detail": "정지 미확인 — 관측값이 아직 움직이고 있다"})
+                **evidence, "stop_verdict": "stop_unconfirmed",
+                "searched_until": round(self._now(), 6), "detail": detail})
+
+        window_start, window_end = stable[0].observed_at, stable[-1].observed_at
+        reference = self._cancel_ack_at if self._cancel_ack_at is not None else started_at
         return ExecutionResult(
             state=ExecutionState.STOPPED, request_accepted=True,
-            task_succeeded=None, verified=True, evidence=evidence)
+            task_succeeded=None, verified=True, evidence={
+                **evidence,
+                "stop_verdict": "stop_confirmed",
+                "stable_window_start_at": round(window_start, 6),
+                "stable_window_end_at": round(window_end, 6),
+                "seconds_to_confirm_from": ("cancel_ack" if self._cancel_ack_at is not None
+                                            else "search_start"),
+                "seconds_to_confirm": round(window_end - reference, 4),
+            })

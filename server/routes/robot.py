@@ -21,6 +21,8 @@ async def handle(
         return None
     runtime = ctx.runtime
     return json_response({
+        # 정지 래치·추적 goal 진단(읽기 전용). **어댑터를 만들거나 연결하지 않는다.**
+        "stop_diagnostics": _stop_diagnostics(runtime),
         "configured": runtime.robot_configured,
         "robots": runtime.registry.catalog(),
         # 선언됐지만 아직 실행 대상이 아닌 구성도 보여준다(8-02).
@@ -35,9 +37,32 @@ async def handle(
         "hardware_readiness": runtime.hardware_readiness,
         # Gazebo 이송 시연 요약(8-11). 위 실기 준비와 **별도 키**로 둔다.
         "simulation_e2e": runtime.simulation_e2e,
+        # 사용자 시연 셀 상태(상태 유지·수동 reset 필요). 위 E2E 요약과 별도다.
+        "simulation_demo": runtime.simulation_demo_status(),
         # 시뮬레이터 검증 기록(목표 vs 관측). 실제 로봇 실행과 섞지 않는다.
         "verifications": [
             record.to_dict()
             for record in ctx.repository.sim_verifications(limit=12)
         ],
     })
+
+
+def _stop_diagnostics(runtime) -> dict:
+    """이미 만들어진 어댑터의 진단값만 읽는다.
+
+    `runtime.adapter()`는 어댑터가 없으면 만들고 연결한다 — 조회가 외부 호출을
+    일으키면 안 되므로 부르지 않는다. 어댑터가 아직 없으면 추적할 goal도 래치도
+    없다.
+    """
+    adapter = getattr(runtime, "_adapter", None)
+    if adapter is None:
+        return {"adapter_instantiated": False, "available": True,
+                "tracked_goal_count": 0, "stop_latch_active": False,
+                "stop_latch_execution_id": None}
+    read = getattr(adapter, "stop_diagnostics", None)
+    if not callable(read):
+        return {"adapter_instantiated": True, "available": False,
+                "tracked_goal_count": None, "stop_latch_active": None,
+                "stop_latch_execution_id": None,
+                "detail": "이 어댑터는 정지 진단값을 제공하지 않는다"}
+    return {"adapter_instantiated": True, "available": True, **read()}

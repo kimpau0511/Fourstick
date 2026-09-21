@@ -25,6 +25,7 @@ localhost 전용이며 사용자 계정이 없다. 세션 id를 아는 클라이
 
 from __future__ import annotations
 
+import inspect
 import secrets
 import threading
 import time
@@ -1696,8 +1697,22 @@ class Api:
             })
         try:
             adapter = runtime.adapter()
-            adapter.connect(ADAPTER_TIMEOUT_SEC)
-            stop_result = adapter.stop(ADAPTER_TIMEOUT_SEC)
+            # 진행 중인 실행이 있으면 그 실행이 이미 연결을 확인한 어댑터다
+            # (`_run_execution`은 connect가 수락된 뒤에만 실행을 등록한다).
+            # 연결 재확인(world·컨트롤러·모델 조회)을 취소보다 앞에 두지 않는다 —
+            # 그 사이 로봇이 계속 움직인다. 실행이 없을 때만 먼저 연결을 확인한다.
+            if not affected:
+                adapter.connect(ADAPTER_TIMEOUT_SEC)
+            # 정지 래치에 멈춘 실행을 남긴다. 대상이 정확히 하나일 때만 그 id를
+            # 넘기고, 없거나 여럿이면 None이다 — 임의로 하나를 고르지 않는다.
+            # execution_id를 받지 않는 어댑터에는 이전과 같이 호출한다.
+            if _accepts_execution_id(adapter.stop):
+                stop_result = adapter.stop(
+                    ADAPTER_TIMEOUT_SEC,
+                    execution_id=next(iter(affected)) if len(affected) == 1 else None,
+                )
+            else:
+                stop_result = adapter.stop(ADAPTER_TIMEOUT_SEC)
             confirm = adapter.confirm_stopped(ADAPTER_TIMEOUT_SEC)
         except Exception as exc:  # noqa: BLE001 — 연결 끊김도 미확인이다
             return finish({
@@ -1847,6 +1862,14 @@ def _execution_dict(record, repository) -> dict:
             for r in trace.results
         ],
     }
+
+
+def _accepts_execution_id(method) -> bool:
+    """`adapter.stop`이 `execution_id` 인자를 받는가. 받지 않으면 넘기지 않는다."""
+    try:
+        return "execution_id" in inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        return False
 
 
 def record_session_id(adapter) -> str:
