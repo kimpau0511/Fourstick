@@ -121,6 +121,16 @@ CHECKPOINT_UNAVAILABLE = "simulation_demo_checkpoint_unavailable"
 #: 있는가"(`demo_workcell_pick_place.py`의 드리프트 0.02 m)와 같은 값이다.
 ORIGIN_TOLERANCE_M = 0.02
 
+#: 기록↔관측 정합 판정. **새 허용치를 만들지 않는다** — 위 ORIGIN_TOLERANCE_M을
+#: 그대로 쓴다(원래 슬롯 판정과 컨베이어 파지 측정 위치 판정에 이미 쓰는 값이다).
+RECONCILE_AT_ORIGIN = "at_origin"        # 자재가 원래 슬롯에 있다 — 기록이 낡았다
+RECONCILE_ON_CONVEYOR = "on_conveyor"    # 기록대로 컨베이어 측정 위치에 있다
+RECONCILE_ELSEWHERE = "elsewhere"        # 둘 다 아니다 — 사람이 봐야 한다
+RECONCILE_UNOBSERVED = "unobserved"      # pose를 관측하지 못했다
+#: 기록을 지워도 되는 판정. 나머지는 **그대로 둔다** — 관측이 말해 주지 않은
+#: 것을 정리로 바꾸지 않는다.
+RECONCILE_CLEARABLE = (RECONCILE_AT_ORIGIN,)
+
 _STATUS_COMPLETED = "simulation_transfer_completed"
 _STATUS_STOPPED = "simulation_transfer_stopped"
 
@@ -264,6 +274,41 @@ class SimulationDemoState:
         data["last_reset"] = {"model": model, "reason": reason,
                               "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
         self._write(data)
+
+    def record_reconcile(self, findings: Sequence[Mapping[str, Any]], *,
+                         source: str) -> dict:
+        """정합 판정을 적용한다. **`at_origin`인 기록만 지운다.**
+
+        관측이 "원래 자리에 있다"고 말한 자재만 기록에서 뺀다. 관측하지 못했거나
+        선언된 두 자리 중 어느 쪽도 아니면 기록을 그대로 두고 사유만 남긴다 —
+        모르는 것을 정리로 바꾸지 않는다. 지운 자재의 체크포인트·사전검증도
+        함께 빠진다(`mark_restored`와 같은 규칙).
+        """
+        data = self._read_for_update()
+        objects = dict(data.get("objects") or {})
+        cleared: list[str] = []
+        for row in findings:
+            model = str(row.get("model") or "")
+            if not model or row.get("verdict") not in RECONCILE_CLEARABLE:
+                continue
+            had = model in objects or model in (data.get("checkpoints") or {})
+            objects.pop(model, None)
+            self._drop_checkpoint(data, model)
+            if had:
+                cleared.append(model)
+        data["objects"] = objects
+        data["last_reconcile"] = {
+            "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "source": source,
+            "cleared": cleared, "findings": [dict(row) for row in findings],
+            "is_simulated": True,
+        }
+        if cleared:
+            data["last_reset"] = {"model": cleared[0] if len(cleared) == 1
+                                  else ", ".join(cleared),
+                                  "reason": "world_reset_observed",
+                                  "at": data["last_reconcile"]["at"]}
+        self._write(data)
+        return dict(data["last_reconcile"])
 
     # ── 원래 슬롯 복귀 ──────────────────────────────────────────────────
     # ── STOP 체크포인트 ─────────────────────────────────────────────────
@@ -481,6 +526,7 @@ class SimulationDemoState:
             "objects": objects,
             "last_run": data.get("last_run"),
             "last_reset": data.get("last_reset"),
+            "last_reconcile": data.get("last_reconcile"),
             "updated_at": data.get("updated_at"),
             **_checkpoint_status(data),
         }
@@ -735,6 +781,66 @@ def slot_occupant(slot: OriginSlot, others: Mapping[str, tuple]) -> str | None:
                 and abs(pose[2] - slot.home_pose_m[2]) < 2 * hz):
             return model
     return None
+
+
+# ── 기록↔관측 정합 (Gazebo 재시작 뒤) ──────────────────────────────────
+def reconcile_findings(*, records: Mapping[str, Any],
+                       observed: Mapping[str, Sequence[float] | None],
+                       origins: Mapping[str, Sequence[float]],
+                       conveyor_centers: Mapping[str, Sequence[float] | None],
+                       ) -> list[dict]:
+    """기록이 있는 자재마다 **지금 어디 있는지**를 관측으로 판정한다.
+
+    Gazebo를 다시 띄우면 world는 선언된 초기 자리로 돌아가지만 시연 기록은
+    파일에 남는다. 그 어긋남을 관측으로 맞춘다. 판정만 하고 무엇도 지우지
+    않는다 — 적용은 `SimulationDemoState.record_reconcile`이 한다.
+
+    - `at_origin`: 원래 슬롯 중심에서 `ORIGIN_TOLERANCE_M` 안 → 기록이 낡았다
+    - `on_conveyor`: 컨베이어 파지를 측정한 자재 중심에서 같은 허용치 안
+    - `elsewhere`: 둘 다 아니다 — 거리만 남기고 기록을 건드리지 않는다
+    - `unobserved`: pose를 읽지 못했다 — "정리됐다"고 말하지 않는다
+    """
+    out: list[dict] = []
+    for model in sorted(records):
+        record = dict(records[model] or {})
+        pose = observed.get(model)
+        row: dict = {"model": model, "record_state": record.get("state"),
+                     "recorded_pose_m": record.get("pose_m"),
+                     "observed_pose_m": None if pose is None
+                     else [round(float(v), 6) for v in pose]}
+        if pose is None:
+            out.append({**row, "verdict": RECONCILE_UNOBSERVED,
+                        "detail": "자재 pose를 관측하지 못했다"})
+            continue
+        origin = origins.get(model)
+        center = conveyor_centers.get(model)
+        origin_gap = (None if origin is None
+                      else math.dist([float(v) for v in pose],
+                                     [float(v) for v in origin]))
+        conveyor_gap = (None if center is None
+                        else math.dist([float(v) for v in pose],
+                                       [float(v) for v in center]))
+        row["origin_gap_m"] = None if origin_gap is None else round(origin_gap, 6)
+        row["conveyor_gap_m"] = (None if conveyor_gap is None
+                                 else round(conveyor_gap, 6))
+        if origin_gap is not None and origin_gap <= ORIGIN_TOLERANCE_M:
+            out.append({**row, "verdict": RECONCILE_AT_ORIGIN,
+                        "detail": f"원래 슬롯 중심에서 {origin_gap:.4f} m"
+                                  f" (허용 {ORIGIN_TOLERANCE_M} m) — 기록이 낡았다"})
+        elif conveyor_gap is not None and conveyor_gap <= ORIGIN_TOLERANCE_M:
+            out.append({**row, "verdict": RECONCILE_ON_CONVEYOR,
+                        "detail": f"컨베이어 측정 위치에서 {conveyor_gap:.4f} m"
+                                  " — 기록대로다"})
+        else:
+            gaps = []
+            if origin_gap is not None:
+                gaps.append(f"원래 슬롯 {origin_gap:.4f} m")
+            if conveyor_gap is not None:
+                gaps.append(f"컨베이어 {conveyor_gap:.4f} m")
+            out.append({**row, "verdict": RECONCILE_ELSEWHERE,
+                        "detail": ("자재가 선언된 두 자리 중 어느 쪽도 아니다"
+                                   + (f" ({' · '.join(gaps)})" if gaps else ""))})
+    return out
 
 
 def return_preflight(*, record: Mapping[str, Any] | None, model: str,

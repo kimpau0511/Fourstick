@@ -65,8 +65,9 @@ test('안내된 동작만 열리고 시뮬레이터 전용 안내가 있다', ()
   const html = card(status());
   const list = buttons(html);
   const open = list.filter((b) => !b.disabled).map((b) => `${b.material}:${b.action}`);
+  // 정합 버튼은 자재를 고르지 않는 셀 전체 동작이다(관측만 한다).
   assert.deepEqual(open.sort(), ['material_a:transfer', 'material_b:restore',
-    'material_b:resume', 'material_b:resume_preflight'].sort());
+    'material_b:resume', 'material_b:resume_preflight', 'null:reconcile'].sort());
   assert.match(html, /is_simulated=true/);
   assert.match(html, /일반 명령의 집기·놓기는 계속 차단/);
   assert.match(html, /STOP 체크포인트/);
@@ -149,4 +150,36 @@ test('자재 목록에 서버가 보낸 색 이름이 보인다', () => {
   // 선언이 있는 자재만 색 이름이 붙는다 — 화면이 색 이름을 만들어 내지 않는다.
   assert.match(html, /A자재[\s\S]*?주황 · 오렌지/);
   assert.doesNotMatch(html, /B자재[\s\S]*?\(.*?·.*?\)<\/span> <span class="mono"/);
+});
+
+test('정합 칸은 맞출 기록과 마지막 결과를 보여준다', () => {
+  const html = card(status({
+    reconcile: { needed: true, available: true,
+      last: { at: '2026-09-21T15:00:00+0900', cleared: ['material_a'] } },
+  }));
+  assert.match(html, /기록 정합/);
+  assert.match(html, /맞출 기록이 있습니다/);
+  assert.match(html, /material_a/);
+  assert.match(html, /data-sim-action="reconcile"/);
+});
+
+test('작업이 돌면 정합 버튼도 잠긴다', () => {
+  const html = card(status({ running_job: { job_id: 'simjob_9', action_label: '원래 슬롯 복귀',
+    material: 'material_a', progress: [] } }));
+  const row = buttons(html).find((b) => b.action === 'reconcile');
+  assert.ok(row && row.disabled);
+});
+
+test('정합 요청은 전용 경로로 간다', async () => {
+  const calls = [];
+  const fetchImpl = async (method, path, body) => {
+    calls.push({ method, path, body });
+    if (path === '/v1/sim-demo') return { ok: true, status: 200, payload: status() };
+    return { ok: true, status: 202, payload: { job_id: 'simjob_r1', action: 'reconcile' } };
+  };
+  const root = { innerHTML: '', addEventListener() {}, contains: () => true };
+  const cardApi = createSimDemoCard({ root, fetchImpl, confirmImpl: () => true });
+  await cardApi.reconcile();
+  const posted = calls.find((c) => c.method === 'POST');
+  assert.equal(posted.path, '/v1/sim-demo/reconcile');
 });

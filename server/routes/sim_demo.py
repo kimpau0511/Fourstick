@@ -11,6 +11,7 @@
 | `POST /v1/sim-demo/jobs` | `{action, material, checkpoint_id?}` 작업 시작 |
 | `GET /v1/sim-demo/jobs/<id>` | 진행 단계 · 콘솔 끝부분 · 결과 보고서 |
 | `POST /v1/sim-demo/stop` | 실행 중 작업에 정지 요청 |
+| `POST /v1/sim-demo/reconcile` | 기록↔관측 정합(읽기 전용) 작업 시작 |
 | `POST /v1/sim-demo/command` | `{mode:"simulation_demo", utterance, source}` 텍스트·STT final 발화 |
 
 `/v1/sim-demo/command`는 텍스트와 STT **final**이 함께 쓰는 하나의 입구다.
@@ -69,6 +70,9 @@ async def handle(
             return json_response(_jobs(ctx).job(path[len("/v1/sim-demo/jobs/"):]))
         if method == "POST" and path == "/v1/sim-demo/stop":
             return json_response(_jobs(ctx).request_stop(reason="sim_demo_stop"))
+        if method == "POST" and path == "/v1/sim-demo/reconcile":
+            # 기록↔관측 정합. 스크립트가 관측만 하고 로봇 명령을 보내지 않는다.
+            return json_response(_jobs(ctx).start("reconcile"), 202)
     except SimDemoJobError as exc:
         reason = (ReasonCode.EXEC_PERMIT_DENIED if exc.status == 409
                   else ReasonCode.PLAN_ARG_UNKNOWN if exc.status == 400

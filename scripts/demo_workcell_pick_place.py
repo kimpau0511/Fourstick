@@ -113,6 +113,7 @@ from validation.simulation_demo_state import (  # noqa: E402
     POLICIES,
     POLICY_DEMO_HOLD,
     POLICY_E2E_RESET,
+    RECONCILE_UNOBSERVED,
     RESUME_PATH_STEP_RAD,
     RESUME_POSE_TOLERANCE_M,
     SimulationDemoState,
@@ -123,6 +124,7 @@ from validation.simulation_demo_state import (  # noqa: E402
     conveyor_grasp_pose,
     origin_slot,
     pallet_place_pose,
+    reconcile_findings,
     resume_preflight_findings,
     return_bindings,
     return_preflight,
@@ -713,6 +715,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resume-checkpoint", default=None, metavar="CHECKPOINT_ID",
                         help="이 STOP 체크포인트에서 실행 직전 재검증 뒤 이어서 실행한다"
                              " (새 재계획, 중단 궤적 재생 없음)")
+    parser.add_argument("--reconcile-state", action="store_true",
+                        help="시연 기록을 지금 Gazebo 관측과 맞춘다(읽기 전용)."
+                             " Gazebo를 다시 띄우면 world는 초기 자리로 돌아가지만"
+                             " 기록은 남는다 — 그 어긋남만 정리한다.")
     parser.add_argument("--return-held-to-origin", action="store_true",
                         help="simulation_demo_hold 기록이 있는 자재를 컨베이어에서"
                              " 선언된 원래 팔레트 슬롯으로 이송해 되돌린다")
@@ -728,7 +734,8 @@ def main() -> int:
               " 아니다. 일반 웹 UI·API로는 진입할 수 없다.", file=sys.stderr)
         return 3
 
-    label = ("resume" if args.resume_checkpoint
+    label = ("reconcile" if args.reconcile_state
+             else "resume" if args.resume_checkpoint
              else "resume_preflight" if args.resume_preflight
              else "return" if args.return_held_to_origin
              else "restore" if args.restore_only else "forward")
@@ -738,6 +745,8 @@ def main() -> int:
     print(f"[원본 로그] {RAW_LOG['path'] or RAW_LOG['detail']}")
 
     data = json.loads(WORKCELL.read_text(encoding="utf-8"))
+    if args.reconcile_state:
+        return reconcile_state(args, data)
     if args.restore_only:
         objects = declarations_from_config(data["models"], data["frames"],
                                             source=str(WORKCELL))
@@ -1300,6 +1309,7 @@ def main() -> int:
 
 
 RETURN_OUT = ROOT / "reports/workcell/pick_place_sim_demo_return.json"
+RECONCILE_OUT = ROOT / "reports/workcell/sim_demo_reconcile.json"
 RESUME_PREFLIGHT_OUT = ROOT / "reports/workcell/sim_demo_resume_preflight.json"
 #: 컨트롤러 액션의 **살아 있는** goal 상태(ACCEPTED·EXECUTING·CANCELING).
 ACTIVE_GOAL_STATUSES = frozenset({1, 2, 3})
@@ -2103,6 +2113,97 @@ def _model_of(data: dict, token: str) -> str | None:
         if row["resource_id"] == token:
             return row["gazebo_model"]
     return None
+
+
+def reconcile_state(args, data: dict) -> int:
+    """시연 기록을 지금 Gazebo 관측과 맞춘다. **로봇에 명령을 보내지 않는다.**
+
+    Gazebo를 다시 띄우면 world는 선언된 초기 자리로 돌아가지만 시연 기록
+    (`sim_demo_state.json`)은 파일에 남는다. 그러면 화면은 "A자재가 컨베이어에
+    있다"고 말하는데 실제로는 팔레트에 있다. 이 모드가 그 어긋남만 정리한다.
+
+    - 관측이 "원래 슬롯"이라고 말한 기록만 지운다(`ORIGIN_TOLERANCE_M`).
+    - 컨베이어 측정 위치면 기록을 그대로 둔다 — 실제로 유지 중인 것이다.
+    - 관측 실패·둘 다 아님이면 **지우지 않고** 사유만 남긴다.
+    - 기록을 지웠고 stale STOP 래치가 남아 있으면 `--restore-only`와 **같은**
+      조건(`clear_latch_after_restore`)으로만 푼다. 새 규칙을 만들지 않는다.
+    """
+    out = Path(args.out) if args.out != str(OUT) else RECONCILE_OUT
+    demo_state = SimulationDemoState()
+    status = demo_state.status()
+    report: dict = {
+        "schema": "forstick2.simulation_demo_reconcile/1",
+        "mode": "reconcile_state", "is_simulated": True,
+        "real_hardware_ready": False, "real_hardware_verified": False,
+        "robot_commands": 0,
+    }
+
+    def finish(code: int, **fields) -> int:
+        report.update(fields)
+        report.update(_raw_log_fields())
+        report["written_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                       encoding="utf-8")
+        print(f"기록: {out}")
+        return code
+
+    if status.get("available") is not True:
+        print("시연 상태를 읽지 못했다 — 정합하지 않는다", file=sys.stderr)
+        return finish(1, status="reconcile_unavailable",
+                      detail=status.get("detail"))
+
+    records = dict(status.get("objects") or {})
+    models = sorted(set(records) | set(status.get("checkpoints") or []))
+    if not models:
+        print("[정합] 남은 기록이 없다 — 맞출 것이 없다")
+        return finish(0, status="reconcile_not_needed", findings=[], cleared=[])
+
+    objects = declarations_from_config(data["models"], data["frames"],
+                                       source=str(WORKCELL))
+    fixture = GazeboObjectFixture(
+        world_name=data["world_name"], gz_partition=data["gz_partition"],
+        objects=objects)
+    grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
+    observed: dict = {}
+    origins: dict = {}
+    centers: dict = {}
+    try:
+        for model in models:
+            observed[model] = fixture.pose_of(model, timeout_sec=5.0, fresh=True)
+            slot = origin_slot(data, model)
+            origins[model] = slot.home_pose_m
+            centers[model] = conveyor_grasp_center(
+                grasp_file,
+                conveyor_grasp_pose(grasp_file, object_id=slot.object_id,
+                                    target_id=args.target))
+        findings = reconcile_findings(
+            records={m: records.get(m) or {} for m in models},
+            observed=observed, origins=origins, conveyor_centers=centers)
+        applied = demo_state.record_reconcile(
+            findings, source="scripts/demo_workcell_pick_place.py --reconcile-state")
+        for row in findings:
+            print(f"[정합] {row['model']}: {row['verdict']} — {row['detail']}")
+        cleared = list(applied.get("cleared") or [])
+        print("[정합] 기록에서 뺀 자재: " + (", ".join(cleared) or "없음"))
+
+        latch_result = None
+        if cleared and StopLatchFile(LATCH).latched() is not None:
+            latch_result = clear_latch_after_restore_live(
+                data=data, model=cleared[0], fixture=fixture, objects=objects,
+                demo_state=demo_state)
+            print(f"[래치] {'해제' if latch_result['cleared'] else '유지'}: "
+                  + (" · ".join(latch_result["reasons"]) or "조건 전부 충족"))
+    finally:
+        fixture.close()
+
+    unobserved = [row["model"] for row in findings
+                  if row["verdict"] == RECONCILE_UNOBSERVED]
+    return finish(1 if unobserved else 0,
+                  status=("reconcile_incomplete" if unobserved
+                          else "reconcile_completed"),
+                  findings=findings, cleared=cleared, unobserved=unobserved,
+                  latch=latch_result, state=demo_state.status())
 
 
 def return_held_to_origin(args, data: dict) -> int:

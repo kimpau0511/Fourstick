@@ -157,17 +157,34 @@ export function createSimDemoCard({ root, fetchImpl = null, confirmImpl = null }
     await refresh();
   }
 
+  /** 기록↔관측 정합. 로봇 명령이 아니라 관측만이므로 확인을 받지 않는다. */
+  async function reconcile() {
+    state.busy = true;
+    draw();
+    const response = await request('POST', '/v1/sim-demo/reconcile', {});
+    state.busy = false;
+    if (response.ok) {
+      state.job = response.payload;
+      state.notice = '기록을 지금 Gazebo 관측과 맞추는 중입니다(읽기 전용).';
+    } else {
+      state.notice = response.payload.detail || response.payload.message
+        || `정합을 시작하지 못했습니다 (${response.status})`;
+    }
+    await refresh();
+  }
+
   function onClick(event) {
     const target = event.target.closest('[data-sim-action]');
     if (!target || !root.contains(target) || target.disabled) return;
     const action = target.getAttribute('data-sim-action');
     if (action === 'stop') stop();
+    else if (action === 'reconcile') reconcile();
     else start(action, target.getAttribute('data-material'));
   }
 
   if (root) root.addEventListener('click', onClick);
   draw();
-  return { refresh, state, start, stop };
+  return { refresh, state, start, stop, reconcile };
 }
 
 // ── 그리기 ────────────────────────────────────────────────────────────
@@ -204,6 +221,7 @@ function renderCard(state) {
         Gazebo 시뮬레이터 안의 이송입니다. 실제 로봇 결과가 아니며
         (<span class="mono">is_simulated=true</span>), 일반 명령의 집기·놓기는 계속 차단됩니다.</p>
       ${renderRunning(state, running)}
+      ${renderReconcile(status, Boolean(running) || state.busy)}
       ${renderMaterials(status, Boolean(running) || state.busy)}
       ${renderCheckpoint(demo)}
       ${renderLastJob(state.job, running)}
@@ -225,6 +243,28 @@ function renderRunning(state, running) {
       ${running.stop_requested ? '<div class="row"><span class="row-label">정지</span><div class="row-value">요청됨 — 확인 대기</div></div>' : ''}
     </div>
     <button class="btn danger block" type="button" data-sim-action="stop">■ 시연 정지</button>`;
+}
+
+/** 기록↔관측 정합. Gazebo를 다시 띄우면 기록만 남아 어긋난다.
+ *
+ * 서버가 기동할 때 기록이 있으면 스스로 한 번 맞춘다. 이 버튼은 그 뒤에
+ * (예: 서버는 그대로 두고 Gazebo만 다시 띄운 경우) 사람이 부르는 입구다.
+ * 관측만 하므로 확인을 받지 않는다. */
+function renderReconcile(status, locked) {
+  const info = status.reconcile || {};
+  const last = info.last;
+  const cleared = last && last.cleared ? last.cleared : [];
+  const detail = !last
+    ? '맞춘 기록이 아직 없습니다.'
+    : `${esc(last.at || '')} · 기록에서 뺀 자재 ${cleared.length ? esc(cleared.join(', ')) : '없음'}`;
+  return `<div class="rows" style="margin-bottom:8px">
+      <div class="row"><span class="row-label">기록 정합</span>
+        <div class="row-value">${info.needed ? '맞출 기록이 있습니다' : '기록 없음 — 맞출 것이 없습니다'}</div></div>
+      <div class="row"><span class="row-label">마지막 확인</span>
+        <div class="row-value">${detail}</div></div>
+    </div>
+    <button class="btn sm" type="button" data-sim-action="reconcile"
+      ${locked ? 'disabled' : ''} title="지금 Gazebo 관측으로 기록을 맞춥니다(로봇 명령 없음)">⟳ 기록↔관측 정합</button>`;
 }
 
 /** 자재를 부를 수 있는 색 이름. 서버가 셀 설정 선언에서 실어 보낸 것만 보인다. */

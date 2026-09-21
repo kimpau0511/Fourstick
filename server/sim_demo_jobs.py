@@ -41,13 +41,17 @@ JOBS_DIR = ROOT / "reports" / "workcell" / "sim_demo_jobs"
 #: 시연 스크립트가 보는 외부 정지 요청 파일(`demo_workcell_pick_place.STOP_REQUEST`).
 STOP_REQUEST = Path("/tmp/forstick2_workcell/sim_demo_stop_request.json")
 
-ACTIONS = ("transfer", "return", "resume_preflight", "resume", "restore")
+ACTIONS = ("transfer", "return", "resume_preflight", "resume", "restore",
+           "reconcile")
+#: 자재를 고르지 않는 셀 전체 작업. 로봇에 명령을 보내지 않는다.
+CELL_ACTIONS = ("reconcile",)
 ACTION_LABELS = {
     "transfer": "컨베이어로 이송(상태 유지)",
     "return": "원래 슬롯 복귀",
     "resume_preflight": "resume 사전검증",
     "resume": "체크포인트에서 이어서 이송",
     "restore": "원래 자리로 복구(순간 이동)",
+    "reconcile": "기록↔관측 정합 확인(읽기 전용)",
 }
 _STAGE_LINE = re.compile(r"\[\s*(\d+)/(\d+)\]\s+(.+?)\s+오차\s+([0-9.]+) rad · 도달=(True|False)")
 
@@ -93,8 +97,11 @@ def available_actions(status: Mapping[str, Any], model: str) -> dict[str, bool]:
     }
 
 
-def build_argv(action: str, material: Mapping[str, Any],
+def build_argv(action: str, material: Mapping[str, Any] | None,
                checkpoint_id: str | None) -> list[str]:
+    if action == "reconcile":
+        # 셀 전체 작업이다. 자재 인자를 쓰지 않는다.
+        return ["-", "-", "--reconcile-state"]
     model = material["model"]
     if action == "transfer":
         return [material["support_model"], model, "--cell-policy",
@@ -177,13 +184,16 @@ class SimDemoJobs:
             job = self._refresh(self._current)
             return dict(job) if job["status"] == "running" else None
 
-    def start(self, action: str, material: str,
+    def start(self, action: str, material: str | None = None,
               checkpoint_id: str | None = None) -> dict:
         if action not in ACTIONS:
             raise SimDemoJobError(400, f"알 수 없는 시연 동작이다: {action}")
-        spec = self.materials.get(material)
-        if spec is None:
-            raise SimDemoJobError(400, f"셀 선언의 자재가 아니다: {material}")
+        if action in CELL_ACTIONS:
+            spec = None
+        else:
+            spec = self.materials.get(material)
+            if spec is None:
+                raise SimDemoJobError(400, f"셀 선언의 자재가 아니다: {material}")
         if action == "resume" and not checkpoint_id:
             raise SimDemoJobError(400, "resume에는 checkpoint_id가 필요하다")
         with self._lock:
@@ -216,6 +226,35 @@ class SimDemoJobs:
             self._procs[job_id] = proc
             self._current = job_id
             return dict(job)
+
+    # ── 기록↔관측 정합 ──────────────────────────────────────────────────
+    @staticmethod
+    def reconcile_needed(status: Mapping[str, Any]) -> bool:
+        """맞출 기록이 남아 있는가. **판정은 스크립트가 관측으로 한다.**
+
+        여기서는 "확인할 거리가 있는지"만 본다 — 기록이 없으면 Gazebo를 다시
+        띄웠든 아니든 어긋날 것이 없다.
+        """
+        if status.get("available") is not True:
+            return False
+        return bool(status.get("objects") or status.get("checkpoints"))
+
+    def start_reconcile_if_needed(self) -> dict:
+        """기록이 남아 있으면 정합 작업을 **한 번** 띄운다(읽기 전용).
+
+        서버 기동 시 부른다. Gazebo를 다시 띄우면 world는 초기 자리로 돌아가지만
+        기록 파일은 남기 때문이다. 기록이 없으면 아무것도 하지 않는다.
+        """
+        status = self.state.status()
+        if not self.reconcile_needed(status):
+            return {"started": False, "detail": "맞출 기록이 없다"}
+        try:
+            job = self.start("reconcile")
+        except SimDemoJobError as exc:
+            return {"started": False, "detail": str(exc)}
+        except OSError as exc:  # 스크립트를 띄우지 못해도 서버는 뜬다
+            return {"started": False, "detail": f"{type(exc).__name__}: {exc}"}
+        return {"started": True, "job_id": job["job_id"]}
 
     def job(self, job_id: str, *, console_lines: int = 60) -> dict:
         with self._lock:
@@ -270,4 +309,7 @@ class SimDemoJobs:
         return {"is_simulated": True, "real_hardware_ready": False,
                 "real_hardware_verified": False, "state": state,
                 "running_job": running, "recent_jobs": recent,
-                "materials": materials, "action_labels": ACTION_LABELS}
+                "materials": materials, "action_labels": ACTION_LABELS,
+                "reconcile": {"needed": self.reconcile_needed(state),
+                              "available": running is None,
+                              "last": state.get("last_reconcile")}}

@@ -216,6 +216,9 @@ class Runtime:
     sim_demo_jobs: Any = None
     #: 시연 작업을 쓸 수 없는 이유(켜져 있으면 None).
     sim_demo_disabled_reason: str | None = "시뮬레이션 작업 셀이 아니다"
+    #: 기동 시 띄운 기록↔관측 정합 작업의 결과(읽기 전용). 기록이 없으면
+    #: `{"started": False, ...}`다 — 무엇도 띄우지 않았다는 뜻이다.
+    sim_demo_reconcile: Any = None
     #: 이 어댑터 종류가 **항상 시뮬레이션**인가. 시뮬레이터에 붙는 어댑터는
     #: 개발용 Fake가 아니지만 실하드웨어도 아니다 — 두 축을 따로 둔다.
     #: None이면 모름(연결 확인 뒤에 정한다).
@@ -827,6 +830,10 @@ def _attach_sim_demo_jobs(runtime, config, manifest, workcell_path) -> None:
         kwargs["state_path"] = runtime.simulation_demo_state_path
     runtime.sim_demo_jobs = SimDemoJobs(workcell=workcell, **kwargs)
     runtime.sim_demo_disabled_reason = None
+    # Gazebo를 다시 띄우면 world는 선언된 초기 자리로 돌아가지만 시연 기록 파일은
+    # 남는다. 기록이 남아 있을 때만 **읽기 전용** 정합 작업을 한 번 띄워 관측으로
+    # 맞춘다. 로봇에 명령을 보내지 않으며, 기록이 없으면 아무것도 하지 않는다.
+    runtime.sim_demo_reconcile = runtime.sim_demo_jobs.start_reconcile_if_needed()
 
 
 def _load_simulation_e2e() -> dict:
