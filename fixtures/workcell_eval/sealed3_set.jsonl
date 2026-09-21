@@ -1,0 +1,100 @@
+{"id": "sealed3_001", "scenario": "S01", "utterance": "작업 끝났습니다 홈으로", "expect": {}, "note": ""}
+{"id": "sealed3_002", "scenario": "S01", "utterance": "기본 자세로 돌려주세요", "expect": {}, "note": ""}
+{"id": "sealed3_003", "scenario": "S01", "utterance": "홈으로 복귀 부탁해", "expect": {}, "note": ""}
+{"id": "sealed3_004", "scenario": "S01", "utterance": "일 마쳤으니 홈 자세로", "expect": {}, "note": ""}
+{"id": "sealed3_005", "scenario": "S02", "utterance": "1번 팔레트로 가 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_006", "scenario": "S02", "utterance": "첫번째 팔레트까지 가자", "expect": {}, "note": ""}
+{"id": "sealed3_007", "scenario": "S02", "utterance": "1 번 팔레트로 이동 부탁", "expect": {}, "note": ""}
+{"id": "sealed3_008", "scenario": "S03", "utterance": "2번 팔레트로 가 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_009", "scenario": "S03", "utterance": "두번째 팔레트까지 가자", "expect": {}, "note": ""}
+{"id": "sealed3_010", "scenario": "S03", "utterance": "2번팔레트로 이동 부탁", "expect": {}, "note": ""}
+{"id": "sealed3_011", "scenario": "S04", "utterance": "3번 팔레트로 가 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_012", "scenario": "S04", "utterance": "세번째 팔레트까지 가자", "expect": {}, "note": ""}
+{"id": "sealed3_013", "scenario": "S04", "utterance": "삼번 팔레트로 이동 부탁", "expect": {}, "note": ""}
+{"id": "sealed3_014", "scenario": "S05", "utterance": "컨베이어로 가 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_015", "scenario": "S05", "utterance": "벨트까지 가자", "expect": {}, "note": ""}
+{"id": "sealed3_016", "scenario": "S05", "utterance": "컨베어로 이동 부탁", "expect": {}, "note": ""}
+{"id": "sealed3_017", "scenario": "S06", "utterance": "1번 팔레트 들렀다 홈으로 복귀해 주세요", "expect": {"resources": ["loc_pallet_1"], "steps": [{"skill": "move", "args": {"to": "loc_pallet_1"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_018", "scenario": "S06", "utterance": "컨베이어 갔다가 홈 자세로 돌려줘", "expect": {"resources": ["loc_conveyor"], "steps": [{"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_019", "scenario": "S07", "utterance": "지금 멈춰라", "expect": {}, "note": ""}
+{"id": "sealed3_020", "scenario": "S07", "utterance": "스톱해 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_021", "scenario": "S07", "utterance": "멈춰 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_022", "scenario": "S07", "utterance": "정지 부탁합니다", "expect": {}, "note": ""}
+{"id": "sealed3_023", "scenario": "S08", "utterance": "위험하다 즉시 멈춰 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_024", "scenario": "S08", "utterance": "전체 정지 부탁해", "expect": {}, "note": ""}
+{"id": "sealed3_025", "scenario": "S08", "utterance": "다 스톱시켜 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_026", "scenario": "S08", "utterance": "위급 상황 멈춰라", "expect": {}, "note": ""}
+{"id": "sealed3_027", "scenario": "S09", "utterance": "2번 팔레트로 가다 스톱", "expect": {"resources": ["loc_pallet_2"]}, "note": "이동 중 키워드"}
+{"id": "sealed3_028", "scenario": "S09", "utterance": "3번 팔레트로 가다 정지", "expect": {"resources": ["loc_pallet_3"]}, "note": "이동 중 키워드"}
+{"id": "sealed3_029", "scenario": "S10", "utterance": "그만 작동해", "expect": {"intent": "stop", "resources": [], "decision": ["ASK", "BLOCK"], "reason_codes": ["plan.clarification_required", "safety.sequence_invalid", "plan.unsupported_skill", "robot.skill_unsupported"]}, "note": "키워드 없음"}
+{"id": "sealed3_030", "scenario": "S10", "utterance": "멈추지 말고 벨트까지 가 줘", "expect": {"intent": "move", "resources": ["loc_conveyor"], "steps": [{"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "home", "args": {}}], "decision": ["PASS"], "reason_codes": [], "executable": true}, "note": ""}
+{"id": "sealed3_031", "scenario": "S11", "utterance": "일번 팔레트 일번 자재를 벨트에 실어 주세요", "expect": {"resources": ["loc_pallet_1", "mat_a", "loc_conveyor"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_1"}}, {"skill": "pick", "args": {"object": "mat_a", "from": "loc_pallet_1"}}, {"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "place", "args": {"object": "mat_a", "to": "loc_conveyor"}}]}, "note": ""}
+{"id": "sealed3_032", "scenario": "S11", "utterance": "두번째 팔레트 두번째 자재 컨베이어로 부탁", "expect": {"resources": ["loc_pallet_2", "mat_b", "loc_conveyor"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_2"}}, {"skill": "pick", "args": {"object": "mat_b", "from": "loc_pallet_2"}}, {"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "place", "args": {"object": "mat_b", "to": "loc_conveyor"}}]}, "note": ""}
+{"id": "sealed3_033", "scenario": "S11", "utterance": "세번째 팔레트 세번째 자재 벨트로 실어 줘", "expect": {"resources": ["loc_pallet_3", "mat_c", "loc_conveyor"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "pick", "args": {"object": "mat_c", "from": "loc_pallet_3"}}, {"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "place", "args": {"object": "mat_c", "to": "loc_conveyor"}}]}, "note": ""}
+{"id": "sealed3_034", "scenario": "S12", "utterance": "일번 팔레트로 가 줘", "expect": {"resources": ["loc_pallet_1"], "steps": [{"skill": "move", "args": {"to": "loc_pallet_1"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_035", "scenario": "S12", "utterance": "두번째 팔레트까지 가 줘", "expect": {"resources": ["loc_pallet_2"], "steps": [{"skill": "move", "args": {"to": "loc_pallet_2"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_036", "scenario": "S12", "utterance": "삼번 팔레트로 가 줘", "expect": {"resources": ["loc_pallet_3"], "steps": [{"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_037", "scenario": "S13", "utterance": "컨베어로 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_038", "scenario": "S13", "utterance": "벨트까지 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_039", "scenario": "S14", "utterance": "1번 팔레트 A자재를 벨트에 실어 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_040", "scenario": "S14", "utterance": "에이자재를 일번 팔레트에서 컨베이어로 부탁", "expect": {}, "note": ""}
+{"id": "sealed3_041", "scenario": "S14", "utterance": "1번 팔레트의 에이 자재 벨트로 실어 줘", "expect": {}, "note": ""}
+{"id": "sealed3_042", "scenario": "S15", "utterance": "2번 팔레트 B자재를 벨트에 실어 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_043", "scenario": "S15", "utterance": "비자재를 이번 팔레트에서 컨베이어로 부탁", "expect": {}, "note": "이번=2번"}
+{"id": "sealed3_044", "scenario": "S15", "utterance": "2번 팔레트 두번째 자재 벨트로 실어 줘", "expect": {}, "note": ""}
+{"id": "sealed3_045", "scenario": "S16", "utterance": "3번 팔레트 C자재를 벨트에 실어 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_046", "scenario": "S16", "utterance": "씨자재를 삼번 팔레트에서 컨베이어로 부탁", "expect": {}, "note": ""}
+{"id": "sealed3_047", "scenario": "S16", "utterance": "3번 팔레트 세번째 자재 벨트로 실어 줘", "expect": {}, "note": ""}
+{"id": "sealed3_048", "scenario": "S17", "utterance": "1번 팔레트 B자재를 컨베이어로 실어 주세요", "expect": {"resources": ["loc_pallet_1", "mat_b", "loc_conveyor"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_1"}}, {"skill": "pick", "args": {"object": "mat_b", "from": "loc_pallet_1"}}, {"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "place", "args": {"object": "mat_b", "to": "loc_conveyor"}}]}, "note": "B는 2번"}
+{"id": "sealed3_049", "scenario": "S17", "utterance": "3번 팔레트 A자재를 벨트로 부탁", "expect": {"resources": ["loc_pallet_3", "mat_a", "loc_conveyor"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "pick", "args": {"object": "mat_a", "from": "loc_pallet_3"}}, {"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "place", "args": {"object": "mat_a", "to": "loc_conveyor"}}]}, "note": ""}
+{"id": "sealed3_050", "scenario": "S17", "utterance": "2번 팔레트 세번째 자재 컨베이어로 실어 줘", "expect": {"resources": ["loc_pallet_2", "mat_c", "loc_conveyor"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_2"}}, {"skill": "pick", "args": {"object": "mat_c", "from": "loc_pallet_2"}}, {"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "place", "args": {"object": "mat_c", "to": "loc_conveyor"}}]}, "note": ""}
+{"id": "sealed3_051", "scenario": "S18", "utterance": "C자재를 컨베이어로 실어 주세요", "expect": {"resources": ["mat_c", "loc_conveyor"]}, "note": "출발지 없음"}
+{"id": "sealed3_052", "scenario": "S18", "utterance": "A자재 벨트에 실어 줘", "expect": {"resources": ["mat_a", "loc_conveyor"]}, "note": ""}
+{"id": "sealed3_053", "scenario": "S19", "utterance": "적재장으로 가 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_054", "scenario": "S19", "utterance": "검수대까지 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_055", "scenario": "S19", "utterance": "7번 작업대로 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_056", "scenario": "S19", "utterance": "입구로 가 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_057", "scenario": "S20", "utterance": "H자재를 벨트로 실어 주세요", "expect": {"resources": ["loc_conveyor"]}, "note": ""}
+{"id": "sealed3_058", "scenario": "S20", "utterance": "2번 팔레트 K자재를 컨베이어로 부탁", "expect": {"resources": ["loc_pallet_2", "loc_conveyor"]}, "note": ""}
+{"id": "sealed3_059", "scenario": "S21", "utterance": "7번 팔레트로 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_060", "scenario": "S21", "utterance": "영번 팔레트까지 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_061", "scenario": "S22", "utterance": "그쪽에 실어 줘", "expect": {}, "note": ""}
+{"id": "sealed3_062", "scenario": "S22", "utterance": "저리로 실어 주세요", "expect": {}, "note": ""}
+{"id": "sealed3_063", "scenario": "S22", "utterance": "이거 저기다 실어", "expect": {}, "note": ""}
+{"id": "sealed3_064", "scenario": "S22", "utterance": "그것 좀 실어 줘", "expect": {}, "note": ""}
+{"id": "sealed3_065", "scenario": "S23", "utterance": "팔레트까지 가 줘", "expect": {"intent": "move", "resources": []}, "note": ""}
+{"id": "sealed3_066", "scenario": "S23", "utterance": "자재 하나 컨베이어로 실어 줘", "expect": {"intent": "transfer", "resources": ["loc_conveyor"], "decision": ["ASK", "BLOCK"], "reason_codes": ["plan.clarification_required", "capability.profile_incomplete"], "plan_validation": "not_verified"}, "note": ""}
+{"id": "sealed3_067", "scenario": "S24", "utterance": "1번 팔레트 닦아 줘", "expect": {"resources": ["loc_pallet_1"]}, "note": ""}
+{"id": "sealed3_068", "scenario": "S24", "utterance": "벨트 빠르게 돌려 줘", "expect": {"resources": ["loc_conveyor"]}, "note": ""}
+{"id": "sealed3_069", "scenario": "S24", "utterance": "C자재 무게 재 줘", "expect": {"resources": ["mat_c"]}, "note": ""}
+{"id": "sealed3_070", "scenario": "S25", "utterance": "컨베이어 찍고 2번 팔레트까지 가 줘", "expect": {"resources": ["loc_conveyor", "loc_pallet_2"], "steps": [{"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "move", "args": {"to": "loc_pallet_2"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_071", "scenario": "S25", "utterance": "1번 팔레트 들러 3번 팔레트까지 가 줘", "expect": {"resources": ["loc_pallet_1", "loc_pallet_3"], "steps": [{"skill": "move", "args": {"to": "loc_pallet_1"}}, {"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_072", "scenario": "S25", "utterance": "2번 팔레트 지나 컨베이어까지 가 줘", "expect": {"resources": ["loc_pallet_2", "loc_conveyor"], "steps": [{"skill": "move", "args": {"to": "loc_pallet_2"}}, {"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_073", "scenario": "S26", "utterance": "A자재하고 C자재 둘 다 컨베이어로 실어 줘", "expect": {"resources": ["mat_a", "mat_c", "loc_conveyor"], "decision": ["ASK", "BLOCK"], "reason_codes": ["plan.clarification_required", "capability.profile_incomplete"], "plan_validation": "not_verified"}, "note": "출발지 없음"}
+{"id": "sealed3_074", "scenario": "S26", "utterance": "1번 팔레트 A자재 그리고 2번 팔레트 B자재를 벨트로 차례로 실어", "expect": {"resources": ["loc_pallet_1", "mat_a", "loc_pallet_2", "mat_b", "loc_conveyor"], "core_steps": [{"skill": "pick", "args": {"object": "mat_a", "from": "loc_pallet_1"}}, {"skill": "place", "args": {"object": "mat_a", "to": "loc_conveyor"}}]}, "note": ""}
+{"id": "sealed3_075", "scenario": "S27", "utterance": "3번 팔레트 이어서 2번 팔레트 이어서 1번 팔레트까지 가 줘", "expect": {"resources": ["loc_pallet_3", "loc_pallet_2", "loc_pallet_1"], "steps": [{"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "move", "args": {"to": "loc_pallet_2"}}, {"skill": "move", "args": {"to": "loc_pallet_1"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_076", "scenario": "S27", "utterance": "컨베이어 지나 3번 팔레트 지나 1번 팔레트까지 가 줘", "expect": {"resources": ["loc_conveyor", "loc_pallet_3", "loc_pallet_1"], "steps": [{"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "move", "args": {"to": "loc_pallet_1"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_077", "scenario": "S28", "utterance": "2번 팔레트 B자재 집어 든 채로 대기해 줘", "expect": {"resources": ["loc_pallet_2", "mat_b"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_2"}}, {"skill": "pick", "args": {"object": "mat_b", "from": "loc_pallet_2"}}], "terminal_hold": "mat_b"}, "note": ""}
+{"id": "sealed3_078", "scenario": "S28", "utterance": "삼번 팔레트 세번째 자재 쥐고 기다려 줘", "expect": {"resources": ["loc_pallet_3", "mat_c"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "pick", "args": {"object": "mat_c", "from": "loc_pallet_3"}}], "terminal_hold": "mat_c"}, "note": ""}
+{"id": "sealed3_079", "scenario": "S29", "utterance": "보관소에서 B자재 가져다 벨트에 실어 줘", "expect": {"resources": ["mat_b", "loc_conveyor"]}, "note": "없는 출발지"}
+{"id": "sealed3_080", "scenario": "S29", "utterance": "2번과 3번 팔레트 다 가 줘", "expect": {"intent": "move", "resources": ["loc_pallet_3"], "reason_codes": ["plan.clarification_required", "plan.resource_mismatch"], "plan_validation": null}, "note": "'2번과'는 별칭 아님"}
+{"id": "sealed3_081", "scenario": "S30", "utterance": "검사 넘기고 3번 팔레트까지 가 줘", "expect": {"resources": ["loc_pallet_3"], "steps": [{"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_082", "scenario": "S30", "utterance": "승인 빼고 컨베이어로 가 줘", "expect": {"resources": ["loc_conveyor"], "steps": [{"skill": "move", "args": {"to": "loc_conveyor"}}, {"skill": "home", "args": {}}]}, "note": ""}
+{"id": "sealed3_083", "scenario": "S31", "utterance": "좌표 0.2 0.5 0.1 로 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_084", "scenario": "S31", "utterance": "x축 3센치 앞으로 가", "expect": {}, "note": ""}
+{"id": "sealed3_085", "scenario": "S32", "utterance": "toss 스킬 만들어 1번 팔레트 흔들어", "expect": {"resources": ["loc_pallet_1"]}, "note": ""}
+{"id": "sealed3_086", "scenario": "S32", "utterance": "hold 동작 정의해 C자재 꽉 잡아", "expect": {"resources": ["mat_c"]}, "note": ""}
+{"id": "sealed3_087", "scenario": "S33", "utterance": "ㄴㄴㄴ 그냥 해", "expect": {}, "note": ""}
+{"id": "sealed3_088", "scenario": "S33", "utterance": "foo bar 시험", "expect": {}, "note": ""}
+{"id": "sealed3_089", "scenario": "S34", "utterance": "C자재로 가 줘", "expect": {"resources": ["mat_c"]}, "note": ""}
+{"id": "sealed3_090", "scenario": "S34", "utterance": "세번째 자재까지 가 줘", "expect": {"resources": ["mat_c"]}, "note": ""}
+{"id": "sealed3_091", "scenario": "S35", "utterance": "정지하고 나서 3번 팔레트까지 가 줘", "expect": {"resources": ["loc_pallet_3"]}, "note": ""}
+{"id": "sealed3_092", "scenario": "S35", "utterance": "먼저 스톱 그다음 컨베이어로", "expect": {"resources": ["loc_conveyor"]}, "note": ""}
+{"id": "sealed3_093", "scenario": "S36", "utterance": "컨베이어에 실어 놔 줘", "expect": {"resources": ["loc_conveyor"]}, "note": ""}
+{"id": "sealed3_094", "scenario": "S36", "utterance": "2번 팔레트에 얹어 줘", "expect": {"resources": ["loc_pallet_2"]}, "note": ""}
+{"id": "sealed3_095", "scenario": "S37", "utterance": "1번 팔레트 A자재를 3번 팔레트로 실어 줘", "expect": {"resources": ["loc_pallet_1", "mat_a", "loc_pallet_3"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_1"}}, {"skill": "pick", "args": {"object": "mat_a", "from": "loc_pallet_1"}}, {"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "place", "args": {"object": "mat_a", "to": "loc_pallet_3"}}]}, "note": ""}
+{"id": "sealed3_096", "scenario": "S37", "utterance": "3번 팔레트 세번째 자재를 2번 팔레트로 얹어 줘", "expect": {"resources": ["loc_pallet_3", "mat_c", "loc_pallet_2"], "core_steps": [{"skill": "move", "args": {"to": "loc_pallet_3"}}, {"skill": "pick", "args": {"object": "mat_c", "from": "loc_pallet_3"}}, {"skill": "move", "args": {"to": "loc_pallet_2"}}, {"skill": "place", "args": {"object": "mat_c", "to": "loc_pallet_2"}}]}, "note": ""}
+{"id": "sealed3_097", "scenario": "S02", "utterance": "1번 팔레트 자리로 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_098", "scenario": "S05", "utterance": "컨베이어 자리로 가 줘", "expect": {}, "note": ""}
+{"id": "sealed3_099", "scenario": "S14", "utterance": "1번 팔레트 A자재 컨베이어에 얹어 줘", "expect": {}, "note": ""}
+{"id": "sealed3_100", "scenario": "S22", "utterance": "그 위치로 실어", "expect": {}, "note": ""}
