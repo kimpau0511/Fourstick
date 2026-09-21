@@ -521,8 +521,65 @@ export function renderEventsCard(state) {
 }
 
 // ── 가운데: 작업 명령 ─────────────────────────────────────────────────
+/** 시뮬레이션 명령 결과(RUN/STOP/ASK/BLOCK). 계획 카드와 섞지 않는다.
+ *
+ * 모드 토글은 없다 — Gazebo 작업 셀에서는 자재 이송·복귀·정지·이어서가
+ * **기본 동작**이고, 그 밖의 발화는 서버가 `PASS_THROUGH`로 돌려 기존 계획
+ * 생성으로 간다. */
+export function renderSimCommandArea(state) {
+  const sim = state.simDemo || {};
+  const result = sim.result;
+  const body = !result
+    ? `<p class="hint"><span class="hint-mark">⬡</span>
+         시뮬레이션 명령 예: "A 자재를 컨베이어로 옮겨줘" · "A 자재를 원래 자리로 돌려놔" ·
+         "돌려놔"(컨베이어에 하나만 있을 때) · "이어서 해줘" · "멈춰".
+         그 밖의 명령은 기존 계획 생성으로 갑니다(집기·놓기 차단은 그대로입니다).</p>`
+    : renderSimCommandResult(state, result);
+  return `<div class="rows">${body}</div>`;
+}
+
+function simDecisionPill(decision) {
+  if (decision === 'RUN') return pill('success', '▶', '작업 생성');
+  if (decision === 'STOP') return pill('danger', '■', '정지 요청');
+  if (decision === 'ASK') return pill('warning', '?', 'ASK');
+  return pill('danger', '✕', 'BLOCK');
+}
+
+function renderSimCommandResult(state, result) {
+  const sim = state.simDemo || {};
+  const job = sim.job || result.job;
+  const progress = (job && job.progress) || [];
+  const last = progress[progress.length - 1];
+  const report = (job && job.report) || null;
+  const stop = result.stop;
+  return `
+    <div class="row"><span class="row-label">발화</span>
+      <div class="row-value truncate">${esc(result.utterance || '')}</div></div>
+    <div class="row"><span class="row-label">판단</span>
+      <div class="row-value">${simDecisionPill(result.decision)}${
+        result.intent ? ` <span class="mono robot-pick-sub">${esc(result.intent)}</span>` : ''
+      }${result.material ? ` <span class="mono robot-pick-sub">${esc(result.material)}</span>` : ''}</div></div>
+    ${result.reason ? `<p class="hint"><span class="hint-mark">!</span>${esc(result.reason)}</p>` : ''}
+    ${job ? `<div class="row"><span class="row-label">작업</span>
+      <div class="row-value mono truncate">${esc(job.job_id)} · ${esc(job.status || '')}</div></div>` : ''}
+    ${last ? `<div class="row"><span class="row-label">진행</span>
+      <div class="row-value mono">${esc(`${last.no}/${last.of} ${last.label}`)}</div></div>` : ''}
+    ${report && report.status ? `<div class="row"><span class="row-label">결과</span>
+      <div class="row-value mono">${esc(report.status)}</div></div>` : ''}
+    ${stop ? `<div class="row"><span class="row-label">정지</span>
+      <div class="row-value">${stop.requested ? '요청됨 — 시뮬레이터가 정지를 확인하면 체크포인트가 남습니다'
+        : esc(stop.detail || '실행 중인 시연 작업이 없습니다')}</div></div>` : ''}
+    <p class="hint"><span class="hint-mark">⬡</span>
+      ${esc(result.simulation_notice || 'Gazebo 시뮬레이션 · 실제 로봇 아님')}</p>`;
+}
+
 export function renderCommandCard(state, backendKind) {
-  const disabled = !state.command.trim() || state.planLoading || isActive(state);
+  const busy = Boolean(state.simDemo && state.simDemo.busy);
+  const disabled = !state.command.trim() || busy || state.planLoading || isActive(state);
+  // 작업 셀(시뮬레이터)에 붙어 있으면 제목·안내가 시뮬레이션 기준이다.
+  const simulated = backendKind === 'server'
+    && Boolean(state.serverWorkcell && state.serverWorkcell.registered);
+  const title = simulated ? '시뮬레이션 작업 명령' : '작업 명령';
   const simHint =
     backendKind === 'simulation'
       ? `<p class="hint"><span class="hint-mark">⬡</span>
@@ -531,16 +588,19 @@ export function renderCommandCard(state, backendKind) {
            ASK: "그거 저기로 옮겨줘"</p>`
       : '';
   return `
-    ${cardHeader('작업 명령')}
+    ${cardHeader(title, simulated ? pill('info', '⬡', 'Gazebo 시뮬레이션 · 실제 로봇 아님') : '')}
     <div class="card-body">
       <textarea class="textarea" id="command-input" rows="3" data-action="command-input"
         placeholder="작업 명령을 입력하거나 음성으로 입력하세요.">${esc(state.command)}</textarea>
       <div class="btn-row">
         <button class="btn primary" type="button" data-action="generate" ${disabled ? 'disabled' : ''}>
-          ${state.planLoading ? '<span class="spinner"></span>' : '◈'} 계획 생성
+          ${busy || state.planLoading ? '<span class="spinner"></span>' : '◈'} 명령 보내기
         </button>
         <button class="btn ghost" type="button" data-action="clear-command">지우기</button>
       </div>
+      ${simulated ? `<p class="hint"><span class="hint-mark">⬡</span>
+        이 작업 셀은 Gazebo 시뮬레이션입니다 — 실제 로봇이 아닙니다.</p>` : ''}
+      <div id="sim-command-area">${renderSimCommandArea(state)}</div>
       <p class="hint"><span class="hint-mark">ℹ</span>
         계획 생성은 로봇을 실행하지 않습니다. 안전 판단이 PASS일 때
         <strong>실행 시작</strong>을 눌러야 실행됩니다.</p>
@@ -1682,7 +1742,35 @@ export function render(state, backendKind) {
   set('card-hardware', renderHardwareCard(state));
   set('card-voice', renderVoiceCard(state));
   set('card-events', renderEventsCard(state));
-  set('card-command', renderCommandCard(state, backendKind));
+  // **타이핑 중인 textarea를 부수지 않는다.** 입력 이벤트마다 상태가 바뀌고
+  // 다시 그리는데, 카드 전체의 innerHTML을 갈아 끼우면 textarea가 새 요소로
+  // 바뀌어 포커스·커서·한글 조합이 끊긴다(실측: 글자가 안 쳐진다). textarea가
+  // 이미 있으면 버튼 상태만 맞추고, 안내문 구성이 바뀔 때만 전체를 다시 그린다.
+  const commandHtml = renderCommandCard(state, backendKind);
+  const commandNode = document.getElementById('card-command');
+  const canQueryCommand = commandNode && typeof commandNode.querySelector === 'function';
+  const liveInput = canQueryCommand ? commandNode.querySelector('#command-input') : null;
+  if (!liveInput) {
+    set('card-command', commandHtml);
+  } else if (typeof document.createElement === 'function') {
+    const fresh = document.createElement('div');
+    fresh.innerHTML = commandHtml;
+    const freshButton = fresh.querySelector ? fresh.querySelector('[data-action="generate"]') : null;
+    const liveButton = commandNode.querySelector('[data-action="generate"]');
+    if (freshButton && liveButton) {
+      if (liveButton.disabled !== freshButton.disabled) liveButton.disabled = freshButton.disabled;
+      if (liveButton.innerHTML !== freshButton.innerHTML) liveButton.innerHTML = freshButton.innerHTML;
+    }
+    const freshHints = fresh.querySelectorAll ? fresh.querySelectorAll('.hint').length : 0;
+    const liveHints = commandNode.querySelectorAll ? commandNode.querySelectorAll('.hint').length : 0;
+    const typing = typeof document.activeElement !== 'undefined' && document.activeElement === liveInput;
+    if (freshHints !== liveHints && !typing) set('card-command', commandHtml);
+  }
+  const simArea = document.getElementById('sim-command-area');
+  if (simArea) {
+    const simHtml = renderSimCommandArea(state);
+    if (simArea.innerHTML !== simHtml) simArea.innerHTML = simHtml;
+  }
   set('card-plan', renderPlanCard(state));
   set('card-verdict', renderVerdictCard(state));
   const blockHtml = renderBlockCard(state);

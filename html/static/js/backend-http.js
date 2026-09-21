@@ -458,6 +458,21 @@ export class HttpBackend {
     return { ok: Boolean(payload.ok), requested: Boolean(payload.requested) };
   }
 
+  // ── 시뮬레이션 시연 명령 ─────────────────────────────────────────────
+  /** 텍스트·STT final 발화를 **시연 전용** 입구로 보낸다(계획 생성 아님).
+   *  source는 'text' 또는 'stt_final'이다 — partial은 보내지 않는다. */
+  async simDemoCommand(utterance, source) {
+    const response = await request('POST', '/v1/sim-demo/command', {
+      mode: 'simulation_demo', utterance, source,
+    });
+    return { status: response.status, ...response.payload };
+  }
+
+  async simDemoJob(jobId) {
+    const response = await request('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`);
+    return response.ok ? response.payload : null;
+  }
+
   // ── STT ─────────────────────────────────────────────────────────────
   async startVoice(onTranscript) {
     const audio = (this.config && this.config.audio) || {};

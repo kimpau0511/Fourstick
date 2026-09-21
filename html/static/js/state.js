@@ -88,6 +88,10 @@ export function initialState() {
     session: null,
     connection: { state: 'connecting', detail: '' },
     stt: { recording: false, partial: '', final: '', confidence: null, available: false },
+    /** 시뮬레이션 명령(자재 이송·복귀·정지·이어서)의 마지막 응답과 그 작업의
+     *  최신 상세. 모드 토글은 없다 — 시뮬레이션 작업 셀에서는 기본 동작이고,
+     *  그 밖의 발화는 서버가 PASS_THROUGH로 돌려 기존 계획 생성으로 간다. */
+    simDemo: { busy: false, result: null, job: null },
     modal: null, // 'execute' | 'cancel' | 'robot' | null
     eventFilter: 'all',
     policyOpen: false,
@@ -196,6 +200,16 @@ export function reduce(state, action) {
 
     case 'stt':
       return { ...state, stt: { ...state.stt, ...action.stt } };
+
+    case 'sim-demo-busy':
+      return { ...state, simDemo: { ...state.simDemo, busy: Boolean(action.busy) } };
+
+    case 'sim-demo-result':
+      return { ...state, simDemo: { ...state.simDemo, busy: false, result: action.result,
+        job: (action.result && action.result.job) || null } };
+
+    case 'sim-demo-job':
+      return { ...state, simDemo: { ...state.simDemo, job: action.job } };
 
     case 'robot':
       // 실행 중에는 로봇을 바꾸지 않는다.

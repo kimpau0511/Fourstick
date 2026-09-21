@@ -10,6 +10,7 @@ import { setResourceLabels } from './catalog.js';
 import { HttpBackend } from './backend-http.js';
 import { SimulationBackend } from './backend-sim.js';
 import { render } from './render.js';
+import { createSimDemoCard } from './sim-demo.js';
 import { EXECUTION, createStore, makeEvent } from './state.js';
 
 const params = new URLSearchParams(location.search);
@@ -123,6 +124,8 @@ async function handleFinalTranscript(text, confidence) {
     return;
   }
   lastHandledFinal = key;
+  // final만 시뮬레이션 명령으로 보낸다(partial은 표시만 한다).
+  if (await sendSimDemoCommand(text, 'stt_final')) return;
   // 정지 발화는 **계획 생성을 거치지 않는다.** 즉시 전체 정지로 보낸다.
   if (isStopUtterance(text)) {
     log('warning', `음성 정지 발화: "${text}" → 전체 정지`);
@@ -132,7 +135,52 @@ async function handleFinalTranscript(text, confidence) {
   await generatePlan();
 }
 
+/** 시뮬레이션 명령. 텍스트와 STT final이 **같은 입구**를 쓴다.
+ *
+ * 돌려주는 값: 여기서 처리했으면 true. `PASS_THROUGH`(시뮬레이션 명령이 아님)나
+ * 이 셀에서 쓸 수 없으면 false — 호출한 쪽이 기존 계획 생성으로 간다. */
+async function sendSimDemoCommand(utterance, source) {
+  const text = (utterance || '').trim();
+  if (!text) return false;
+  store.dispatch({ type: 'sim-demo-busy', busy: true });
+  let result;
+  try {
+    result = await backend.simDemoCommand(text, source);
+  } catch (error) {
+    store.dispatch({ type: 'sim-demo-busy', busy: false });
+    log('warning', `시뮬레이션 명령을 확인하지 못했습니다(${error.message}) — 계획 생성으로 갑니다.`);
+    return false;
+  }
+  // 시뮬레이션 명령이 아니거나 이 셀에서 쓸 수 없다 → 기존 계획 생성이 맡는다.
+  if (result.decision === 'PASS_THROUGH' || result.status === 403 || result.status === 404) {
+    store.dispatch({ type: 'sim-demo-busy', busy: false });
+    return false;
+  }
+  store.dispatch({ type: 'sim-demo-result', result });
+  const level = result.decision === 'RUN' || result.decision === 'STOP' ? 'info' : 'warning';
+  log(level, `시뮬레이션 명령(${source}) 판단 ${result.decision}`
+    + `${result.reason ? ` — ${result.reason}` : ''} · Gazebo 시뮬레이션 · 실제 로봇 아님`);
+  if (result.job) pollSimDemoJob(result.job.job_id);
+  return true;
+}
+
+/** 작업이 끝날 때까지 진행 단계를 읽는다. 로봇 명령을 보내지 않는다. */
+async function pollSimDemoJob(jobId) {
+  const job = await backend.simDemoJob(jobId);
+  if (!job) return;
+  store.dispatch({ type: 'sim-demo-job', job });
+  if (job.status === 'running') {
+    setTimeout(() => pollSimDemoJob(jobId), 1500);
+    return;
+  }
+  const status = (job.report && job.report.status) || `종료 코드 ${job.exit_code}`;
+  log('info', `시연 작업 완료: ${status}`);
+}
+
 async function generatePlan() {
+  // 시뮬레이션 작업 셀에서는 자재 이송·복귀·정지·이어서가 **기본 동작**이다.
+  // 시뮬레이션 명령이 아니면(PASS_THROUGH) 아래 기존 계획 생성으로 이어간다.
+  if (await sendSimDemoCommand(store.get().command, 'text')) return;
   // **정지 발화는 계획 생성을 거치지 않는다.** 텍스트도 음성과 같은 규칙이다
   // (정지 계획은 안전 정책의 종료 스킬 요구와 충돌해 차단된다 — 실측).
   if (isStopUtterance(store.get().command)) {
@@ -494,6 +542,13 @@ async function boot() {
     const catalogs = (config && config.catalogs) || {};
     setResourceLabels([...(catalogs.locations || []), ...(catalogs.objects || [])]);
     store.dispatch({ type: 'connection', state: 'ok', detail: backend.label });
+    // 시뮬레이션 시연 카드. 서버에 붙었을 때만 서버 상태를 읽는다 — 자기 카드만
+    // 그리고, 다른 카드의 상태 저장소를 건드리지 않는다.
+    const simDemoRoot = document.getElementById('card-sim-demo');
+    if (simDemoRoot) {
+      if (backend.kind === 'server') createSimDemoCard({ root: simDemoRoot }).refresh();
+      else simDemoRoot.hidden = true;
+    }
     // 작업 셀 장면 영상을 쓸 수 있는지 확인한다. 추측하지 않는다.
     try {
       const scene = await fetch('/v1/scene', { cache: 'no-store' });

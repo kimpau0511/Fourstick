@@ -133,6 +133,21 @@ export class SimulationBackend {
     return null;
   }
 
+  /** 시뮬레이션 명령은 서버의 작업 셀 시뮬레이터가 있어야 한다. 화면 전용
+   *  백엔드에서는 **모두 기존 흐름으로 넘긴다**(PASS_THROUGH). */
+  async simDemoCommand(utterance, source) {
+    return {
+      status: 404, decision: 'PASS_THROUGH', is_simulated: true,
+      simulation_notice: 'Gazebo 시뮬레이션 · 실제 로봇 아님',
+      utterance, source, job: null,
+      reason: '서버(작업 셀 시뮬레이터)에 연결되어 있을 때만 쓸 수 있습니다',
+    };
+  }
+
+  async simDemoJob() {
+    return null;
+  }
+
   async createPlan(utterance) {
     const scenario = scenarioFor(utterance, this.scenarioOverride);
     await new Promise((resolve) => setTimeout(resolve, this.planMs));
