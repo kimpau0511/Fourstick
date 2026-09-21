@@ -31,6 +31,43 @@ IK는 그 자세를 허용치 안에서 풀었지만, MoveIt에 물어보니 자
 - 물체를 실제로 쥐었는지는 여기서 알 수 없다(`grasp.object_held` 미확보).
 
 실행하지 않는다. 로봇을 움직이지 않는다 — IK와 MoveIt 질의만 한다.
+
+## 컨베이어 위 자재 파지 (`--conveyor`)
+
+시뮬레이션 시연 복귀(컨베이어 → 원래 슬롯)는 **컨베이어에 놓인** 자재를 다시
+집어야 한다. 팔레트 파지 자세나 `conveyor_place`(놓기 높이)로 대신하지 않고
+같은 방식으로 측정한다.
+
+- 자재 위치: 선언된 `conveyor_frame`(벨트 상면 중심) + 자재 높이 절반.
+- planning scene은 자재를 원래 슬롯에만 담고 있다. **공유 scene을 바꾸지
+  않도록** 컨베이어 위 자재는 질의 로봇 상태에만 붙인 탐침 물체
+  (`base_link` 고정, 선언 치수)로 넣는다. 탐침에는 닿아도 되는 링크가 없다.
+- 후보마다: IK 수렴 · 연 상태 접촉 없음 · 닫은 상태 패드↔자재 접촉만 ·
+  몸체↔자재/컨베이어 충돌 없음. 자재↔벨트 접촉만 받침 예외다(기존 규칙).
+- 최저 유효 높이를 고른 뒤 접근(열림, 탐침 있음)·파지 적재·lift(자재를 든 채
+  `conveyor_approach`)를 다시 묻는다. 모두 깨끗해야 등록한다.
+- 결과는 grasp 파일의 **별도 키** `conveyor_grasp_poses`에만 쓴다. 기존
+  `poses`(팔레트 파지)는 건드리지 않는다 — 로더가 자재별 파지 자세를 그
+  키에서 잇기 때문이다. 유효 구간이 없는 자재는 등록하지 않는다. 전체 훑기
+  기록은 `reports/workcell/conveyor_grasp_sweep.json`에 남긴다.
+
+## 원래 슬롯 놓기 (`--pallet-place --materials mat_a mat_c`)
+
+복귀 경로는 컨베이어에서 집은 자재를 원래 팔레트 슬롯에 놓는다. 팔레트
+**파지** 자세에서 놓으면 든 자재 바닥이 트레이 윗면에 닿는다(실측:
+`pallet_1__tray↔material_a__held`). 들고 있는 동안의 받침 접촉은 허용 예외가
+아니므로 규칙을 넓히지 않고 놓기 높이를 측정한다.
+
+- 든 자재 선언: 복귀가 실제로 쓰는 컨베이어 파지의 `attached_object`.
+- 슬롯: 자재 프레임(선언된 팔레트 부모) 중심. 5 mm 간격으로 TCP 높이를 훑는다.
+- 후보마다: IK 수렴 · 든 채 놓기 자세 접촉 없음(트레이·팔레트 포함, 받침 예외
+  없음) · 해제(열림, 빈손) 접촉 없음 · 해제 시 자재 중심이 슬롯 중심에서
+  허용치(0.02 m) 안이고 자재 바닥이 트레이 위에 있음.
+- 가장 낮은 유효 높이를 고른 뒤 든 채 접근(`pallet_N_approach`)과 빈손
+  retreat을 다시 묻는다. 모두 깨끗해야 등록한다.
+- 결과는 **별도 키** `pallet_place_poses`에만 쓴다. `poses`(팔레트 파지)와
+  `conveyor_grasp_poses`는 건드리지 않는다. 전체 기록은
+  `reports/workcell/pallet_place_sweep.json`.
 """
 
 from __future__ import annotations
@@ -150,10 +187,458 @@ def build_client(limits: dict):
     return client, node
 
 
+CONVEYOR_REPORT = ROOT / "reports/workcell/conveyor_grasp_sweep.json"
+CONVEYOR_RESOURCE = "loc_conveyor"
+
+
+def conveyor_object_center(data: dict, model: str) -> np.ndarray:
+    """컨베이어에 놓인 자재 중심. 선언된 벨트 상면 중심 + 자재 높이 절반."""
+    conveyor = next(row for row in data["resource_map"]
+                    if row["resource_id"] == CONVEYOR_RESOURCE)
+    top = resolve_frame(data["frames"], conveyor["frame"])
+    height = float(data["models"][model]["size_m"][2])
+    return top + np.array([0.0, 0.0, height / 2])
+
+
+def support_contacts(validity, support_model: str) -> tuple[str, ...]:
+    names = {name for pair in validity.contacts for name in pair}
+    return tuple(sorted(n for n in names
+                        if n == support_model or n.startswith(f"{support_model}__")))
+
+
+def derive_conveyor(out_path: Path, report_path: Path) -> int:
+    """컨베이어 위 자재의 파지 자세를 측정한다. 값을 만들지 않는다."""
+    data = json.loads(WORKCELL.read_text(encoding="utf-8"))
+    derived = json.loads(POSES.read_text(encoding="utf-8"))
+    if not out_path.is_file():
+        raise SystemExit(f"팔레트 파지 측정 결과가 없다: {out_path}")
+    grasp = json.loads(out_path.read_text(encoding="utf-8"))
+    spec = data["grasp"]
+    pad_links = tuple(spec["pad_links"])
+    tcp_link = spec["tcp_link"]
+    step = float(spec["sweep_step_m"])
+    tool_down = data["tcp_targets"]["tool_down_rpy_rad"]
+    grasp_joint = grasp.get("gripper", {}).get("grasp_joint_rad")
+    if grasp.get("gripper", {}).get("status") != "measured" or grasp_joint is None:
+        raise SystemExit("측정된 파지 개구가 없다 — 값을 만들지 않고 멈춘다")
+    conveyor_model = _model_of(data, CONVEYOR_RESOURCE)
+    verified = {name: pose["joint_rad"] for name, pose in derived["poses"].items()
+                if pose.get("status") == "verified"}
+    approach_name = f"{conveyor_model}_approach"
+    if approach_name not in verified:
+        raise SystemExit(f"검증된 {approach_name} 자세가 없다")
+
+    joints, _links, mimics, limits = load_urdf()
+    gripper_limits = {"robotiq_85_left_knuckle_joint": {"lower": 0.0, "upper": 0.8}}
+    client, node = build_client({**limits, **gripper_limits})
+    before = client.snapshot()
+    base_rotation, base_world = link_transforms(
+        joints, _joints_with(verified[approach_name], 0.0, mimics, spec))["base_link"]
+
+    report = {
+        "schema": "forstick2.workcell_conveyor_grasp_sweep/1",
+        "derived_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "is_simulated": True, "real_hardware_verified": False,
+        "method": "moveit_contact_sweep_plus_numerical_ik",
+        "support_resource_id": CONVEYOR_RESOURCE, "sweep_step_m": step,
+        "scene": {"content_hash": before.content_hash,
+                  "world_object_count": before.summary.get("world_object_count")},
+        "probe": "컨베이어 위 자재는 질의 로봇 상태에만 붙인 탐침(base_link 고정,"
+                 " 선언 치수)이다. 공유 planning scene은 바꾸지 않았다",
+        "materials": {},
+    }
+    poses: dict[str, dict] = {}
+    for row in sorted(data["resource_map"], key=lambda r: r["resource_id"]):
+        model = row["gazebo_model"]
+        item = data["models"].get(model) or {}
+        if item.get("kind") != "material":
+            continue
+        rid = row["resource_id"]
+        size = [float(v) for v in item["size_m"]]
+        center = conveyor_object_center(data, model)
+        probe = AttachedObject(
+            object_id=f"{model}__on_conveyor_probe", link="base_link",
+            size_m=tuple(size),
+            offset_m=tuple(float(v) for v in base_rotation.T @ (center - base_world)),
+            touch_links=(), source="config/workcell/fr3_2f85_workcell.json")
+
+        def ask(arm, gripper, *, pads, attached=(probe,), object_id=probe.object_id,
+                world_instance_id=None, allow_support=True):
+            state = client.check_state(_joints_with(arm, gripper, mimics, spec),
+                                       attached=list(attached))
+            supports = (support_contacts(state, conveyor_model)
+                        if allow_support else ())
+            return classify(state, object_id=object_id, pad_links=pads,
+                            world_instance_id=world_instance_id,
+                            support_ids=supports)
+
+        rows = []
+        height = size[2]
+        count = int(round((height / 2 + 0.06) / step)) + 1
+        for index in range(count):
+            dz = round(-height / 2 + index * step, 6)
+            target = center + np.array([0.0, 0.0, dz])
+            arm, distance, angle = solve_ik(
+                joints, mimics, limits, target, tool_down, dict(verified[approach_name]))
+            reachable = (distance <= IK_POSITION_TOLERANCE_M
+                         and angle <= IK_ORIENTATION_TOLERANCE_RAD)
+            out = {"dz_m": dz, "tcp_world_z_m": round(float(target[2]), 6),
+                   "position_error_m": round(distance, 6),
+                   "orientation_error_rad": round(angle, 6),
+                   "reachable": reachable, "usable": False}
+            if reachable:
+                out["open"] = ask(arm, GRIPPER_OPEN_RAD, pads=())
+                out["closed"] = ask(arm, grasp_joint, pads=pad_links)
+                out["usable"] = bool(out["open"]["clean"] and out["closed"]["clean"]
+                                     and out["closed"]["expected_contacts"])
+                out["joint_rad"] = {k: round(v, 6) for k, v in arm.items()}
+            rows.append(out)
+        usable = [r for r in rows if r["usable"]]
+        entry = {
+            "object": model, "object_world_center_m":
+                [round(float(v), 6) for v in center],
+            "steps": [{k: v for k, v in r.items() if k != "joint_rad"} for r in rows],
+            "reachable_dz_m": [r["dz_m"] for r in rows if r["reachable"]],
+            "usable_dz_m": [r["dz_m"] for r in usable],
+        }
+        report["materials"][rid] = entry
+        if not usable:
+            entry["status"] = "blocked"
+            entry["reason_code"] = ("geometry.workspace_violation"
+                                    if not entry["reachable_dz_m"]
+                                    else "geometry.collision")
+            continue
+
+        best = usable[0]
+        arm = best["joint_rad"]
+        offset, tcp_world = _object_offset_in_tcp(
+            joints, mimics, spec, arm, center, tcp_link)
+        held = AttachedObject(
+            object_id=f"{model}__held", link=tcp_link, size_m=tuple(size),
+            offset_m=tuple(float(v) for v in offset), touch_links=pad_links,
+            source="config/workcell/fr3_2f85_workcell.json models[*].size_m")
+        path_checks = {
+            # 접근: 그리퍼를 연 채 자재가 아직 컨베이어에 있다.
+            "approach_open": ask(verified[approach_name], GRIPPER_OPEN_RAD, pads=()),
+            # 파지 자세에서 든 상태: 자재↔벨트는 받침 예외(아직 놓여 있다).
+            "grasp_held": ask(arm, grasp_joint, pads=pad_links, attached=(held,),
+                              object_id=held.object_id, world_instance_id=model),
+            # lift: 자재를 든 채 접근 자세. 받침 예외 없음.
+            "lift_held": ask(verified[approach_name], grasp_joint, pads=pad_links,
+                             attached=(held,), object_id=held.object_id,
+                             world_instance_id=model, allow_support=False),
+        }
+        entry["path_checks"] = path_checks
+        if not all(check["clean"] for check in path_checks.values()):
+            entry["status"] = "blocked"
+            entry["reason_code"] = "geometry.collision"
+            entry["detail"] = "파지 구간은 있으나 접근·적재·lift 검사가 통과하지 않았다"
+            continue
+        entry["status"] = "verified"
+        entry["selected_dz_m"] = best["dz_m"]
+        poses[f"{model}_conveyor_grasp"] = {
+            "status": "verified", "kind": "grasp",
+            "object_resource_id": rid, "support_resource_id": CONVEYOR_RESOURCE,
+            "target_frame": _frame_of(data, CONVEYOR_RESOURCE),
+            "object_world_center_m": entry["object_world_center_m"],
+            "object_center_basis": "conveyor_frame(벨트 상면 중심) + 자재 높이 절반"
+                                   " (선언값)",
+            "target_offset_m": [0.0, 0.0, best["dz_m"]],
+            "target_world_xyz_m": [round(float(center[0]), 6),
+                                   round(float(center[1]), 6),
+                                   best["tcp_world_z_m"]],
+            "target_rpy_rad": tool_down,
+            "joint_rad": arm,
+            "gripper_open_joint_rad": GRIPPER_OPEN_RAD,
+            "gripper_grasp_joint_rad": grasp_joint,
+            "position_error_m": best["position_error_m"],
+            "orientation_error_rad": best["orientation_error_rad"],
+            "fk_tcp_world_m": [round(float(v), 6) for v in tcp_world],
+            "expected_contacts": best["closed"]["expected_contacts"],
+            "usable_dz_range_m": [usable[0]["dz_m"], usable[-1]["dz_m"]],
+            "usable_step_count": len(usable),
+            "sweep_step_m": step,
+            "approach_pose": approach_name,
+            "path_checks": {k: {"clean": v["clean"], "collisions": v["collisions"],
+                                "expected_contacts": v["expected_contacts"]}
+                            for k, v in path_checks.items()},
+            "attached_object": {
+                "object_id": held.object_id, "world_instance_id": model,
+                "link": tcp_link, "size_m": size,
+                "offset_m": [round(float(v), 6) for v in offset],
+                "touch_links": list(pad_links),
+            },
+            "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+            "source": "scripts/derive_grasp_poses.py --conveyor",
+            "sweep_report": str(report_path.relative_to(ROOT)),
+            "scene_content_hash": before.content_hash,
+            "verified": True, "captured_at": time.strftime("%Y-%m-%d"),
+            "note": "컨베이어 위 자재는 탐침으로 넣었다(공유 scene 미변경)."
+                    " 파지 높이는 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는"
+                    " 판정하지 않는다",
+        }
+
+    after = client.snapshot()
+    stable = after.content_hash == before.content_hash
+    report["scene"]["stable_during_measurement"] = stable
+    report["scene"]["content_hash_after"] = after.content_hash
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                           encoding="utf-8")
+    client_close(node)
+
+    for rid, entry in report["materials"].items():
+        usable = entry["usable_dz_m"]
+        span = f"{usable[0]:+.3f}..{usable[-1]:+.3f} m" if usable else "없음"
+        print(f"  {rid}: {entry['status']} · 유효 dz {span}"
+              f" · 선택 {entry.get('selected_dz_m')}")
+    if not stable:
+        print("측정 중 planning scene이 바뀌었다 — 설정에 쓰지 않는다")
+        return 1
+    if not poses:
+        print("유효한 컨베이어 파지 자세가 없다 — 설정을 만들지 않는다")
+        return 1
+    grasp["conveyor_grasp_poses"] = poses
+    grasp["conveyor_grasp_derived_at"] = report["derived_at"]
+    out_path.write_text(json.dumps(grasp, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+    print(f"컨베이어 파지 자세 {len(poses)}개 등록 → {out_path}")
+    return 0 if len(poses) == len(report["materials"]) else 1
+
+
+PALLET_PLACE_REPORT = ROOT / "reports/workcell/pallet_place_sweep.json"
+#: 해제 시 자재 중심이 슬롯 중심에서 벗어나도 되는 거리(m). 시연 복귀 판정
+#: 허용치(`validation.simulation_demo_state.ORIGIN_TOLERANCE_M`)와 같다.
+SLOT_TOLERANCE_M = 0.02
+
+
+def derive_pallet_place(out_path: Path, report_path: Path,
+                        materials: list[str]) -> int:
+    """원래 슬롯에 **든 자재**를 놓는 높이를 측정한다. 값을 만들지 않는다."""
+    from validation.simulation_demo_state import ORIGIN_TOLERANCE_M
+
+    assert SLOT_TOLERANCE_M == ORIGIN_TOLERANCE_M
+    data = json.loads(WORKCELL.read_text(encoding="utf-8"))
+    derived = json.loads(POSES.read_text(encoding="utf-8"))
+    if not out_path.is_file():
+        raise SystemExit(f"파지 측정 결과가 없다: {out_path}")
+    grasp = json.loads(out_path.read_text(encoding="utf-8"))
+    spec = data["grasp"]
+    frames = data["frames"]
+    pad_links = tuple(spec["pad_links"])
+    tcp_link = spec["tcp_link"]
+    step = float(spec["sweep_step_m"])
+    tool_down = data["tcp_targets"]["tool_down_rpy_rad"]
+    grasp_joint = grasp.get("gripper", {}).get("grasp_joint_rad")
+    if grasp.get("gripper", {}).get("status") != "measured" or grasp_joint is None:
+        raise SystemExit("측정된 파지 개구가 없다 — 값을 만들지 않고 멈춘다")
+    verified = {name: pose["joint_rad"] for name, pose in derived["poses"].items()
+                if pose.get("status") == "verified"}
+
+    joints, _links, mimics, limits = load_urdf()
+    gripper_limits = {"robotiq_85_left_knuckle_joint": {"lower": 0.0, "upper": 0.8}}
+    client, node = build_client({**limits, **gripper_limits})
+    before = client.snapshot()
+    report = {
+        "schema": "forstick2.workcell_pallet_place_sweep/1",
+        "derived_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "is_simulated": True, "real_hardware_verified": False,
+        "method": "moveit_contact_sweep_plus_numerical_ik",
+        "sweep_step_m": step, "slot_tolerance_m": SLOT_TOLERANCE_M,
+        "scene": {"content_hash": before.content_hash,
+                  "world_object_count": before.summary.get("world_object_count")},
+        "materials": {},
+    }
+    poses: dict[str, dict] = {}
+    for rid in materials:
+        row = next((r for r in data["resource_map"] if r["resource_id"] == rid), None)
+        model = None if row is None else row["gazebo_model"]
+        item = (data["models"].get(model) or {}) if model else {}
+        if item.get("kind") != "material":
+            report["materials"][rid] = {"status": "blocked",
+                                        "reason_code": "plan.unknown_resource"}
+            continue
+        support_frame = support_of(frames, row["frame"])
+        support_rid = next((r["resource_id"] for r in data["resource_map"]
+                            if r["frame"] == support_frame), None)
+        support_model = _model_of(data, support_rid)
+        approach_name = f"{support_model}_approach"
+        conveyor_pose = (grasp.get("conveyor_grasp_poses") or {}).get(
+            f"{model}_conveyor_grasp") or {}
+        held_spec = conveyor_pose.get("attached_object")
+        if approach_name not in verified or not held_spec:
+            report["materials"][rid] = {
+                "status": "blocked", "reason_code": "geometry.grasp_pose_unavailable",
+                "detail": "검증된 접근 자세 또는 복귀용 컨베이어 파지(든 자재 선언)가 없다"}
+            continue
+        held = AttachedObject(
+            object_id=held_spec["object_id"], link=held_spec["link"],
+            size_m=tuple(held_spec["size_m"]),
+            offset_m=tuple(held_spec["offset_m"]),
+            touch_links=tuple(held_spec["touch_links"]),
+            source="conveyor_grasp_poses.attached_object")
+        size = [float(v) for v in item["size_m"]]
+        slot_center = resolve_frame(frames, row["frame"])
+        tray_top = float(slot_center[2] - size[2] / 2)
+
+        def ask(arm, gripper, *, holding: bool):
+            state = client.check_state(
+                _joints_with(arm, gripper, mimics, spec),
+                attached=[held] if holding else [])
+            # 받침 예외 없음(support_ids 비움). 든 사본과 원래 world 인스턴스의
+            # 겹침만 기존 선언 예외다.
+            return classify(state, object_id=held.object_id if holding else model,
+                            pad_links=pad_links if holding else (),
+                            world_instance_id=model if holding else None)
+
+        def released_center(arm):
+            rotation, tcp_world = link_transforms(
+                joints, _joints_with(arm, 0.0, mimics, spec))[tcp_link]
+            return tcp_world + rotation @ np.asarray(held.offset_m)
+
+        rows = []
+        count = int(round((size[2] / 2 + 0.06) / step)) + 1
+        for index in range(count):
+            dz = round(-size[2] / 2 + index * step, 6)
+            target = slot_center + np.array([0.0, 0.0, dz])
+            arm, distance, angle = solve_ik(
+                joints, mimics, limits, target, tool_down, dict(verified[approach_name]))
+            reachable = (distance <= IK_POSITION_TOLERANCE_M
+                         and angle <= IK_ORIENTATION_TOLERANCE_RAD)
+            out = {"dz_m": dz, "tcp_world_z_m": round(float(target[2]), 6),
+                   "position_error_m": round(distance, 6),
+                   "orientation_error_rad": round(angle, 6),
+                   "reachable": reachable, "usable": False}
+            if reachable:
+                center = released_center(arm)
+                xy_gap = float(np.linalg.norm(center[:2] - slot_center[:2]))
+                drop = float(center[2] - size[2] / 2 - tray_top)
+                out["place_held"] = ask(arm, grasp_joint, holding=True)
+                out["release_open"] = ask(arm, GRIPPER_OPEN_RAD, holding=False)
+                out["release"] = {
+                    "object_center_m": [round(float(v), 6) for v in center],
+                    "xy_gap_m": round(xy_gap, 6),
+                    "drop_to_tray_m": round(drop, 6),
+                    "settles_in_slot": bool(xy_gap <= SLOT_TOLERANCE_M and drop > 0.0),
+                }
+                out["usable"] = bool(out["place_held"]["clean"]
+                                     and out["release_open"]["clean"]
+                                     and out["release"]["settles_in_slot"])
+                out["joint_rad"] = {k: round(v, 6) for k, v in arm.items()}
+            rows.append(out)
+        usable = [r for r in rows if r["usable"]]
+        entry = {
+            "object": model, "support_resource_id": support_rid,
+            "slot_center_m": [round(float(v), 6) for v in slot_center],
+            "tray_top_z_m": round(tray_top, 6),
+            "steps": [{k: v for k, v in r.items() if k != "joint_rad"} for r in rows],
+            "reachable_dz_m": [r["dz_m"] for r in rows if r["reachable"]],
+            "usable_dz_m": [r["dz_m"] for r in usable],
+        }
+        report["materials"][rid] = entry
+        if not usable:
+            entry["status"] = "blocked"
+            entry["reason_code"] = ("geometry.workspace_violation"
+                                    if not entry["reachable_dz_m"]
+                                    else "geometry.collision")
+            continue
+        best = usable[0]
+        path_checks = {
+            # 든 채 원래 팔레트 접근.
+            "approach_held": ask(verified[approach_name], grasp_joint, holding=True),
+            # 해제 뒤 빈손으로 접근 자세까지 retreat.
+            "retreat_open": ask(verified[approach_name], GRIPPER_OPEN_RAD,
+                                holding=False),
+        }
+        entry["path_checks"] = path_checks
+        if not all(check["clean"] for check in path_checks.values()):
+            entry["status"] = "blocked"
+            entry["reason_code"] = "geometry.collision"
+            entry["detail"] = "놓기 높이는 있으나 접근·retreat 검사가 통과하지 않았다"
+            continue
+        entry["status"] = "verified"
+        entry["selected_dz_m"] = best["dz_m"]
+        poses[f"{model}_pallet_place"] = {
+            "status": "verified", "kind": "place",
+            "object_resource_id": rid, "support_resource_id": support_rid,
+            "target_frame": row["frame"],
+            "slot_center_m": entry["slot_center_m"],
+            "target_offset_m": [0.0, 0.0, best["dz_m"]],
+            "target_world_xyz_m": [round(float(slot_center[0]), 6),
+                                   round(float(slot_center[1]), 6),
+                                   best["tcp_world_z_m"]],
+            "target_rpy_rad": tool_down,
+            "joint_rad": best["joint_rad"],
+            "gripper_grasp_joint_rad": grasp_joint,
+            "gripper_open_joint_rad": GRIPPER_OPEN_RAD,
+            "position_error_m": best["position_error_m"],
+            "orientation_error_rad": best["orientation_error_rad"],
+            "release": best["release"],
+            "usable_dz_range_m": [usable[0]["dz_m"], usable[-1]["dz_m"]],
+            "usable_step_count": len(usable),
+            "sweep_step_m": step,
+            "approach_pose": approach_name,
+            "held_object_source": f"conveyor_grasp_poses.{model}_conveyor_grasp",
+            "path_checks": {k: {"clean": v["clean"], "collisions": v["collisions"],
+                                "expected_contacts": v["expected_contacts"]}
+                            for k, v in path_checks.items()},
+            "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+            "source": "scripts/derive_grasp_poses.py --pallet-place",
+            "sweep_report": str(report_path.relative_to(ROOT)),
+            "scene_content_hash": before.content_hash,
+            "verified": True, "captured_at": time.strftime("%Y-%m-%d"),
+            "note": "든 자재가 트레이에 닿지 않는 가장 낮은 측정 높이다. 받침 접촉"
+                    " 예외를 쓰지 않았다. 해제 뒤 안착은 Gazebo 관측으로 판정한다",
+        }
+
+    after = client.snapshot()
+    stable = after.content_hash == before.content_hash
+    report["scene"]["stable_during_measurement"] = stable
+    report["scene"]["content_hash_after"] = after.content_hash
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                           encoding="utf-8")
+    client_close(node)
+    for rid, entry in report["materials"].items():
+        usable = entry.get("usable_dz_m") or []
+        span = f"{usable[0]:+.3f}..{usable[-1]:+.3f} m" if usable else "없음"
+        print(f"  {rid}: {entry['status']} · 유효 dz {span}"
+              f" · 선택 {entry.get('selected_dz_m')}")
+    if not stable:
+        print("측정 중 planning scene이 바뀌었다 — 설정에 쓰지 않는다")
+        return 1
+    if not poses:
+        print("유효한 원래 슬롯 놓기 자세가 없다 — 설정을 만들지 않는다")
+        return 1
+    merged = dict(grasp.get("pallet_place_poses") or {})
+    merged.update(poses)
+    grasp["pallet_place_poses"] = merged
+    grasp["pallet_place_derived_at"] = report["derived_at"]
+    out_path.write_text(json.dumps(grasp, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+    print(f"원래 슬롯 놓기 자세 {len(poses)}개 등록 → {out_path}")
+    return 0 if len(poses) == len(materials) else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=str(OUT))
+    parser.add_argument("--conveyor", action="store_true",
+                        help="컨베이어 위 자재 파지 자세만 측정해 conveyor_grasp_poses에"
+                             " 등록한다(기존 팔레트 파지 결과는 그대로 둔다)")
+    parser.add_argument("--pallet-place", action="store_true",
+                        help="든 자재를 원래 팔레트 슬롯에 놓는 높이를 측정해"
+                             " pallet_place_poses에 등록한다")
+    parser.add_argument("--materials", nargs="+", default=None,
+                        help="--pallet-place 대상 자재 자원 id(명시 필수)")
     args = parser.parse_args()
+    if args.pallet_place:
+        if not args.materials:
+            parser.error("--pallet-place에는 --materials를 명시한다")
+        return derive_pallet_place(Path(args.out), PALLET_PLACE_REPORT,
+                                   list(args.materials))
+    if args.conveyor:
+        return derive_conveyor(Path(args.out), CONVEYOR_REPORT)
 
     data = json.loads(WORKCELL.read_text(encoding="utf-8"))
     derived = json.loads(POSES.read_text(encoding="utf-8"))
@@ -451,6 +936,13 @@ def _model_of(data: dict, resource_id: str | None) -> str:
     for row in data["resource_map"]:
         if row["resource_id"] == resource_id:
             return row["gazebo_model"]
+    return ""
+
+
+def _frame_of(data: dict, resource_id: str) -> str:
+    for row in data["resource_map"]:
+        if row["resource_id"] == resource_id:
+            return row["frame"]
     return ""
 
 
