@@ -93,6 +93,12 @@ async def handle(
         result = await asyncio.to_thread(
             api.stop, session_id=payload.get("session_id")
         )
+        # 시뮬레이션 시연 작업(별도 프로세스)에도 정지를 **요청**한다. 프로세스를
+        # 죽이지 않는다 — 시연 스크립트가 기존 STOP 절차로 멈춘다.
+        jobs = getattr(ctx.runtime, "sim_demo_jobs", None)
+        if jobs is not None:
+            result = {**result,
+                      "simulation_demo_stop": jobs.request_stop(reason="global_stop")}
         return json_response(result)
 
     return None

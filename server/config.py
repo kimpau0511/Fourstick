@@ -58,6 +58,13 @@ class ServerConfig:
     #: 이 구간에도 다른 탭이 같은 세션을 가져가지 못하게 한다. **브라우저는 이
     #: 값을 `/v1/config`에서 받아 쓴다** — 화면 코드에 숫자를 중복하지 않는다.
     client_grace_sec: float = 5.0
+    #: 웹에서 **시뮬레이션 시연**(이송·복귀·resume·복구) 작업을 띄울 수 있게
+    #: 할지. **활성 작업 셀이 시뮬레이션이면 기본으로 켠다** — 환경변수 없이도
+    #: 시뮬레이터 셀에서는 시뮬레이션 명령이 기본 동작이다. 시뮬레이션이 아닌
+    #: 셀에서는 이 값과 무관하게 열리지 않는다(`server/runtime.py`).
+    #: `FORSTICK2_SIM_DEMO_WEB=0`으로 끌 수 있다.
+    #: 일반 `/v1/plan`·`/v1/execute`의 pick/place 차단과는 무관하다.
+    enable_sim_demo_web: bool = True
 
     @staticmethod
     def from_env() -> "ServerConfig":
@@ -95,4 +102,5 @@ class ServerConfig:
             client_grace_sec=float(
                 os.environ.get("FORSTICK2_CLIENT_GRACE_SEC", "5")
             ),
+            enable_sim_demo_web=flag("FORSTICK2_SIM_DEMO_WEB", True),
         )

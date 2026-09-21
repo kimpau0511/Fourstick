@@ -209,6 +209,13 @@ class Runtime:
     #: Gazebo 이송 시연 요약(8-11). **실기 준비와 다른 축이다** — 화면이
     #: 나란히 보여주되 하나의 배지로 합치지 않는다.
     simulation_e2e: dict | None = None
+    #: 시뮬레이션 사용자 시연의 셀 상태 기록 경로. None이면 기본 경로다.
+    #: 시연은 별도 프로세스라 조회 때마다 새로 읽는다(`simulation_demo_status`).
+    simulation_demo_state_path: Any = None
+    #: 웹 시뮬레이션 시연 작업 실행기(`server/sim_demo_jobs.py`). 꺼져 있으면 None.
+    sim_demo_jobs: Any = None
+    #: 시연 작업을 쓸 수 없는 이유(켜져 있으면 None).
+    sim_demo_disabled_reason: str | None = "시뮬레이션 작업 셀이 아니다"
     #: 이 어댑터 종류가 **항상 시뮬레이션**인가. 시뮬레이터에 붙는 어댑터는
     #: 개발용 Fake가 아니지만 실하드웨어도 아니다 — 두 축을 따로 둔다.
     #: None이면 모름(연결 확인 뒤에 정한다).
@@ -290,6 +297,19 @@ class Runtime:
             adapter.connect(10.0)
             self._adapter = adapter
         return self._adapter
+
+    def simulation_demo_status(self) -> dict:
+        """시뮬레이션 시연 상태 유지·수동 reset 필요 여부. **실기 상태가 아니다.**
+
+        파일만 읽는다. 어댑터를 만들거나 연결하지 않는다.
+        """
+        from validation.simulation_demo_state import (
+            DEFAULT_PATH,
+            SimulationDemoState,
+        )
+
+        return SimulationDemoState(
+            self.simulation_demo_state_path or DEFAULT_PATH).status()
 
     def reset_stop_latch(self) -> tuple[bool, str]:
         """새 계획 수락 시 어댑터의 정지 래치를 푼다.
@@ -779,6 +799,36 @@ def _load_hardware_readiness() -> dict:
     return payload
 
 
+def _attach_sim_demo_jobs(runtime, config, manifest, workcell_path) -> None:
+    """웹 시연 작업 실행기를 붙인다. **시뮬레이션 셀일 때만.**"""
+    if not config.enable_sim_demo_web:
+        runtime.sim_demo_disabled_reason = "FORSTICK2_SIM_DEMO_WEB=0으로 꺼져 있다"
+        return
+    if not config.enable_workcell_robot or not manifest or not manifest.get("enabled"):
+        runtime.sim_demo_disabled_reason = "작업 셀 Adapter가 켜져 있지 않다"
+        return
+    if manifest.get("is_simulated") is not True:
+        runtime.sim_demo_disabled_reason = "활성 작업 셀이 시뮬레이션이 아니다"
+        return
+    try:
+        workcell = json.loads(workcell_path("workcell_config").read_text(
+            encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, KeyError) as exc:
+        runtime.sim_demo_disabled_reason = (
+            f"작업 셀 설정을 읽지 못했다: {type(exc).__name__}")
+        return
+    if workcell.get("is_simulated") is not True:
+        runtime.sim_demo_disabled_reason = "작업 셀 설정이 시뮬레이션이 아니다"
+        return
+    from server.sim_demo_jobs import SimDemoJobs
+
+    kwargs = {}
+    if runtime.simulation_demo_state_path is not None:
+        kwargs["state_path"] = runtime.simulation_demo_state_path
+    runtime.sim_demo_jobs = SimDemoJobs(workcell=workcell, **kwargs)
+    runtime.sim_demo_disabled_reason = None
+
+
 def _load_simulation_e2e() -> dict:
     """Gazebo 이송 시연 확인 기록 요약. **실기 결과가 아니다.**
 
@@ -1087,6 +1137,9 @@ def build_runtime(config: ServerConfig) -> Runtime:
         viewer = SceneViewer(_workcell_path("workcell_config"))
         available, _ = viewer.available()
         runtime.scene_viewer = viewer if available else None
+        if available:
+            # 첫 요청 전에 구독을 시작해 버퍼를 채워 둔다(백그라운드, 막지 않는다).
+            viewer.start_live()
     runtime.motion_resolver = workcell_extras.get("motion_resolver")
     runtime.scene_client_factory = workcell_extras.get("scene_client_factory")
     runtime.geometry_validator_factory = workcell_extras.get(
@@ -1117,6 +1170,7 @@ def build_runtime(config: ServerConfig) -> Runtime:
     # 무엇까지 모였는지 화면과 보고서가 보여줄 수 있게 싣기만 한다.
     runtime.hardware_readiness = _load_hardware_readiness()
     runtime.simulation_e2e = _load_simulation_e2e()
+    _attach_sim_demo_jobs(runtime, config, workcell_manifest, _workcell_path)
 
     runtime.asset_manifest, runtime.composite_profiles = _load_robot_configs(
         config, repository=repository, now=time.time()

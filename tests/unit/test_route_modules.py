@@ -187,7 +187,7 @@ class TestForeignPathsReturnNone(unittest.IsolatedAsyncioTestCase):
         names = [m.__name__.rsplit(".", 1)[-1] for m in HTTP_ROUTES]
         self.assertEqual(
             set(names),
-            {"session", "planning", "execution", "robot", "scene"})
+            {"session", "planning", "execution", "robot", "scene", "sim_demo"})
 
 
 if __name__ == "__main__":
