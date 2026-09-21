@@ -29,6 +29,12 @@ from robots.fr3_gazebo.transport import (
 ARM_JOINTS = ("j1", "j2", "j3", "j4", "j5", "j6")
 GRIPPER_JOINT = "robotiq_85_left_knuckle_joint"
 ARM_ACTION = "/arm_trajectory_controller/follow_joint_trajectory"
+#: `should_stop` 때문에 결과를 기다리지 않고 돌아왔다는 표시(GoalOutcome.detail).
+STOP_REQUESTED_DETAIL = "정지 요청으로 결과 대기를 멈췄다"
+#: `action_msgs/GoalStatus`의 **terminal** 상태(SUCCEEDED 4, CANCELED 5, ABORTED 6).
+#: 값은 ROS 액션 규약이 고정한다. UNKNOWN(0)·ACCEPTED(1)·EXECUTING(2)·
+#: CANCELING(3)은 terminal이 아니다 — 추적을 풀지 않는다.
+TERMINAL_GOAL_STATUSES = frozenset({4, 5, 6})
 GRIPPER_ACTION = "/gripper_trajectory_controller/follow_joint_trajectory"
 
 
@@ -52,7 +58,10 @@ class RosWorkcellTransport:
         self._controllers_client = None
         self._validity_client = None
         self._scene_client = None
+        #: 추적 중인 goal handle. **그 goal의 결과가 terminal 상태로 올 때만**
+        #: 뺀다(`_on_goal_result`). 정지 래치 해제가 이 목록을 센다.
         self._handles: list = []
+        self._goal_lock = threading.Lock()
         self._started_rclpy = False
 
     # ── 수명 ────────────────────────────────────────────────────────────
@@ -204,7 +213,13 @@ class RosWorkcellTransport:
 
     # ── 명령 ────────────────────────────────────────────────────────────
     def _send(self, client, names, values, seconds: float,
-              timeout_sec: float) -> GoalOutcome:
+              timeout_sec: float, should_stop=None) -> GoalOutcome:
+        """goal을 보내고 결과까지 기다린다.
+
+        `should_stop`(선택)이 참을 돌려주면 **결과를 기다리지 않고** 돌아온다.
+        goal은 추적 목록에 남아 호출자가 `cancel_all`로 취소한다 — 여기서 취소하지
+        않는다. 없으면 기존 동작과 같다.
+        """
         self._ensure_node()
         from builtin_interfaces.msg import Duration
         from control_msgs.action import FollowJointTrajectory
@@ -229,10 +244,12 @@ class RosWorkcellTransport:
         handle = send_future.result()
         if not handle.accepted:
             return GoalOutcome(accepted=False, detail="goal 거부")
-        self._handles.append(handle)
-        result_future = handle.get_result_async()
+        result_future = self._track(handle)
         result_deadline = time.monotonic() + seconds + timeout_sec
         while not result_future.done() and time.monotonic() < result_deadline:
+            if should_stop is not None and should_stop():
+                return GoalOutcome(accepted=True, result_received=False,
+                                   detail=STOP_REQUESTED_DETAIL)
             time.sleep(0.02)
         if not result_future.done():
             return GoalOutcome(accepted=True, result_received=False,
@@ -273,7 +290,7 @@ class RosWorkcellTransport:
         handle = send_future.result()
         if not handle.accepted:
             return GoalOutcome(accepted=False, detail="goal 거부")
-        self._handles.append(handle)
+        self._track(handle)
         return GoalOutcome(accepted=True, result_received=False,
                            detail="결과를 기다리지 않았다")
 
@@ -285,23 +302,76 @@ class RosWorkcellTransport:
 
     def live_goals(self) -> int:
         """추적 중인 goal 수. 정지 래치 해제 조건에 쓴다."""
-        return len([handle for handle in self._handles if handle is not None])
+        with self._goal_lock:
+            return len([handle for handle in self._handles if handle is not None])
+
+    # ── goal 추적 ───────────────────────────────────────────────────────
+    @staticmethod
+    def _goal_key(handle) -> bytes | None:
+        goal_id = getattr(handle, "goal_id", None)
+        uuid = getattr(goal_id, "uuid", None)
+        return None if uuid is None else bytes(uuid)
+
+    def _track(self, handle):
+        """수락된 goal을 추적 목록에 넣고, 결과가 오면 `_on_goal_result`로 넘긴다.
+
+        목록에 먼저 넣고 콜백을 건다 — 결과가 이미 와 있어도 빼는 쪽이 뒤에 온다.
+        """
+        with self._goal_lock:
+            self._handles.append(handle)
+        result_future = handle.get_result_async()
+        result_future.add_done_callback(
+            lambda future, h=handle: self._on_goal_result(h, future))
+        return result_future
+
+    def _on_goal_result(self, handle, future) -> bool:
+        """그 goal의 결과가 terminal이면 **그 goal만** 목록에서 한 번 뺀다.
+
+        - 상태를 읽지 못하거나 terminal이 아니면 남긴다(활성·취소 진행 중).
+        - 다른 goal의 결과로 현재 goal을 빼지 않는다 — goal_id로 맞춘다.
+        - 같은 goal의 terminal 결과가 두 번 와도 두 번째는 아무것도 하지 않는다.
+
+        돌려주는 값: 이번 호출로 뺐는가.
+        """
+        try:
+            response = future.result()
+        except Exception:  # noqa: BLE001 — 상태를 모르면 terminal로 보지 않는다
+            return False
+        status = getattr(response, "status", None)
+        if status not in TERMINAL_GOAL_STATUSES:
+            return False
+        key = self._goal_key(handle)
+        with self._goal_lock:
+            for index, tracked in enumerate(self._handles):
+                if tracked is None:
+                    continue
+                same = (tracked is handle if key is None
+                        else self._goal_key(tracked) == key)
+                if same:
+                    del self._handles[index]
+                    return True
+        return False
 
     def send_arm(self, joints: Mapping[str, float], seconds: float,
-                 timeout_sec: float) -> GoalOutcome:
+                 timeout_sec: float, *, should_stop=None) -> GoalOutcome:
         names = [n for n in ARM_JOINTS if n in joints]
         return self._send(self._arm_client, names, [joints[n] for n in names],
-                          seconds, timeout_sec)
+                          seconds, timeout_sec, should_stop=should_stop)
 
     def send_gripper(self, value: float, seconds: float,
-                     timeout_sec: float) -> GoalOutcome:
+                     timeout_sec: float, *, should_stop=None) -> GoalOutcome:
         return self._send(self._gripper_client, [GRIPPER_JOINT], [value],
-                          seconds, timeout_sec)
+                          seconds, timeout_sec, should_stop=should_stop)
 
     def cancel_all(self, timeout_sec: float) -> GoalOutcome:
-        """추적 중인 goal을 모두 취소한다. **handle을 버려 추적을 잃지 않는다.**"""
+        """추적 중인 goal을 모두 취소한다. **handle을 버려 추적을 잃지 않는다.**
+
+        취소 ACK는 terminal이 아니다(CANCELING). 목록에서 빼는 것은 각 goal의
+        terminal 결과(`_on_goal_result`)다.
+        """
         self._ensure_node()
-        pending = [h for h in self._handles if h is not None]
+        with self._goal_lock:
+            pending = [h for h in self._handles if h is not None]
         if not pending:
             return GoalOutcome(accepted=True, cancel_ack=None, goals_canceling=0,
                                detail="취소할 goal이 없다")
@@ -311,7 +381,6 @@ class RosWorkcellTransport:
             time.sleep(0.02)
         acked = [f for f in futures if f.done() and f.result() is not None]
         canceling = sum(len(f.result().goals_canceling) for f in acked)
-        self._handles = []
         if len(acked) != len(futures):
             return GoalOutcome(accepted=True, cancel_ack=False,
                                goals_canceling=canceling,

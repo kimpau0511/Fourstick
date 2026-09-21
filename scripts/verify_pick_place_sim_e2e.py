@@ -24,6 +24,11 @@ FORSTICK2_SIM_PICK_PLACE_DEMO=1 .venv/bin/python scripts/verify_pick_place_sim_e
 
 결함은 **실제로 만든다.** 05·06은 물체를 진짜로 옮기고, 09·10·07은 시연
 스크립트의 검증 전용 결함 주입 옵션으로 실제 경로를 태운다. 끝나면 되돌린다.
+
+**셀 정책은 `e2e_reset`으로 고정한다.** 사용자 시연(`simulation_demo_hold`)이
+셀에 남긴 자재가 있어도 실행 **전**에 모든 자재를 선언된 자리로 되돌리고,
+실행 **뒤**에도 한 번 더 되돌린다. 그래야 같은 판정을 반복할 수 있다. 복구
+결과는 판정 항목이 아니라 보고서의 `cell_reset`에 따로 남긴다.
 """
 
 from __future__ import annotations
@@ -43,6 +48,10 @@ sys.path.insert(0, str(ROOT))
 from robots.fr3_gazebo.sim_fixture import (  # noqa: E402
     GazeboObjectFixture,
     declarations_from_config,
+)
+from validation.simulation_demo_state import (  # noqa: E402
+    POLICY_E2E_RESET,
+    SimulationDemoState,
 )
 from validation.simulation_e2e import (  # noqa: E402
     SIMULATED_OBSERVATION,
@@ -65,13 +74,67 @@ SCENARIOS = (
 )
 
 
+def _process_evidence(done) -> dict:
+    """하위 프로세스 결과. 실패 원인이 보고서에 남도록 stderr도 담는다."""
+    return {"exit_code": done.returncode,
+            "stdout_tail": (done.stdout or "").strip().splitlines()[-3:],
+            "stderr_tail": (done.stderr or "").strip().splitlines()[-3:]}
+
+
+def run_regression_subscripts(base: str, *, run=subprocess.run) -> dict:
+    """item 14의 두 하위 스크립트를 **부모와 같은 서버 주소**로 돌린다.
+
+    두 스크립트는 `FORSTICK2_PORT`를 읽지 않는다 — 판정 계약은 `--base`,
+    명령 시연은 `FORSTICK2_WEB_BASE`로 주소를 받는다. 넘기지 않으면 기본값
+    8093으로 붙어, 서버가 다른 포트에 있을 때 출력 없이 실패한다.
+    """
+    outcome = run(
+        [str(ROOT / ".venv/bin/python"), str(ROOT / "scripts/verify_workcell_outcome.py"),
+         "--base", base],
+        capture_output=True, text=True, timeout=900,
+        env=dict(os.environ, FORSTICK2_PORT=str(PORT)))
+    demo = run(
+        [str(ROOT / "scripts/demo_workcell_commands.sh")],
+        capture_output=True, text=True, timeout=900,
+        env=dict(os.environ, FORSTICK2_PORT=str(PORT), FORSTICK2_WEB_BASE=base))
+    return {
+        "outcome_ok": outcome.returncode == 0 and "7/7 통과" in (outcome.stdout or ""),
+        "demo_ok": demo.returncode == 0 and "6/6 통과" in (demo.stdout or ""),
+        "outcome": _process_evidence(outcome),
+        "demo": _process_evidence(demo),
+    }
+
+
+def demo_command(*args: str, out: Path) -> list[str]:
+    """시연 명령. E2E는 셀 정책을 **명시적으로** `e2e_reset`으로 준다."""
+    return [str(DEMO), *args, "--cell-policy", POLICY_E2E_RESET,
+            "--out", str(out)]
+
+
+def reset_cell(fixture, models, state: SimulationDemoState, *,
+               phase: str) -> dict:
+    """모든 자재를 선언된 자리로 되돌린다. **확인된 복귀만** 시연 기록에서 뺀다."""
+    rows = []
+    for model in sorted(models):
+        event = fixture.restore(model)
+        state.mark_restored(model, verified=event.verified,
+                            reason=f"e2e_reset:{phase}")
+        rows.append({"model": model, "verified": bool(event.verified),
+                     "pose_m": None if event.pose_m is None
+                     else list(event.pose_m)})
+    return {"phase": phase, "policy": POLICY_E2E_RESET,
+            "all_verified": all(row["verified"] for row in rows),
+            "objects": rows,
+            "demo_state_left": sorted(state.objects())}
+
+
 def run_demo(name: str, *args: str, timeout: float = 600.0) -> tuple[int, dict, str]:
     """시연 스크립트를 돌리고 그 보고서를 읽는다."""
     RUNS.mkdir(parents=True, exist_ok=True)
     out = RUNS / f"{name}.json"
     env = dict(os.environ, FORSTICK2_SIM_PICK_PLACE_DEMO="1")
     process = subprocess.run(
-        [str(DEMO), *args, "--out", str(out)], env=env, timeout=timeout,
+        demo_command(*args, out=out), env=env, timeout=timeout,
         capture_output=True, text=True)
     payload = {}
     if out.is_file():
@@ -139,6 +202,11 @@ def main() -> int:
 
     data, objects, fixture = build_fixture()
     checks: list[dict] = []
+    demo_state = SimulationDemoState()
+    # 사용자 시연이 남긴 상태를 지우고 시작한다(판정 항목 아님).
+    cell_reset = [reset_cell(fixture, objects, demo_state, phase="before")]
+    print(f"[셀 초기화] 실행 전 복구 확인={cell_reset[0]['all_verified']}")
+    time.sleep(1.5)
 
     def record(key: str, ok: bool, detail: str, evidence: dict | None = None):
         checks.append({"key": key, "passed": bool(ok), "detail": detail,
@@ -354,26 +422,20 @@ def main() -> int:
             "transfer_status": view.get("transfer_status")})
 
     # ── 14 회귀 ───────────────────────────────────────────────────────
-    outcome = subprocess.run(
-        [str(ROOT / ".venv/bin/python"), str(ROOT / "scripts/verify_workcell_outcome.py")],
-        capture_output=True, text=True, timeout=900,
-        env=dict(os.environ, FORSTICK2_PORT=str(PORT)))
-    outcome_ok = outcome.returncode == 0 and "7/7 통과" in outcome.stdout
-    demo = subprocess.run(
-        [str(ROOT / "scripts/demo_workcell_commands.sh")],
-        capture_output=True, text=True, timeout=900,
-        env=dict(os.environ, FORSTICK2_PORT=str(PORT)))
-    demo_ok = demo.returncode == 0 and "6/6 통과" in demo.stdout
+    regression = run_regression_subscripts(BASE)
+    outcome_ok, demo_ok = regression["outcome_ok"], regression["demo_ok"]
     scene = get("/v1/scene")
     scene_ok = bool(scene.get("available"))
     record("14_regression_home_move_stop_commands_scene",
            outcome_ok and demo_ok and scene_ok,
            f"판정 계약 7/7={outcome_ok} · 명령 시연 6/6={demo_ok}"
            f" · 장면 스트림 available={scene_ok} (live={scene.get('live')})",
-           {"outcome_tail": outcome.stdout.strip().splitlines()[-1:],
-            "demo_tail": demo.stdout.strip().splitlines()[-1:],
+           {"outcome": regression["outcome"],
+            "demo": regression["demo"],
             "scene": scene})
 
+    cell_reset.append(reset_cell(fixture, objects, demo_state, phase="after"))
+    print(f"[셀 초기화] 실행 뒤 복구 확인={cell_reset[-1]['all_verified']}")
     fixture.close()
     passed = sum(1 for row in checks if row["passed"])
     report = {
@@ -387,6 +449,8 @@ def main() -> int:
         "passed_count": passed,
         "total_count": len(checks),
         "checks": checks,
+        # 셀 복구는 판정 항목이 아니다. 반복 실행 전제를 기록만 한다.
+        "cell_reset": cell_reset,
         "runs_dir": str(RUNS.relative_to(ROOT)),
         "note": "시뮬레이터 이송 시연 결과다. 실제 로봇 pick/place 가능"
                 " 판정으로 승격하지 않는다. 일반 웹/API의 pick/place는 계속"

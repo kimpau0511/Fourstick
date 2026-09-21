@@ -122,6 +122,9 @@ class ReasonCode(str, Enum):
     GEOMETRY_COLLISION = "geometry.collision"
     #: 작업공간을 벗어났다(도달 불가 포함).
     GEOMETRY_WORKSPACE_VIOLATION = "geometry.workspace_violation"
+    #: 그 위치에 놓인 물체를 집는 **측정·검증된 파지 자세가 없다.** 자세를
+    #: 만들거나 다른 위치의 파지 자세로 대신하지 않는다(IK 불가와 다르다).
+    GEOMETRY_GRASP_POSE_UNAVAILABLE = "geometry.grasp_pose_unavailable"
     #: 좌표계를 알 수 없거나 계획·환경·Profile의 좌표계가 서로 다르다.
     GEOMETRY_FRAME_UNKNOWN = "geometry.frame_unknown"
     #: 환경 정보(snapshot)가 없다.
