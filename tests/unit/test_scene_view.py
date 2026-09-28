@@ -15,6 +15,7 @@ import asyncio
 import json
 import struct
 import sys
+import threading
 import time
 import unittest
 import zlib
@@ -146,6 +147,36 @@ class TestSceneRoute(unittest.IsolatedAsyncioTestCase):
             self._ctx(), "GET", "/v1/scene", None, {})
         self.assertEqual(status, 200)
         self.assertFalse(json.loads(body)["available"])
+
+    async def test_png_capture_does_not_block_the_event_loop(self):
+        # 느린 경로(`gz topic -n 1`)는 실측 0.5초가 걸린다. 루프에서 돌면 그동안
+        # 다른 API·WebSocket이 멈춘다 — 화면이 스냅샷을 주기적으로 받으면서
+        # 드러났다. 느린 frame()이 도는 동안 루프가 계속 도는지 본다.
+        from server.scene_view import SceneFrame
+        loop_thread = threading.get_ident()
+        seen = {"ticks": 0}
+
+        class SlowViewer:
+            def frame(self):
+                seen["thread"] = threading.get_ident()
+                time.sleep(0.3)
+                # 루프가 막혔다면 이 동안 heartbeat가 한 번도 돌지 못한다.
+                seen["ticks_during_capture"] = seen["ticks"]
+                return SceneFrame(png=b"png", width=1, height=1, captured_at=1.0)
+
+        async def heartbeat():
+            for _ in range(40):
+                await asyncio.sleep(0.01)
+                seen["ticks"] += 1
+
+        (status, _, body), _ = await asyncio.gather(
+            scene_route.handle(self._ctx(SlowViewer()), "GET", "/v1/scene.png", None, {}),
+            heartbeat(),
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body, b"png")
+        self.assertNotEqual(seen["thread"], loop_thread)
+        self.assertGreater(seen["ticks_during_capture"], 5)
 
     async def test_raw_serves_dimensions_in_headers(self):
         class Viewer:

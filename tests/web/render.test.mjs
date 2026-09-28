@@ -21,6 +21,8 @@ import {
   renderModal,
   renderPlanCard,
   renderRobotCard,
+  renderSceneCard,
+  renderSceneEmpty,
   renderSimulationCard,
   renderStopCard,
   renderVerdictCard,
@@ -28,8 +30,31 @@ import {
   renderWorkcellCard,
   renderSimCommandArea,
 } from '../../html/static/js/render.js';
-import { EXECUTION, createStore, initialState, makeEvent } from '../../html/static/js/state.js';
+import { EXECUTION, createStore, initialState, makeEvent, reduce } from '../../html/static/js/state.js';
 import { SimulationBackend } from '../../html/static/js/backend-sim.js';
+
+test('실시간 프레임 없이 스냅샷을 받는 중이면 실시간 영상처럼 표시하지 않는다', () => {
+  let state = reduce(initialState(), { type: 'scene-available', available: true });
+  state = reduce(state, { type: 'scene-stream', state: 'snapshot', detail: '' });
+  // 첫 스냅샷 전: canvas는 두되 받는 중이라고 적는다.
+  assert.equal(state.sceneAvailable, true);
+  assert.match(renderSceneCard(state), /<canvas id="scene-canvas"/);
+  assert.match(renderSceneEmpty(state), /스냅샷을 받고 있습니다/);
+
+  state = reduce(state, {
+    type: 'scene-stream', state: 'snapshot', snapshotAt: 1, detail: '2초마다 서버 스냅샷',
+  });
+  const card = renderSceneCard(state);
+  assert.match(card, /스냅샷 · 실시간 아님/);
+  assert.doesNotMatch(card, /FPS/);
+  assert.match(card, /2초마다 서버 스냅샷/);
+  assert.equal(renderSceneEmpty(state), '');
+
+  // 스냅샷이 실패하면 끊김으로 바뀌고, 이전 스냅샷 시각은 지운다.
+  state = reduce(state, { type: 'scene-stream', state: 'stalled', detail: 'HTTP 503' });
+  assert.equal(state.sceneSnapshotAt, null);
+  assert.match(renderSceneCard(state), /프레임 끊김/);
+});
 
 const FAST = { stepMs: 40, confirmMs: 30, planMs: 10 };
 const ROOT = new URL('../../', import.meta.url).pathname;

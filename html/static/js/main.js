@@ -758,6 +758,90 @@ let sceneGeometry = null;
 let sceneFrameCount = 0;
 let sceneFpsTimer = null;
 
+/** 실시간 프레임이 없을 때 서버 스냅샷(/v1/scene.png)을 다시 받는 간격.
+ *  스냅샷 한 장은 서버에서 `gz topic -n 1`을 한 번 돌려 약 0.5초가 든다(실측
+ *  2026-09-28). 탭마다 부르므로 카메라 주기(6 Hz)보다 훨씬 느리게 둔다. */
+const SCENE_SNAPSHOT_INTERVAL_MS = 2000;
+let sceneSnapshotActive = false;
+let sceneSnapshotTimer = null;
+
+function drawSceneSnapshot(bitmap) {
+  const canvas = document.getElementById('scene-canvas');
+  if (!canvas) return;
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0);
+}
+
+/** 스냅샷 한 장을 받아 그린다. 실패하면 **이전 그림 위에 끊김을 적는다.** */
+async function fetchSceneSnapshot() {
+  const response = await fetch('/v1/scene.png', { cache: 'no-store' });
+  // 요청 중에 실시간 스트림이 살아났으면 버린다. 늦게 온 스냅샷이 실시간
+  // 프레임을 덮고 상태를 '스냅샷'으로 되돌린 것을 확인했다(2026-09-28).
+  if (!sceneSnapshotActive) return;
+  if (response.ok) {
+    const bitmap = await createImageBitmap(await response.blob());
+    if (!sceneSnapshotActive) {
+      bitmap.close();
+      return;
+    }
+    drawSceneSnapshot(bitmap);
+    bitmap.close();
+    store.dispatch({
+      type: 'scene-stream', state: 'snapshot', snapshotAt: Date.now(),
+      detail: `실시간 영상이 없어 ${SCENE_SNAPSHOT_INTERVAL_MS / 1000}초마다 `
+        + `서버 스냅샷을 받습니다 (마지막 ${nowTime()}).`,
+    });
+    return;
+  }
+  const info = await response.json().catch(() => ({}));
+  if (!sceneSnapshotActive) return;
+  if (info.reason_code === 'config.missing') {
+    // 카메라 자체가 꺼져 있다 — 다시 불러도 나아지지 않는다.
+    stopSceneSnapshots();
+    store.dispatch({
+      type: 'scene-available', available: false, detail: info.detail || '',
+    });
+    return;
+  }
+  store.dispatch({
+    type: 'scene-stream', state: 'stalled',
+    detail: info.detail || `스냅샷을 받지 못했습니다 (HTTP ${response.status}).`,
+  });
+}
+
+async function pollSceneSnapshot() {
+  sceneSnapshotTimer = null;
+  if (!sceneSnapshotActive) return;
+  // 보이지 않는 탭은 서버에 부담만 준다.
+  if (document.visibilityState === 'visible') {
+    try {
+      await fetchSceneSnapshot();
+    } catch (error) {
+      if (sceneSnapshotActive) {
+        store.dispatch({ type: 'scene-stream', state: 'stalled', detail: error.message });
+      }
+    }
+  }
+  // 응답이 온 뒤에 다음 요청을 건다 — 느린 응답이 쌓여 겹치지 않게.
+  if (sceneSnapshotActive) {
+    sceneSnapshotTimer = setTimeout(pollSceneSnapshot, SCENE_SNAPSHOT_INTERVAL_MS);
+  }
+}
+
+function startSceneSnapshots() {
+  if (sceneSnapshotActive || store.get().sceneAvailable === false) return;
+  sceneSnapshotActive = true;
+  store.dispatch({ type: 'scene-stream', state: 'snapshot', detail: '' });
+  pollSceneSnapshot();
+}
+
+function stopSceneSnapshots() {
+  sceneSnapshotActive = false;
+  if (sceneSnapshotTimer !== null) clearTimeout(sceneSnapshotTimer);
+  sceneSnapshotTimer = null;
+}
+
 function drawSceneFrame(buffer) {
   const canvas = document.getElementById('scene-canvas');
   if (!canvas || !sceneGeometry) return;
@@ -801,6 +885,8 @@ function connectSceneStream() {
         return;
       }
       if (payload.type === 'scene_header') {
+        // 실시간 경로가 살아났다 — 스냅샷을 멈추고 원래 스트림을 쓴다.
+        stopSceneSnapshots();
         sceneGeometry = {
           width: payload.width,
           height: payload.height,
@@ -814,10 +900,16 @@ function connectSceneStream() {
           type: 'scene-stream', state: 'stalled', detail: payload.detail || '',
         });
       } else if (payload.type === 'scene_unavailable') {
-        store.dispatch({
-          type: 'scene-available', available: false,
-          detail: payload.detail || '장면을 쓸 수 없습니다.',
-        });
+        // 실시간 프레임만 없는 경우(브리지 장애 등)는 서버가 단발 캡처로 스냅샷을
+        // 줄 수 있다. 카메라가 구성되지 않은 경우만 '사용 불가'로 둔다.
+        if (payload.reason_code === 'exec.unverifiable') {
+          startSceneSnapshots();
+        } else {
+          store.dispatch({
+            type: 'scene-available', available: false,
+            detail: payload.detail || '장면을 쓸 수 없습니다.',
+          });
+        }
       }
       return;
     }
@@ -825,11 +917,14 @@ function connectSceneStream() {
   };
   socket.onclose = () => {
     sceneSocket = null;
-    store.dispatch({ type: 'scene-stream', state: 'closed' });
+    // 스냅샷 중에는 실시간 재접속이 3초마다 닫힌다. 그때마다 '연결 중'으로
+    // 바꾸면 표시가 깜빡이므로 스냅샷 상태를 유지한다.
+    if (!sceneSnapshotActive) store.dispatch({ type: 'scene-stream', state: 'closed' });
     // 서버가 다시 뜰 수 있다. 천천히 다시 붙는다.
     setTimeout(connectSceneStream, 3000);
   };
   socket.onerror = () => {
+    if (sceneSnapshotActive) return;
     store.dispatch({
       type: 'scene-stream', state: 'closed', detail: '스트림 연결 오류',
     });

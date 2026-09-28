@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from server.routes.common import (
     Response,
     RouteContext,
@@ -79,7 +81,10 @@ async def handle(
             data,
         )
 
-    frame = viewer.frame()
+    # 실시간 구독이 없으면 frame()은 `gz topic -n 1`을 동기로 돌린다(실측 0.49~0.60초,
+    # 2026-09-28 작업 셀). 루프에서 부르면 그동안 다른 API·WebSocket이 모두 멈춘다 —
+    # 화면이 스냅샷을 주기적으로 받게 되면서 문제가 되므로 스레드로 넘긴다.
+    frame = await asyncio.to_thread(viewer.frame)
     if not frame.ok:
         return json_response({
             "available": False,

@@ -284,12 +284,33 @@ export function renderSceneEmpty(state) {
       esc(state.sceneDetail || '장면 카메라를 쓸 수 없습니다.')}</span></div>`;
   }
   if (state.sceneStream === 'open') return '';
+  if (state.sceneStream === 'snapshot') {
+    return state.sceneSnapshotAt ? '' : `<div class="scene-empty"><span>◷</span><span>${
+      esc('실시간 영상이 없어 서버 스냅샷을 받고 있습니다…')}</span></div>`;
+  }
   const text = state.sceneAvailable === null
     ? '장면 카메라를 확인하고 있습니다…'
     : state.sceneStream === 'stalled'
       ? '프레임이 끊겼습니다 — 만들어 그리지 않습니다.'
       : '장면 스트림에 연결하는 중입니다…';
   return `<div class="scene-empty"><span>◉</span><span>${esc(text)}</span></div>`;
+}
+
+function sceneStatusPill(state) {
+  if (state.sceneAvailable === false) return pill('muted', '◉', '사용 불가');
+  if (state.sceneAvailable === null) return pill('muted', '◉', '확인 중');
+  switch (state.sceneStream) {
+    case 'open': return pill('success', '▶', `${state.sceneFps || 0} FPS`);
+    case 'snapshot': {
+      // 스냅샷이 멈춰도 그림은 남는다. 시각을 적어 낡았는지 보이게 한다.
+      const at = state.sceneSnapshotAt
+        ? ` · ${new Date(state.sceneSnapshotAt).toLocaleTimeString('ko-KR', { hour12: false })}`
+        : '';
+      return pill('warning', '◷', `스냅샷 · 실시간 아님${at}`);
+    }
+    case 'stalled': return pill('warning', '!', '프레임 끊김');
+    default: return pill('muted', '◉', '연결 중');
+  }
 }
 
 /** 작업 셀 화면. **Gazebo 서버가 렌더링한 프레임**이다.
@@ -301,15 +322,7 @@ export function renderSceneEmpty(state) {
  * 서버가 프레임을 주지 못하면 **빈 그림을 그리지 않는다** — 이유를 적는다.
  */
 export function renderSceneCard(state) {
-  const statusPill = state.sceneAvailable === false
-    ? pill('muted', '◉', '사용 불가')
-    : state.sceneAvailable === null
-      ? pill('muted', '◉', '확인 중')
-      : state.sceneStream === 'open'
-        ? pill('success', '▶', `${state.sceneFps || 0} FPS`)
-        : state.sceneStream === 'stalled'
-          ? pill('warning', '!', '프레임 끊김')
-          : pill('muted', '◉', '연결 중');
+  const statusPill = sceneStatusPill(state);
   // 프레임을 받을 수 없으면 canvas를 두지 않는다 — 빈 화면을 영상처럼 보이게
   // 하지 않는다. 안내문은 **canvas와 따로 갱신한다**(아래 renderSceneEmpty) —
   // 카드 전체를 다시 그리면 그려 둔 프레임이 사라지기 때문에, 첫 프레임이 온

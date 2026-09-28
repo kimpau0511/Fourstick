@@ -74,9 +74,13 @@ export function initialState() {
     simulationE2e: null,
     /** 작업 셀 장면 영상 갱신 카운터. tick마다 올라간다. */
     sceneSeq: 0,
-    /** 장면 스트림 상태: 'idle' | 'open' | 'stalled' | 'closed'. */
+    /** 장면 스트림 상태: 'idle' | 'open' | 'snapshot' | 'stalled' | 'closed'.
+     *  'snapshot'은 실시간 프레임이 없어 서버 스냅샷(/v1/scene.png)을 주기적으로
+     *  받는 중이라는 뜻이다 — 실시간 영상처럼 보이게 하지 않는다. */
     sceneStream: 'idle',
     sceneStreamDetail: '',
+    /** 마지막 스냅샷을 그린 시각(ms). 'snapshot'이 아니면 null. */
+    sceneSnapshotAt: null,
     /** 최근 1초 동안 받은 프레임 수. 관측값이다. */
     sceneFps: 0,
     /** 장면 영상을 쓸 수 있는가(서버 /v1/scene). null이면 모름. */
@@ -206,7 +210,10 @@ export function reduce(state, action) {
         sceneStream: action.state,
         sceneStreamDetail: action.detail === undefined
           ? state.sceneStreamDetail : (action.detail || ''),
-        sceneAvailable: action.state === 'open' ? true : state.sceneAvailable,
+        sceneAvailable: action.state === 'open' || action.state === 'snapshot'
+          ? true : state.sceneAvailable,
+        sceneSnapshotAt: action.state === 'snapshot'
+          ? (action.snapshotAt ?? state.sceneSnapshotAt) : null,
       };
 
     case 'scene-fps':
