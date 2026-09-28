@@ -4,17 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Forstick · Robot Command Console</title>
-  <meta name="description" content="forstick2 로봇 작업 콘솔 — 명령 입력, 계획 생성, 안전 판단(PASS/BLOCK/ASK), 실행과 정지" />
+  <meta name="description" content="forstick2 로봇 작업 콘솔 — Gazebo 시뮬레이션 명령, 계획 생성, 안전 판단(PASS/BLOCK/ASK), 실행과 정지" />
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/static/app.css" />
 </head>
 <body>
 <div class="page">
-  <!-- 헤더: 목업 html/목업/src/App.tsx의 Header와 같은 구성이다. -->
+  <!-- 헤더 — 목업 위쪽 줄: 로봇 선택 · 연결 · 명령 감지 · 전체 정지.
+       design.md `nav-pill`: 떠 있는 가운데 정렬 스타디움 바다. -->
   <header class="app-header">
     <div class="brand">
       <div class="brand-badge" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <rect x="7" y="11" width="10" height="8" rx="1" />
           <rect x="9" y="7" width="6" height="4" rx="1" />
@@ -31,12 +32,18 @@
         <span class="brand-name">Forstick</span>
         <span class="brand-sub">Robot Command Console</span>
       </div>
-      <span class="schema-tag sm-only-inline">Schema v2</span>
     </div>
+    <!-- 로봇 선택(현재는 하나) — 누르면 로봇 목록·구성 모달이 열린다. -->
+    <div id="robot-pick-slot"></div>
     <div class="spacer"></div>
     <div class="conn" id="conn">
       <span class="conn-dot warn"></span>
       <span class="conn-text warn sm-only-inline">연결 중…</span>
+    </div>
+    <!-- 명령 감지 — 음성/텍스트 입력이 지금 무엇을 받고 있는지. -->
+    <div class="detect" id="detect">
+      <span class="dot muted"></span>
+      <span class="detect-label">명령 감지 대기</span>
     </div>
     <span class="session-id md-only-inline" id="session-id">세션 없음</span>
     <button class="estop" id="btn-estop" type="button" title="모든 실행을 즉시 중지합니다.">
@@ -45,29 +52,43 @@
     </button>
   </header>
 
-  <!-- 계획 화면 -->
+  <!-- 계획 화면 — 목업 배치 -->
   <main class="shell" id="view-plan">
     <div class="grid-plan">
-      <div class="col col-left">
+      <!-- 왼쪽 큰 칸: 가제보 화면 → 시뮬레이션 작업 명령 -->
+      <div class="col col-main">
+        <!-- 3D 작업 셀 화면(읽기 전용 관측) ↔ Gazebo 영상 전환. sim-view.js가 맡는다. -->
+        <section class="card" id="card-humanoid" hidden></section>
+        <section class="card" id="card-sim3d"></section>
         <section class="card" id="card-scene"></section>
-        <section class="card" id="card-robot"></section>
-        <section class="card" id="card-workcell"></section>
-        <section class="card" id="card-sim-demo"></section>
-        <section class="card" id="card-hardware"></section>
-        <section class="card" id="card-voice"></section>
-        <section class="card" id="card-events"></section>
-      </div>
-      <div class="col col-center">
         <section class="card" id="card-command"></section>
-        <section class="card" id="card-plan"></section>
       </div>
-      <div class="col col-right">
+      <!-- 오른쪽 칸: 생성된 작업 계획 / 안전 판단 및 실행 / 차단된 요청 -->
+      <div class="col col-side">
+        <section class="card" id="card-plan"></section>
         <section class="card" id="card-verdict"></section>
         <section class="card" id="card-block"></section>
         <div id="goto-workspace-slot"></div>
       </div>
     </div>
-    <div id="stop-slot-plan" style="margin-top:16px"></div>
+    <div id="stop-slot-plan" style="margin-top:24px"></div>
+
+    <!-- 목업에 없는 기존 카드들. 다섯 칸을 가리지 않게 접어 둔다. -->
+    <section class="system-strip">
+      <details id="system-details">
+        <summary class="btn ghost sm" style="display:inline-flex">시스템 상태 · 로봇 구성 · 시연 조작 · 이벤트 기록</summary>
+        <div class="system-grid" style="margin-top:16px">
+          <!-- 시연 수동 조작. 목업의 다섯 칸에는 없지만 기능을 없애지 않는다 —
+               상태 표시는 가제보 화면 아래 자재 띠와 "안전 판단 및 실행"이 맡고,
+               버튼은 여기 남는다. -->
+          <section class="card" id="card-sim-demo"></section>
+          <section class="card" id="card-robot"></section>
+          <section class="card" id="card-workcell"></section>
+          <section class="card" id="card-voice"></section>
+          <section class="card" id="card-events"></section>
+        </div>
+      </details>
+    </section>
   </main>
 
   <!-- 실행 워크스페이스 -->
@@ -85,7 +106,7 @@
         <section class="card" id="card-sim"></section>
         <div class="col" id="card-execution"></div>
       </div>
-      <div id="stop-slot-workspace" style="margin-top:16px"></div>
+      <div id="stop-slot-workspace" style="margin-top:24px"></div>
     </div>
   </section>
 </div>

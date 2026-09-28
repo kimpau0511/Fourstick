@@ -351,11 +351,19 @@ class DemoScriptWiringTest(unittest.TestCase):
         cls.functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
 
     def test_both_stop_branches_capture_and_record_after_verdict(self):
-        for name, record in (("main", "demo_state.record_run("),
-                             ("return_held_to_origin", "demo_state.record_return(")):
+        body = ast.unparse(self.functions["main"])
+        self.assertEqual(body.count("capture_stop_checkpoint("), 1)
+        self.assertLess(body.rindex("demo_state.record_run("),
+                        body.index("record_stop_checkpoint("))
+        # 복귀·칸 이동: 공통 실행부가 한 번 캡처하고, 호출자가 판정 기록 뒤에 남긴다.
+        shared = ast.unparse(self.functions["_run_held_route"])
+        self.assertEqual(shared.count("capture_stop_checkpoint("), 1)
+        self.assertNotIn("record_stop_checkpoint(", shared)
+        for name, record in (("return_held_to_origin", "demo_state.record_return("),
+                             ("move_between_slots", "demo_state.record_slot_move(")):
             with self.subTest(path=name):
                 body = ast.unparse(self.functions[name])
-                self.assertEqual(body.count("capture_stop_checkpoint("), 1)
+                self.assertIn("_run_held_route(", body)
                 self.assertLess(body.rindex(record),
                                 body.index("record_stop_checkpoint("))
 

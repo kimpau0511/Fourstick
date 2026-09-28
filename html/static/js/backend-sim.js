@@ -148,6 +148,25 @@ export class SimulationBackend {
     return null;
   }
 
+  /** 시뮬레이션 백엔드에는 확인할 대기가 없다. **작업을 만들지 않는다.** */
+  async simDemoConfirm() {
+    return {
+      status: 404, ok: false, decision: 'BLOCK', is_simulated: true,
+      reason: '서버(작업 셀 시뮬레이터)에 연결되어 있을 때만 쓸 수 있습니다',
+    };
+  }
+
+  async simDemoGoalConfirm() {
+    return {
+      status: 404, ok: false, status_text: 'blocked', is_simulated: true,
+      detail: '서버(작업 셀 시뮬레이터)에 연결되어 있을 때만 쓸 수 있습니다',
+    };
+  }
+
+  async simDemoStatus() {
+    return null;
+  }
+
   async createPlan(utterance) {
     const scenario = scenarioFor(utterance, this.scenarioOverride);
     await new Promise((resolve) => setTimeout(resolve, this.planMs));
@@ -372,6 +391,15 @@ export class SimulationBackend {
       });
     }, 400);
     return { ok: true, requested: true };
+  }
+
+  /** 전체 정지 래치 해제. 시뮬레이션 백엔드에는 붙잡을 로봇이 없으므로
+   *  실행 중인 것이 없을 때만 푼다 — 서버 백엔드와 판단 기준을 맞춘다. */
+  async releaseStop() {
+    if (this.executionId && this.currentStep > 0) {
+      return { ok: false, released: false, detail: '진행 중인 실행이 있어 풀지 않았다' };
+    }
+    return { ok: true, released: true, detail: '정지 래치를 풀었다' };
   }
 
   async startVoice() {

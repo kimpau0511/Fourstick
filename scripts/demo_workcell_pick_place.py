@@ -102,17 +102,25 @@ from validation.pick_place_plan import (  # noqa: E402
     STAGE_HOME_END,
     STAGE_RETREAT,
     CellBindings,
+    PATH_STEP_RAD,
+    check_path,
     check_stages,
     stage_joint_state,
     validate,
 )
+from validation.conveyor_slots import (  # noqa: E402
+    binding_mismatch,
+    record_slot,
+)
 from validation.simulation_demo_state import (  # noqa: E402
     CHECKPOINT_UNAVAILABLE,
     OBJECT_HELD,
+    ON_PALLET,
     ORIGIN_TOLERANCE_M,
     POLICIES,
     POLICY_DEMO_HOLD,
     POLICY_E2E_RESET,
+    RECONCILE_UNOBSERVED,
     RESUME_PATH_STEP_RAD,
     RESUME_POSE_TOLERANCE_M,
     SimulationDemoState,
@@ -123,6 +131,7 @@ from validation.simulation_demo_state import (  # noqa: E402
     conveyor_grasp_pose,
     origin_slot,
     pallet_place_pose,
+    reconcile_findings,
     resume_preflight_findings,
     return_bindings,
     return_preflight,
@@ -166,6 +175,11 @@ JOINT_TOLERANCE_RAD = 0.05
 PLACEMENT_Z_TOLERANCE_M = 0.01
 #: 이동 중 물체가 도구를 따라오는지 판정할 허용치(고정 장치 갱신 지연 포함).
 FOLLOW_TOLERANCE_M = 0.05
+#: joint 방식에서 붙이는 시점. after_close(기본) = 손가락을 닫은 뒤(패드가 닫는 축으로 자재를
+#: 가운데로 민 뒤 묶는다 — 실측: 닫는 축 오차가 쌓이지 않았다) · before_close = 닫기 전
+#: (놓인 자세 그대로 묶는다). 2026-09-26 파지 높이 재측정 전에는 닫을 때 내측 너클이 자재를
+#: 11 mm 밀어 before_close를 썼다 — 재측정(dz 0.040) 뒤에는 밀림이 없다.
+ATTACH_BEFORE_CLOSE = os.environ.get("FORSTICK2_FIXTURE_ATTACH", "after_close") == "before_close"
 #: STOP 뒤 관측을 기다리는 상한(초). 정지 확인(`settled_observation`)과 자재
 #: 수렴 대기가 **같은 값**을 쓴다 — 새 대기값을 만들지 않는다.
 STOP_SETTLE_TIMEOUT_SEC = 5.0
@@ -300,6 +314,46 @@ def load_mimics() -> dict:
             out[joint.get("name")] = (float(mimic.get("multiplier", "1")),
                                       float(mimic.get("offset", "0")))
     return out
+
+
+def slot_entry(grasp_file: dict, slot: str | None) -> dict | None:
+    """검증된 슬롯 항목. 없거나 검사가 깨끗하지 않으면 None이다.
+
+    **좌표를 만들지 않는다.** `scripts/derive_conveyor_slots.py`가 MoveIt으로
+    검증해 설정에 적어 둔 것만 쓴다.
+    """
+    if not slot:
+        return None
+    block = (grasp_file or {}).get("conveyor_slots") or {}
+    if block.get("status") != "verified":
+        return None
+    row = (block.get("slots") or {}).get(slot)
+    if not row:
+        return None
+    checks = row.get("checks") or {}
+    if not checks or not all(c.get("clean") for c in checks.values()):
+        return None
+    return row
+
+
+def apply_slot(bindings: CellBindings, entry: dict, target_rid: str,
+               conveyor_model: str) -> CellBindings:
+    """컨베이어 접근·놓기 자세를 **그 슬롯의 검증된 관절값**으로 바꾼다.
+
+    단계 구성은 건드리지 않는다. 이름만 슬롯 전용 자세로 잇는다 — 12단계 계획과
+    사전 검증 경로가 그대로 돈다.
+    """
+    approach_name = f"{conveyor_model}_approach__{entry['slot_name']}"
+    place_name = f"{conveyor_model}_place__{entry['slot_name']}"
+    poses = dict(bindings.poses)
+    poses[approach_name] = dict(entry["approach_joint_rad"])
+    poses[place_name] = dict(entry["place_joint_rad"])
+    approach = dict(bindings.approach_pose)
+    place = dict(bindings.place_pose)
+    approach[target_rid] = approach_name
+    place[target_rid] = place_name
+    return dataclasses.replace(bindings, poses=poses,
+                               approach_pose=approach, place_pose=place)
 
 
 def build_bindings(resources) -> CellBindings:
@@ -522,6 +576,8 @@ def capture_stop_checkpoint(*, mode: str, model: str, object_id: str,
                             observation, gripper_joint: str, fixture, client,
                             scene_hash_at_stop: str | None, conveyor_zone,
                             origin_home_m, convergence: dict | None = None,
+                            source_slot: str | None = None,
+                            destination_slot: str | None = None,
                             ) -> dict | None:
     """확인된 STOP 뒤 **관측으로** 체크포인트 후보를 만든다. 기록·재개는 하지 않는다.
 
@@ -550,7 +606,8 @@ def capture_stop_checkpoint(*, mode: str, model: str, object_id: str,
         gripper_joint=gripper_joint, held=held,
         object_pose_m=object_pose, conveyor_zone=conveyor_zone,
         origin_home_m=origin_home_m, scene_hash_at_stop=scene_hash_at_stop,
-        scene_hash_now=scene_now, convergence=convergence)
+        scene_hash_now=scene_now, convergence=convergence,
+        source_slot=source_slot, destination_slot=destination_slot)
     RUN_INFO["stop_checkpoint"] = (
         {"created": False, "model": model, "reasons": reasons,
          "reason_code": (CHECKPOINT_UNAVAILABLE if held else None),
@@ -704,6 +761,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--inject-attach-failure", action="store_true",
                         help="검증 전용: 고정 단계에서 선언되지 않은 물체를"
                              " 붙이려 해 고정 실패 경로를 실제로 태운다")
+    parser.add_argument("--verify-live-path-only", action="store_true",
+                        help="검증 전용: 칸 이동에서 계약의 경로 여유 표 검사를 건너뛰고"
+                             " 실행 직전 scene 동기화 + live 경로 검사만으로 막히는지 본다")
     parser.add_argument("--inject-scene-change-at", default=None,
                         help="검증 전용: 이 단계 앞에서 planning scene에 임시"
                              " 물체를 넣어 hash를 실제로 바꾼다")
@@ -713,9 +773,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resume-checkpoint", default=None, metavar="CHECKPOINT_ID",
                         help="이 STOP 체크포인트에서 실행 직전 재검증 뒤 이어서 실행한다"
                              " (새 재계획, 중단 궤적 재생 없음)")
+    parser.add_argument("--reconcile-state", action="store_true",
+                        help="시연 기록을 지금 Gazebo 관측과 맞춘다(읽기 전용)."
+                             " Gazebo를 다시 띄우면 world는 초기 자리로 돌아가지만"
+                             " 기록은 남는다 — 그 어긋남만 정리한다.")
+    parser.add_argument("--slot", default=None,
+                        help="컨베이어 슬롯(slot_1…). **서버가 정해서 넘긴다** —"
+                             " 스크립트가 고르지 않는다. 주지 않으면 기존 단일"
+                             " 배치 위치(벨트 상면 중심)를 쓴다")
     parser.add_argument("--return-held-to-origin", action="store_true",
                         help="simulation_demo_hold 기록이 있는 자재를 컨베이어에서"
                              " 선언된 원래 팔레트 슬롯으로 이송해 되돌린다")
+    parser.add_argument("--move-from-slot", default=None,
+                        help="공통 transfer: 컨베이어 칸 → 다른 칸 직접 이송의 출발 칸")
+    parser.add_argument("--move-to-slot", default=None,
+                        help="공통 transfer: 컨베이어 칸 → 다른 칸 직접 이송의 도착 칸")
+    parser.add_argument("--route-from", default=None,
+                        help="공통 transfer(팔레트가 끼는 경로)의 출발 위치(팔레트 id 또는 칸)")
+    parser.add_argument("--route-to", default=None,
+                        help="공통 transfer(팔레트가 끼는 경로)의 도착 위치(팔레트 id 또는 칸)")
     return parser
 
 
@@ -728,9 +804,12 @@ def main() -> int:
               " 아니다. 일반 웹 UI·API로는 진입할 수 없다.", file=sys.stderr)
         return 3
 
-    label = ("resume" if args.resume_checkpoint
+    label = ("reconcile" if args.reconcile_state
+             else "resume" if args.resume_checkpoint
              else "resume_preflight" if args.resume_preflight
              else "return" if args.return_held_to_origin
+             else "slot_move" if args.move_to_slot
+             else "transfer_route" if args.route_to
              else "restore" if args.restore_only else "forward")
     start_raw_log(label=label)
     EXTERNAL_STOP.since = time.time()
@@ -738,6 +817,8 @@ def main() -> int:
     print(f"[원본 로그] {RAW_LOG['path'] or RAW_LOG['detail']}")
 
     data = json.loads(WORKCELL.read_text(encoding="utf-8"))
+    if args.reconcile_state:
+        return reconcile_state(args, data)
     if args.restore_only:
         objects = declarations_from_config(data["models"], data["frames"],
                                             source=str(WORKCELL))
@@ -775,12 +856,24 @@ def main() -> int:
         return resume_preflight(args, data)
     if args.return_held_to_origin:
         return return_held_to_origin(args, data)
+    if args.move_to_slot or args.move_from_slot:
+        return move_between_slots(args, data)
+    if args.route_to or args.route_from:
+        return transfer_route(args, data)
 
     resources = load_workcell_resources(
         WORKCELL, POSES, state_max_age_sec=0.5,
         mounting_path=MOUNTING, grasp_path=GRASP)
     bindings = build_bindings(resources)
     grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
+    # 컨베이어 슬롯. 서버가 `--slot`으로 정해서 넘긴다. 검증되지 않은 이름이면
+    # **값을 만들지 않고 멈춘다** — 아무 자리에나 놓지 않는다.
+    slot_row = slot_entry(grasp_file, args.slot)
+    if args.slot and slot_row is None:
+        print(f"검증된 컨베이어 슬롯이 아니다: {args.slot}", file=sys.stderr)
+        return 2
+    if slot_row is not None:
+        slot_row = {**slot_row, "slot_name": args.slot}
 
     # 자원 id로 정규화한다. Gazebo 모델 이름으로 불러도 같은 것을 가리킨다.
     def resource_id(token: str) -> str:
@@ -803,6 +896,8 @@ def main() -> int:
     )
 
     demo_state = SimulationDemoState()
+    #: 실행 직전 scene 동기화·경로 검사 증거(결과 파일에 함께 남긴다).
+    preflight_extra: dict = {}
 
     def fail(reason: ReasonCode, detail: str) -> int:
         left = demo_state.objects()
@@ -815,10 +910,10 @@ def main() -> int:
             scenario=scenario, object_id=object_rid, support_id=support_rid,
             target_id=target_rid, reason=reason, detail=detail,
             limitations=limitations)
-        write(args.out, result)
+        write(args.out, result, preflight_extra)
         demo_state.record_run(policy=args.cell_policy, model=model,
                               result=result.to_dict(), final_pose_m=None,
-                              restored=None)
+                              restored=None, slot=args.slot)
         closer = globals().get("_active_fixture")
         if closer is not None:
             closer.close()
@@ -872,6 +967,13 @@ def main() -> int:
         # 해제 뒤 **scene을 다시 읽어** 재검증 기준으로 쓴다.
         snapshot = client.snapshot()
 
+    # 다른 자재가 칸·다른 팔레트에 있으면 scene을 실제 위치로 맞춘다(기록↔관측 대조).
+    preflight_extra["scene_sync"], sync_problems = sync_planning_scene(
+        client=client, fixture=fixture, data=data, grasp_file=grasp_file)
+    if sync_problems:
+        return fail(*sync_problems[0])
+    snapshot = client.snapshot()
+
     injected: list[str] = []
     if args.inject_attach_offset_z is not None:
         spec = dict(bindings.attached[object_rid])
@@ -883,14 +985,35 @@ def main() -> int:
         print(f"[결함 주입] 붙일 물체 z 오프셋 {offset[2]:.4f} m"
               " — 적재 상태 충돌 검사를 위반시킨다")
 
+    # 슬롯 결속은 **계획 검증보다 먼저** 해야 한다. 검증이 만든 stage가 자세
+    # 이름을 굳히므로, 뒤에서 바꾸면 검사만 슬롯 기준이 되고 **로봇은 예전
+    # 자리로 간다**(실측: slot_2를 요청했는데 slot_1에 놓여 A와 겹쳤다).
+    if slot_row is not None:
+        conveyor_model = (resources.resources[target_rid])["gazebo_model"]
+        bindings = apply_slot(bindings, slot_row, target_rid, conveyor_model)
+
     validation = validate(steps, slots=slots, bindings=bindings, client=client,
                           utterance=f"[시뮬레이션 시연] {scenario}")
     if not validation.plan_verified:
+        # 어떤 단계·쌍 때문인지 결과 파일에 남긴다(시작하지 않은 경우에도).
+        preflight_extra["plan_validation"] = validation.to_dict()
         codes = validation.to_dict()["reason_codes"]
         first = validation.findings[0] if validation.findings else None
         return fail(first.reason_code if first else ReasonCode.GEOMETRY_COLLISION,
                     f"계획 사전 검증이 통과하지 않았다: {codes}")
     stages = validation.stages
+
+    # ── 사전 검증: 실행 목표가 **배정된 슬롯의 자세인가** ─────────────
+    # 검사와 실행이 다른 슬롯을 가리키면 로봇이 엉뚱한 자리에 놓는다. 단계는
+    # 만들어질 때 관절값이 구워지므로, 여기서 설정과 대조해 **움직이기 전에**
+    # 잡는다. 어긋나면 로봇 명령 0건이다.
+    if slot_row is not None:
+        mismatch = binding_mismatch(stages, slot_row,
+                                    slot_name=slot_row["slot_name"])
+        if mismatch:
+            return fail(ReasonCode.PLAN_RESOURCE_MISMATCH,
+                        f"슬롯 결속이 어긋났다: {mismatch}")
+        print(f"[슬롯] 실행 목표가 {slot_row['slot_name']}의 검증된 자세와 일치")
 
     # ── 진입 조건: 자재가 선언된 자리에 있는가 ────────────────────────
     declared_home = objects[model].home_pose_m
@@ -907,7 +1030,8 @@ def main() -> int:
                     f" (차이 {drift:.4f} m)")
 
     # ── 진입 조건: 컨베이어 배치 구역이 비었는가 ──────────────────────
-    conveyor = data["models"][(resources.resources[target_rid])["gazebo_model"]]
+    conveyor_model = (resources.resources[target_rid])["gazebo_model"]
+    conveyor = data["models"][conveyor_model]  # noqa: F841 — 위에서도 쓴다
     belt = next(part for part in conveyor["parts"] if part["name"] == "belt")
     rails = [part for part in conveyor["parts"] if part["name"].startswith("frame_")]
     target_center = _resolve(data["frames"], conveyor["frame"])
@@ -915,13 +1039,34 @@ def main() -> int:
     # 좁은 쪽을 쓴다.
     rail_inner = min(abs(part["center_xyz_m"][1]) - part["size_m"][1] / 2
                      for part in rails) if rails else belt["size_m"][1] / 2
-    zone = placement_zone(
-        target_center_m=target_center,
-        surface_half_extent_m=(belt["size_m"][0] / 2,
-                               min(belt["size_m"][1] / 2, rail_inner)),
-        object_size_m=objects[model].size_m,
-        surface_top_z_m=target_center[2],
-        z_tolerance_m=PLACEMENT_Z_TOLERANCE_M)
+    if slot_row is not None:
+        # 슬롯이 정해졌다 — 허용 구역을 **그 슬롯 주변으로 좁힌다.** 벨트 전체를
+        # 허용하면 옆 슬롯에 놓아도 통과해 버린다.
+        slot_center = [float(v) for v in slot_row["object_world_center_m"]]
+        half = float(grasp_file["conveyor_slots"]["pitch_m"]) / 2
+        zone = placement_zone(
+            target_center_m=(slot_center[0], slot_center[1], target_center[2]),
+            surface_half_extent_m=(half, min(belt["size_m"][1] / 2, rail_inner)),
+            object_size_m=objects[model].size_m,
+            surface_top_z_m=target_center[2],
+            z_tolerance_m=PLACEMENT_Z_TOLERANCE_M)
+    else:
+        zone = placement_zone(
+            target_center_m=target_center,
+            surface_half_extent_m=(belt["size_m"][0] / 2,
+                                   min(belt["size_m"][1] / 2, rail_inner)),
+            object_size_m=objects[model].size_m,
+            surface_top_z_m=target_center[2],
+            z_tolerance_m=PLACEMENT_Z_TOLERANCE_M)
+    # 배치 전 점유 확인 — **관측으로** 본다. 기록만 믿지 않는다.
+    #
+    # 두 가지를 본다. ① 배정된 슬롯 구역이 비었는가 ② 놓을 자리 주변에 다른
+    # 자재가 가까이 있지 않은가. ①만 보면 **다른 슬롯에 있는 자재를 못 본다** —
+    # 자세가 어긋나 엉뚱한 슬롯으로 가면 그 위에 얹힌다(실측: B가 slot_1의 A
+    # 위로 갔다). ②는 그 경우를 잡는 마지막 그물이다.
+    min_gap = float(objects[model].size_m[0])
+    place_center = (tuple(float(v) for v in slot_row["object_world_center_m"])
+                    if slot_row is not None else None)
     for other, item in objects.items():
         if other == model:
             continue
@@ -930,9 +1075,22 @@ def main() -> int:
             continue
         inside, _ = in_placement_zone(pose, zone)
         if inside:
+            where = (f" ({slot_row['slot_name']})" if slot_row is not None else "")
             return fail(ReasonCode.EXEC_SIM_TARGET_OCCUPIED,
-                        f"배치 구역이 이미 {other}로 점유됐다"
+                        f"배치 구역{where}이 이미 {other}로 점유됐다"
                         f" (pose {tuple(round(v, 4) for v in pose)})")
+        if place_center is not None:
+            gap = float(np.linalg.norm(np.asarray(pose) - np.asarray(place_center)))
+            if gap < min_gap:
+                return fail(ReasonCode.EXEC_SIM_TARGET_OCCUPIED,
+                            f"놓을 자리({slot_row['slot_name']}) {gap:.4f} m 안에"
+                            f" {other}가 있다 (허용 {min_gap:.4f} m)")
+
+    # 단계 사이 경로도 같은 scene·같은 접촉 규칙으로 본다(움직이기 전).
+    preflight_extra["path_check"], path_problems = path_preflight(
+        client=client, transport=transport, stages=stages, bindings=bindings)
+    if path_problems:
+        return fail(*path_problems[0])
 
     print(f"[시작] {scenario} · 모델 {model} · scene {snapshot.content_hash[:12]}")
     print(f"       배치 허용 구역 x[{zone['x_min_m']:.3f},{zone['x_max_m']:.3f}]"
@@ -1006,6 +1164,23 @@ def main() -> int:
                 offset=offset, gripper_value=bindings.gripper_grasp_rad)
             follower.start()
 
+        # joint 방식: 손가락을 닫기 **전에** 붙인다(위 복귀·이송 실행부와 같은 이유).
+        if (stage.stage == STAGE_GRIPPER_CLOSE and getattr(fixture, "mode", "") == "joint"
+                and ATTACH_BEFORE_CLOSE
+                and not external_stop and not stop_here and model not in fixture.held()):
+            pose = fixture.pose_of(model, timeout_sec=2.0, fresh=True)
+            attach_model = model
+            if args.inject_attach_failure:
+                attach_model = f"{model}__undeclared_probe"
+                injected.append("attach_failure")
+                print(f"[결함 주입] 선언되지 않은 물체 {attach_model}를 붙이려 한다")
+            try:
+                attach_event = fixture.attach(attach_model, pose_m=pose)
+            except FixtureError as exc:
+                faults.append((exc.reason, str(exc)))
+                break
+            print(f"  [고정] {model} @ {tuple(round(v, 4) for v in pose)}"
+                  f" ({FIXTURE_KIND}, 손가락을 닫기 전 관절)")
         if external_stop:
             pass
         elif stop_here:
@@ -1066,7 +1241,7 @@ def main() -> int:
                     gripper_joint=bindings.gripper_joint, fixture=fixture,
                     client=client, scene_hash_at_stop=current.content_hash,
                     conveyor_zone=zone, origin_home_m=declared_home,
-                    convergence=convergence)
+                    convergence=convergence, destination_slot=args.slot)
             latch.latch({
                 "at": time.time(), "stage": stage.stage,
                 "stop_execution_id": stop_execution_id,
@@ -1128,7 +1303,9 @@ def main() -> int:
             break
 
         # ── 고정·해제 ─────────────────────────────────────────────────
-        if stage.stage == STAGE_GRIPPER_CLOSE:
+        if stage.stage == STAGE_GRIPPER_CLOSE and model in fixture.held():
+            note_pose("after_attach")
+        elif stage.stage == STAGE_GRIPPER_CLOSE:
             pose = fixture.pose_of(model, timeout_sec=2.0, fresh=True)
             attach_model = model
             if args.inject_attach_failure:
@@ -1282,10 +1459,10 @@ def main() -> int:
               f" --restore-only로 되돌린다")
     demo_state.record_run(policy=args.cell_policy, model=model,
                           result=result.to_dict(), final_pose_m=final_pose,
-                          restored=restored)
+                          restored=restored, slot=args.slot)
     record_stop_checkpoint(demo_state, pending_checkpoint)
 
-    write(args.out, result)
+    write(args.out, result, preflight_extra)
     # 종료 순서: transport(spin 스레드) → gz 구독·scene 노드 → rclpy.
     shutdown_ros(transport=transport, fixture=fixture, node=node)
 
@@ -1300,6 +1477,9 @@ def main() -> int:
 
 
 RETURN_OUT = ROOT / "reports/workcell/pick_place_sim_demo_return.json"
+SLOT_MOVE_OUT = ROOT / "reports/workcell/pick_place_sim_demo_slot_move.json"
+ROUTE_OUT = ROOT / "reports/workcell/pick_place_sim_demo_route.json"
+RECONCILE_OUT = ROOT / "reports/workcell/sim_demo_reconcile.json"
 RESUME_PREFLIGHT_OUT = ROOT / "reports/workcell/sim_demo_resume_preflight.json"
 #: 컨트롤러 액션의 **살아 있는** goal 상태(ACCEPTED·EXECUTING·CANCELING).
 ACTIVE_GOAL_STATUSES = frozenset({1, 2, 3})
@@ -1311,7 +1491,28 @@ ACTION_STATUS_TOPICS = (
 
 def observe_attachment(world: str, partition: str, model: str,
                        *, window_sec: float = 2.0) -> dict:
-    """고정 장치 attachment를 **Gazebo 관측으로** 확인한다.
+    """고정 장치가 그 자재를 **붙들고 있는가**(`static` 키 — 이름은 이전 방식 그대로).
+
+    joint 방식(기본): Gazebo에 그 자재의 붙임 시스템이 있고, 시스템의 알림으로 확인된
+    마지막 상태가 `attached`면 참이다. Gazebo를 다시 띄우면 시스템이 사라지므로 거짓이다.
+    static 방식: 아래 관측(정적 모델 여부).
+    """
+    from robots.fr3_gazebo.sim_fixture import GazeboObjectFixture, read_joint_record
+
+    if os.environ.get("FORSTICK2_FIXTURE_MODE", "joint") != "static":
+        os.environ["GZ_PARTITION"] = partition
+        from gz.transport import Node as GzNode
+        topics = GazeboObjectFixture.joint_topics(model)
+        loaded = topics["state"] in set(GzNode().topic_list())
+        record = read_joint_record().get(model) or {}
+        return {"mode": "joint", "joint_system_loaded": loaded, "record": record,
+                "static": bool(loaded and record.get("state") == "attached")}
+    return _observe_static_attachment(world, partition, model, window_sec=window_sec)
+
+
+def _observe_static_attachment(world: str, partition: str, model: str,
+                               *, window_sec: float = 2.0) -> dict:
+    """고정 장치 attachment를 **Gazebo 관측으로** 확인한다(static 방식).
 
     고정 장치는 붙일 때 물체를 정적 모델로 바꾼다. Gazebo는 정적 모델을
     `pose/info`에는 싣고 `dynamic_pose/info`에는 싣지 않는다(실측 2026-09-18:
@@ -1403,6 +1604,9 @@ class ResumeContext:
         #: 수렴을 확인할 수 없어 새 체크포인트를 만들지 않는다.
         self.expected_object_pose: Callable[[Any], Any] | None = None
         self.stage_findings: tuple = ()
+        #: 재개 직전 scene ↔ 실제 자재 위치 일치 확인(바꾸지 않는다) → (보고, 사유).
+        #: 없으면 확인할 수 없으므로 재개하지 않는다.
+        self.scene_sync: Callable[[], tuple] | None = None
         #: 외부 정지 요청(웹 STOP)을 보는 함수. 기본은 이 실행의 감시기다.
         self.external_stop: Callable[[], bool] = EXTERNAL_STOP.requested
         self.__dict__.update(fields)
@@ -1550,6 +1754,15 @@ def verify_resume(ctx: ResumeContext, *, started_at: float) -> dict:
 
     if reasons:
         return with_evidence()
+    # 다른 자재가 scene에 실제 위치로 들어 있는가(재개는 scene을 바꾸지 않는다 —
+    # 체크포인트 scene hash를 지킨다). 확인하지 못하면 재개하지 않는다.
+    if ctx.scene_sync is None:
+        reasons.append("planning scene ↔ 실제 자재 위치를 확인할 수단이 없다")
+        return with_evidence()
+    result["scene_sync"], sync_problems = ctx.scene_sync()
+    reasons.extend(f"[{code}] {text}" for code, text in sync_problems)
+    if sync_problems:
+        return with_evidence()
     approach, after, build_reasons = build_resume_stages(
         ctx.stages, cp, observation.positions)
     reasons.extend(build_reasons)
@@ -1560,8 +1773,14 @@ def verify_resume(ctx: ResumeContext, *, started_at: float) -> dict:
                                                  client=ctx.client)
     after_checks, after_bad = check_stages(after, bindings=ctx.bindings,
                                            client=ctx.client)
+    # 단계 사이 경로(복구 접근 표본 사이 포함)를 더 촘촘히 본다.
+    path_checks, path_bad, path_count = check_path(
+        tuple(approach) + tuple(after), bindings=ctx.bindings, client=ctx.client,
+        start_joints=observation.positions)
+    result["path_check"] = {"samples": path_count, "step_rad": PATH_STEP_RAD,
+                            "failed_samples": sum(1 for c in path_checks if not c.passed)}
     after_hash = ctx.client.snapshot().content_hash
-    for finding in list(approach_bad) + list(after_bad):
+    for finding in list(approach_bad) + list(after_bad) + list(path_bad)[:4]:
         reasons.append(f"[{finding.reason_code}] {finding.detail}")
     stable = before == after_hash == scene_now
     if not stable:
@@ -1585,6 +1804,22 @@ def _send(ctx: ResumeContext, kind: str, *args, **kwargs):
     """로봇 명령은 여기로만 나간다. 몇 건 나갔는지 기록한다."""
     ctx.commands.append(kind)
     return getattr(ctx.transport, kind)(*args, **kwargs)
+
+
+def destination_slot_check(final_pose, slot_name: str) -> tuple[bool, str]:
+    """관측 pose가 묶인 목적지(칸 또는 팔레트) 중심에서 0.02 m 안인가."""
+    import math
+
+    from validation.simulation_demo_state import ORIGIN_TOLERANCE_M
+
+    grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
+    data = json.loads(WORKCELL.read_text(encoding="utf-8"))
+    center = location_center(data, grasp_file, slot_name)
+    if center is None or final_pose is None:
+        return False, f"목적지 {slot_name}을 확인할 수 없다"
+    gap = math.dist([float(v) for v in final_pose], center)
+    return (gap <= ORIGIN_TOLERANCE_M,
+            f"{slot_name} 중심과 {gap:.4f} m (허용 {ORIGIN_TOLERANCE_M} m)")
 
 
 def run_resume(ctx: ResumeContext, *, checkpoint_id: str,
@@ -1616,6 +1851,9 @@ def run_resume(ctx: ResumeContext, *, checkpoint_id: str,
         return blocked([f"현재 체크포인트가 아니다: {checkpoint_id}"])
     started_at = time.time()
     verification = verify_resume(ctx, started_at=started_at)
+    # scene ↔ 실제 자재 위치 확인과 경로 검사 결과는 차단·성공 모두에 남긴다.
+    report["scene_sync"] = verification.get("scene_sync")
+    report["path_check"] = verification.get("path_check")
     if verification["reasons"]:
         return blocked(verification["reasons"], verification)
     latch_record = verification["latch"] or {}
@@ -1635,7 +1873,7 @@ def run_resume(ctx: ResumeContext, *, checkpoint_id: str,
     # 이 프로세스의 고정 장치에 다시 묶는다(물체는 이미 정적 고정 상태다).
     faults: list[tuple] = []
     try:
-        event = ctx.fixture.attach(model, pose_m=verification["object_pose_m"])
+        event = ctx.fixture.rebind(model, pose_m=verification["object_pose_m"])
         rebound = bool(event.verified)
     except FixtureError as exc:
         rebound = False
@@ -1758,6 +1996,13 @@ def run_resume(ctx: ResumeContext, *, checkpoint_id: str,
     final_pose = ctx.fixture.pose_of(model, timeout_sec=3.0, fresh=True)
     in_zone = (in_placement_zone(final_pose, ctx.conveyor_zone)
                if final_pose is not None else (False, "최종 pose를 관측하지 못했다"))
+    bound_slot = (ctx.checkpoint or {}).get("destination_slot")
+    if bound_slot and final_pose is not None:
+        # 체크포인트에 묶인 목적지(칸·팔레트)에 놓였는지 **관측으로** 본다.
+        # 팔레트 목적지는 컨베이어 구역 밖이므로 구역 판정을 대신한다.
+        slot_ok = destination_slot_check(final_pose, bound_slot)
+        in_zone = (slot_ok if not str(bound_slot).startswith("slot_")
+                   else (in_zone[0] and slot_ok[0], slot_ok[1]))
     home_row = next((r for r in stage_records if r["stage"] == STAGE_HOME_END), {})
     moved_ok = (ctx.make_follower is None and not follow_samples) or (
         bool(follow_samples) and all(r["with_tool"] for r in follow_samples))
@@ -1828,14 +2073,82 @@ def conveyor_zone_for(data: dict, resources, target_rid: str, objects: dict,
         z_tolerance_m=PLACEMENT_Z_TOLERANCE_M)
 
 
-def build_resume_context(data: dict, model: str, checkpoint: dict):
-    """실제 ROS·Gazebo에 붙은 ResumeContext와 정리할 scene 노드."""
+def resume_slot(args, demo_state: "SimulationDemoState", model: str,
+                bound: str | None = None) -> tuple[str | None, str | None]:
+    """재개가 놓을 컨베이어 칸. **체크포인트에 묶인 목적지 칸**이 우선이다.
+
+    `bound`(체크포인트 destination_slot) · 기록 칸 · 서버 `--slot` 중 값이 있는 것이
+    모두 같아야 한다. 다르면 (None, 이유)로 멈춘다 — 재개가 목적지를 바꾸지 않는다.
+    칸 정보가 전혀 없는 옛 기록은 (None, None) — 예전처럼 기본 자리다.
+    """
+    record = (demo_state.status().get("objects") or {}).get(model)
+    recorded = (record or {}).get("slot")
+    named = {k: v for k, v in (("체크포인트", bound), ("기록", recorded),
+                               ("요청", args.slot)) if v}
+    if len(set(named.values())) > 1:
+        return None, (f"{model}의 재개 칸이 서로 다르다: "
+                      + ", ".join(f"{k}={v}" for k, v in named.items()))
+    return (bound or recorded or args.slot or None), None
+
+
+def _slot_move_resume_stages(resources, grasp_file, data, model, checkpoint):
+    """칸 이동·경로 체크포인트의 12단계(재개용). 묶인 두 위치의 **측정 자세**로만
+    다시 만든다. 위치가 없거나 자세가 없으면 막는다."""
+    import types
+
+    from core.transfer_skill import TransferRequest, check_pose_contract
+    from robots.fr3_gazebo.transfer_capability import ROBOT_ID, Fr3TransferCapability
+    from validation.transfer_stages import build_route_stages
+
+    source_loc = checkpoint.get("source_slot")
+    destination_loc = checkpoint.get("destination_slot")
+    base = build_bindings(resources)
+    if not source_loc or not destination_loc:
+        return base, (), ["체크포인트에 출발·도착 위치가 없다 — 재개하지 않는다"]
+    capability = Fr3TransferCapability.from_files(ROOT)
+    locations = capability.locations()
+    source, destination = locations.get(source_loc), locations.get(destination_loc)
+    if source is None or destination is None:
+        return base, (), [f"선언된 위치가 아니다: {source_loc} → {destination_loc}"]
+    poses = capability.resolve(model, source, destination)
+    if not hasattr(poses, "place"):
+        return base, (), [f"{poses.code}: {poses.detail}"]
+    bad = check_pose_contract(poses, source, destination)
+    if bad:
+        return base, (), [f"{f.code}: {f.detail}" for f in bad]
+    plan = types.SimpleNamespace(poses=poses, request=TransferRequest(
+        ROBOT_ID, model, source_loc, destination_loc))
+    bindings, origin, source_rid = _route_bindings(resources, grasp_file, data, model, plan)
+    destination_rid = destination_loc if not destination_loc.startswith("slot_") \
+        else "loc_conveyor"
+    stages, findings = build_route_stages(
+        bindings, object_id=origin.object_id, route=poses,
+        source_resource_id=source_rid, destination_resource_id=destination_rid)
+    return bindings, stages, [text for _, text in findings]
+
+
+def build_resume_context(data: dict, model: str, checkpoint: dict,
+                         slot: str | None = None):
+    """실제 ROS·Gazebo에 붙은 ResumeContext와 정리할 scene 노드.
+
+    `slot`이 있으면 정방향 이송과 같이 **계획을 만들기 전에** 그 칸의 검증된
+    접근·놓기 자세를 결속한다. 빠뜨리면 재개가 기본 자리(1번 칸)에 놓는다
+    (실측 2026-09-24: slot_2로 가던 B가 재개 뒤 slot_1에 놓였다).
+    """
     resources = load_workcell_resources(
         WORKCELL, POSES, state_max_age_sec=0.5,
         mounting_path=MOUNTING, grasp_path=GRASP)
     bindings = build_bindings(resources)
     grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
     object_rid = str(checkpoint["object_id"])
+    if slot and checkpoint.get("mode", "forward") == "forward":
+        slot_row = slot_entry(grasp_file, slot)
+        if slot_row is None:
+            raise SystemExit(f"재개 칸 {slot}이 검증된 컨베이어 칸이 아니다 — 멈춘다")
+        target_rid = str(checkpoint["destination_id"])
+        conveyor_model = (resources.resources[target_rid])["gazebo_model"]
+        bindings = apply_slot(bindings, {**slot_row, "slot_name": slot},
+                              target_rid, conveyor_model)
     steps = (
         TaskStep(skill="pick", args={"object": object_rid,
                                      "from": checkpoint["source_id"]}),
@@ -1844,8 +2157,14 @@ def build_resume_context(data: dict, model: str, checkpoint: dict):
                                       "to": checkpoint["destination_id"]}),
         TaskStep(skill="home"),
     )
-    stages, stage_findings = ((), ["forward 체크포인트만 재계획한다"]) if (
-        checkpoint.get("mode") != "forward") else build_stages(steps, bindings=bindings)
+    if checkpoint.get("mode") in ("slot_move", "route"):
+        # 공통 transfer(칸 → 칸). 남은 단계는 **체크포인트에 묶인 두 칸**의
+        # 검증된 자세로만 다시 만든다. 든 물체는 컨베이어 파지 선언이다.
+        bindings, stages, stage_findings = _slot_move_resume_stages(
+            resources, grasp_file, data, model, checkpoint)
+    else:
+        stages, stage_findings = ((), ["forward 체크포인트만 재계획한다"]) if (
+            checkpoint.get("mode") != "forward") else build_stages(steps, bindings=bindings)
     profile_limits = {}
     for joint in ET.parse(URDF).getroot().findall("joint"):
         limit = joint.find("limit")
@@ -1882,9 +2201,9 @@ def build_resume_context(data: dict, model: str, checkpoint: dict):
             resources.world_name, resources.gz_partition, model),
         observe_goals=lambda: observe_active_goals(node),
         tool_object_gap=tool_object_gap,
-        conveyor_zone=conveyor_zone_for(data, resources,
-                                        str(checkpoint["destination_id"]),
-                                        objects, model),
+        # 배치 구역은 컨베이어 기준(자재 상태 분류용)이다. 팔레트 목적지는
+        # 도착 판정(`destination_check`)이 따로 본다.
+        conveyor_zone=conveyor_zone_for(data, resources, "loc_conveyor", objects, model),
         origin_home_m=tuple(objects[model].home_pose_m),
         expected_object_pose=lambda positions: expected_held_pose(
             joints_urdf=joints_urdf, mimics=mimics, tcp_link=tcp_link,
@@ -1895,6 +2214,9 @@ def build_resume_context(data: dict, model: str, checkpoint: dict):
             mimics=mimics, tcp_link=tcp_link, offset=offset,
             gripper_value=bindings.gripper_grasp_rad),
         stage_findings=tuple(stage_findings))
+    ctx.scene_sync = lambda: sync_planning_scene(
+        client=client, fixture=fixture, data=data, grasp_file=grasp_file,
+        exclude=(model,), apply=False)
     return ctx, node
 
 
@@ -1925,7 +2247,17 @@ def resume_preflight(args, data: dict) -> int:
         _write_report(out, {**report, "allowed": False,
                             "reasons": [f"{model}의 체크포인트가 없다"]})
         return 1
-    ctx, node = build_resume_context(data, model, checkpoint)
+    slot, slot_problem = resume_slot(args, demo_state, model,
+                                     bound=checkpoint.get("destination_slot"))
+    if slot_problem:
+        print(f"resume BLOCK: {slot_problem}", file=sys.stderr)
+        _write_report(out, {"schema": "forstick2.simulation_demo_resume/1",
+                            "model": model, "status": "resume_blocked",
+                            "reasons": [slot_problem], "robot_commands_sent": 0,
+                            "is_simulated": True, "real_hardware_ready": False,
+                            "real_hardware_verified": False})
+        return 1
+    ctx, node = build_resume_context(data, model, checkpoint, slot=slot)
     try:
         verification = verify_resume(ctx, started_at=time.time())
         reasons = verification["reasons"]
@@ -1969,7 +2301,17 @@ def resume_checkpoint(args, data: dict) -> int:
                             "is_simulated": True, "real_hardware_ready": False,
                             "real_hardware_verified": False})
         return 1
-    ctx, node = build_resume_context(data, model, checkpoint)
+    slot, slot_problem = resume_slot(args, demo_state, model,
+                                     bound=checkpoint.get("destination_slot"))
+    if slot_problem:
+        print(f"resume BLOCK: {slot_problem}", file=sys.stderr)
+        _write_report(out, {"schema": "forstick2.simulation_demo_resume/1",
+                            "model": model, "status": "resume_blocked",
+                            "reasons": [slot_problem], "robot_commands_sent": 0,
+                            "is_simulated": True, "real_hardware_ready": False,
+                            "real_hardware_verified": False})
+        return 1
+    ctx, node = build_resume_context(data, model, checkpoint, slot=slot)
     try:
         report = run_resume(ctx, checkpoint_id=args.resume_checkpoint,
                             stop_at=args.stop_at)
@@ -2105,6 +2447,292 @@ def _model_of(data: dict, token: str) -> str | None:
     return None
 
 
+def reconcile_state(args, data: dict) -> int:
+    """시연 기록을 지금 Gazebo 관측과 맞춘다. **로봇에 명령을 보내지 않는다.**
+
+    Gazebo를 다시 띄우면 world는 선언된 초기 자리로 돌아가지만 시연 기록
+    (`sim_demo_state.json`)은 파일에 남는다. 그러면 화면은 "A자재가 컨베이어에
+    있다"고 말하는데 실제로는 팔레트에 있다. 이 모드가 그 어긋남만 정리한다.
+
+    - 관측이 "원래 슬롯"이라고 말한 기록만 지운다(`ORIGIN_TOLERANCE_M`).
+    - 컨베이어 측정 위치면 기록을 그대로 둔다 — 실제로 유지 중인 것이다.
+    - 관측 실패·둘 다 아님이면 **지우지 않고** 사유만 남긴다.
+    - 기록을 지웠고 stale STOP 래치가 남아 있으면 `--restore-only`와 **같은**
+      조건(`clear_latch_after_restore`)으로만 푼다. 새 규칙을 만들지 않는다.
+    """
+    out = Path(args.out) if args.out != str(OUT) else RECONCILE_OUT
+    demo_state = SimulationDemoState()
+    status = demo_state.status()
+    report: dict = {
+        "schema": "forstick2.simulation_demo_reconcile/1",
+        "mode": "reconcile_state", "is_simulated": True,
+        "real_hardware_ready": False, "real_hardware_verified": False,
+        "robot_commands": 0,
+    }
+
+    def finish(code: int, **fields) -> int:
+        report.update(fields)
+        report.update(_raw_log_fields())
+        report["written_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                       encoding="utf-8")
+        print(f"기록: {out}")
+        return code
+
+    if status.get("available") is not True:
+        print("시연 상태를 읽지 못했다 — 정합하지 않는다", file=sys.stderr)
+        return finish(1, status="reconcile_unavailable",
+                      detail=status.get("detail"))
+
+    records = dict(status.get("objects") or {})
+    models = sorted(set(records) | set(status.get("checkpoints") or []))
+    if not models:
+        print("[정합] 남은 기록이 없다 — 맞출 것이 없다")
+        return finish(0, status="reconcile_not_needed", findings=[], cleared=[])
+
+    objects = declarations_from_config(data["models"], data["frames"],
+                                       source=str(WORKCELL))
+    fixture = GazeboObjectFixture(
+        world_name=data["world_name"], gz_partition=data["gz_partition"],
+        objects=objects)
+    grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
+    observed: dict = {}
+    origins: dict = {}
+    centers: dict = {}
+    try:
+        for model in models:
+            observed[model] = fixture.pose_of(model, timeout_sec=5.0, fresh=True)
+            slot = origin_slot(data, model)
+            origins[model] = slot.home_pose_m
+            # 비교 기준은 **그 자재가 배정받은 슬롯**이다. 벨트 중심 하나로
+            # 비교하면 2·3번 자리의 자재가 `elsewhere`로 잘못 판정된다(실측).
+            entry = slot_entry(grasp_file, record_slot(records.get(model)))
+            if entry is not None:
+                centers[model] = tuple(
+                    float(v) for v in entry["object_world_center_m"])
+            else:
+                centers[model] = conveyor_grasp_center(
+                    grasp_file,
+                    conveyor_grasp_pose(grasp_file, object_id=slot.object_id,
+                                        target_id=args.target))
+        # 다른 팔레트에 놓인 기록: 그 팔레트 자리(= 그 팔레트 원래 자재의 선언 위치).
+        pallet_home = {}
+        for other in models:
+            other_slot = origin_slot(data, other)
+            pallet_home[other_slot.support_id] = other_slot.home_pose_m
+        pallet_centers = {m: pallet_home.get((records.get(m) or {}).get("pallet"))
+                          for m in models}
+        findings = reconcile_findings(
+            records={m: records.get(m) or {} for m in models},
+            observed=observed, origins=origins, conveyor_centers=centers,
+            pallet_centers=pallet_centers)
+        applied = demo_state.record_reconcile(
+            findings, source="scripts/demo_workcell_pick_place.py --reconcile-state")
+        for row in findings:
+            print(f"[정합] {row['model']}: {row['verdict']} — {row['detail']}")
+        cleared = list(applied.get("cleared") or [])
+        print("[정합] 기록에서 뺀 자재: " + (", ".join(cleared) or "없음"))
+
+        latch_result = None
+        if cleared and StopLatchFile(LATCH).latched() is not None:
+            latch_result = clear_latch_after_restore_live(
+                data=data, model=cleared[0], fixture=fixture, objects=objects,
+                demo_state=demo_state)
+            print(f"[래치] {'해제' if latch_result['cleared'] else '유지'}: "
+                  + (" · ".join(latch_result["reasons"]) or "조건 전부 충족"))
+    finally:
+        fixture.close()
+
+    unobserved = [row["model"] for row in findings
+                  if row["verdict"] == RECONCILE_UNOBSERVED]
+    return finish(1 if unobserved else 0,
+                  status=("reconcile_incomplete" if unobserved
+                          else "reconcile_completed"),
+                  findings=findings, cleared=cleared, unobserved=unobserved,
+                  latch=latch_result, state=demo_state.status())
+
+
+def _run_held_route(*, stages, bindings, client, snapshot, transport, fixture,
+                    model: str, object_id: str, latch, zone, stop_at, grasp_file,
+                    mode: str, source_id: str, destination_id: str,
+                    origin_slot_id: str, origin_home_m, banner: str,
+                    source_slot: str | None = None,
+                    destination_slot: str | None = None) -> dict:
+    """든 자재를 옮기는 12단계 실행(복귀·칸 이동 공통).
+
+    단계마다 scene 불변 · 든 물체 포함 검사 · 외부 STOP · 수렴 확인 뒤 체크포인트 ·
+    고정/해제를 같은 규칙으로 한다. 판정·기록은 호출자가 관측으로 한다.
+    """
+    joints_urdf, _links = parse_urdf(URDF)
+    mimics = load_mimics()
+    tcp_link = str(grasp_file["declared"]["tcp_link"])
+    offset = bindings.attached[object_id]["offset_m"]
+    faults: list[tuple] = []
+    stage_records: list[dict] = []
+    follow_samples: list[dict] = []
+    follower = None
+    stop_requested = False
+    pending_checkpoint: dict | None = None
+    attached = detached = False
+    print(banner)
+    for stage in stages:
+        current = client.snapshot()
+        if current.content_hash != snapshot.content_hash:
+            faults.append((ReasonCode.GEOMETRY_SNAPSHOT_EXPIRED,
+                           f"{stage.label} 앞에서 scene이 바뀌었다"))
+            break
+        stage_checks, stage_bad = check_stages([stage], bindings=bindings, client=client)
+        if not stage_checks[0].passed:
+            faults.append((stage_bad[0].reason_code if stage_bad
+                           else ReasonCode.GEOMETRY_COLLISION,
+                           f"{stage.label} 검사 미통과"))
+            break
+        joints = stage_joint_state(stage, bindings)
+        arm_target = {n: v for n, v in joints.items() if n.startswith("j")}
+        stop_here = stop_at == stage.stage
+        external_stop = EXTERNAL_STOP.requested()
+        if stage.stage in HOLDING_STAGES and stage.kind == "arm_motion":
+            follower = Follower(
+                fixture=fixture, model=model, transport=transport,
+                joints=joints_urdf, mimics=mimics, tcp_link=tcp_link,
+                offset=offset, gripper_value=bindings.gripper_grasp_rad)
+            follower.start()
+        # joint 방식: 손가락을 닫기 **전에** 붙인다. 닫히는 손가락이 동적 자재를 옆으로 밀어
+        # 생기는 어긋남(실측 약 11 mm)을 관절이 그대로 굳히지 않게 — 자재는 측정된 파지
+        # 자세 그대로 손목에 묶이고, 손가락은 그 둘레로 닫힌다.
+        if (stage.stage == STAGE_GRIPPER_CLOSE and getattr(fixture, "mode", "") == "joint"
+                and ATTACH_BEFORE_CLOSE
+                and not stop_here and not external_stop and model not in fixture.held()):
+            try:
+                event = fixture.attach(model, pose_m=fixture.pose_of(
+                    model, timeout_sec=2.0, fresh=True))
+                attached = bool(event.verified)
+            except FixtureError as exc:
+                faults.append((exc.reason, str(exc)))
+                break
+        if not stop_here and not external_stop:
+            if stage.kind == "gripper":
+                outcome = transport.send_gripper(
+                    float(stage.gripper_joint_rad), GRIPPER_SECONDS,
+                    ACTION_TIMEOUT, should_stop=EXTERNAL_STOP.requested)
+            else:
+                outcome = transport.send_arm(arm_target, ARM_SECONDS,
+                                             ACTION_TIMEOUT,
+                                             should_stop=EXTERNAL_STOP.requested)
+            external_stop = EXTERNAL_STOP.requested()
+        if external_stop:
+            print(f"[외부 정지 요청] {stage.label} 중 — STOP 절차로 들어간다")
+        if stop_here or external_stop:
+            if not external_stop:
+                transport.send_arm_async(arm_target, ARM_SECONDS, ACTION_TIMEOUT)
+                time.sleep(ARM_SECONDS / 3.0)
+            stop_requested = True
+            stop_requested_at = time.time()
+            stop_execution_id = f"simstop_{uuid.uuid4().hex[:16]}"
+            cancel = transport.cancel_all(5.0)
+            time.sleep(0.5)
+            observation = settled_observation(transport, timeout_sec=STOP_SETTLE_TIMEOUT_SEC)
+            peak = max((abs(v) for v in observation.velocities.values()),
+                       default=0.0)
+            confirmed = bool(cancel.accepted and observation.valid and peak < 0.01)
+            # 추종기를 켠 채 자재 수렴을 확인 → halt → 캡처.
+            convergence = settle_held_object(
+                follower=follower, fixture=fixture, model=model,
+                confirmed=confirmed, capture=True,
+                expected_pose_m=expected_held_pose(
+                    joints_urdf=joints_urdf, mimics=mimics, tcp_link=tcp_link,
+                    positions=observation.positions,
+                    gripper_joint=bindings.gripper_joint,
+                    gripper_default=bindings.gripper_grasp_rad, offset=offset))
+            if follower is not None:
+                follow_samples.extend(follower.samples)
+                follower = None
+            pending_checkpoint = capture_stop_checkpoint(
+                mode=mode, model=model, object_id=object_id,
+                source_id=source_id, destination_id=destination_id,
+                origin_slot_id=origin_slot_id, stages=stages,
+                stopped_stage=stage.stage, stage_records=stage_records,
+                confirmed=confirmed,
+                stop_execution_id=stop_execution_id,
+                stop_requested_at=stop_requested_at, observation=observation,
+                gripper_joint=bindings.gripper_joint, fixture=fixture,
+                client=client, scene_hash_at_stop=current.content_hash,
+                conveyor_zone=zone, origin_home_m=origin_home_m,
+                convergence=convergence, source_slot=source_slot,
+                destination_slot=destination_slot)
+            latch.latch({"at": time.time(), "stage": stage.stage,
+                         "stop_execution_id": stop_execution_id,
+                         "scene_hash": current.content_hash,
+                         "held_by_fixture": list(fixture.held()),
+                         "arm_peak_rad_s": peak,
+                         "goals_canceling": cancel.goals_canceling,
+                         "detail": "복귀 중 정지 — 새 시뮬레이션은 래치 해제와"
+                                   " scene 재검증을 요구한다"})
+            EXTERNAL_STOP.consume()   # 처리한 외부 정지 요청만 지운다
+            stage_records.append({"stage": stage.stage, "executed": True,
+                                  "stopped": True,
+                                  "stop_confirmed": bool(cancel.accepted
+                                                         and peak < 0.01)})
+            break
+        if follower is not None:
+            row = follower.sample()
+            if row is not None:
+                follow_samples.append(row)
+            follower.halt()
+            follow_samples.extend(follower.samples)
+            follower = None
+        observation = settled_observation(transport)
+        if stage.kind == "gripper":
+            error = abs(observation.positions.get(bindings.gripper_joint,
+                                                  float("nan"))
+                        - float(stage.gripper_joint_rad))
+        else:
+            error = max((abs(observation.positions.get(n, float("nan")) - v)
+                         for n, v in arm_target.items()), default=float("nan"))
+        reached = bool(error == error and error <= JOINT_TOLERANCE_RAD)
+        stage_records.append({"stage": stage.stage, "label": stage.label,
+                              "executed": True, "goal_accepted": outcome.accepted,
+                              "controller_error_code": outcome.error_code,
+                              "observed_error_rad": None if error != error
+                              else round(error, 6), "reached": reached})
+        if not outcome.accepted or outcome.error_code not in (0, None):
+            faults.append((ReasonCode.EXEC_GOAL_REJECTED,
+                           f"{stage.label} 컨트롤러 결과 {outcome.error_code}"))
+            break
+        if not reached:
+            faults.append((ReasonCode.EXEC_GOAL_NOT_REACHED,
+                           f"{stage.label} 목표 미도달 (오차 {error:.5f} rad)"))
+            break
+        if stage.stage == STAGE_GRIPPER_CLOSE and model not in fixture.held():
+            try:
+                event = fixture.attach(model, pose_m=fixture.pose_of(
+                    model, timeout_sec=2.0, fresh=True))
+                attached = bool(event.verified)
+            except FixtureError as exc:
+                faults.append((exc.reason, str(exc)))
+                break
+        elif stage.stage == STAGE_GRIPPER_OPEN_RELEASE:
+            try:
+                event = fixture.detach(model, pose_m=fixture.pose_of(
+                    model, timeout_sec=2.0, fresh=True))
+                detached = bool(event.verified)
+            except FixtureError as exc:
+                faults.append((exc.reason, str(exc)))
+                break
+            fixture.settle(model)
+        print(f"  [{stage.no:2d}/{len(stages)}] {stage.label:16s}"
+              f" 오차 {error:.5f} rad · 도달={reached}")
+    if follower is not None:
+        follower.halt()
+        follow_samples.extend(follower.samples)
+
+    return {"faults": faults, "stage_records": stage_records,
+            "follow_samples": follow_samples, "stop_requested": stop_requested,
+            "pending_checkpoint": pending_checkpoint, "attached": attached,
+            "detached": detached}
+
+
 def return_held_to_origin(args, data: dict) -> int:
     """컨베이어에 유지 중인 자재를 원래 슬롯으로 되돌린다(시뮬레이터 전용).
 
@@ -2177,8 +2805,36 @@ def return_held_to_origin(args, data: dict) -> int:
                                origin_id=slot.support_id)
     origin_place = pallet_place_pose(grasp_file, object_id=slot.object_id,
                                      support_id=slot.support_id)
+    # 놓기 자세가 측정되지 않았을 때 대신 쓰는 것은 **팔레트** 파지 자세다.
+    # 아래 슬롯 적용이 grasp_pose[자재]를 컨베이어 슬롯 파지 자세로 바꾸므로
+    # 그 전에 잡아 둔다(바뀐 뒤 대신 쓰면 컨베이어로 "놓으러" 간다 — 실측:
+    # conveyor__belt↔material_b__held로 사전 검사에서 막혔다).
+    origin_place = origin_place or bindings.grasp_pose.get(slot.object_id)
     conveyor_grasp = conveyor_grasp_pose(grasp_file, object_id=slot.object_id,
                                          target_id=target_rid)
+    # 복귀는 **그 자재가 배정받았던 슬롯**에서 집는다. 기록이 근거이고,
+    # 서버가 `--slot`으로 같은 값을 넘긴다. 둘이 다르면 기록을 따르지 않고
+    # 멈춘다 — 엉뚱한 자리를 집지 않기 위해서다.
+    recorded_slot = record_slot(record)
+    if args.slot and recorded_slot and args.slot != recorded_slot:
+        return blocked([(ReasonCode.EXEC_PERMIT_DENIED,
+                         f"{model}의 기록 슬롯은 {recorded_slot}인데"
+                         f" {args.slot}로 요청됐다")])
+    return_slot = slot_entry(grasp_file, args.slot or recorded_slot)
+    if return_slot is not None and conveyor_grasp:
+        name = args.slot or recorded_slot
+        return_slot = {**return_slot, "slot_name": name}
+        conveyor_model = (resources.resources[target_rid])["gazebo_model"]
+        bindings = apply_slot(bindings, return_slot, target_rid, conveyor_model)
+        if return_slot.get("grasp_joint_rad_arm"):
+            slot_grasp = f"{conveyor_grasp}__{name}"
+            poses = dict(bindings.poses)
+            poses[slot_grasp] = dict(return_slot["grasp_joint_rad_arm"])
+            grasp_map = dict(bindings.grasp_pose)
+            grasp_map[slot.object_id] = slot_grasp
+            bindings = dataclasses.replace(bindings, poses=poses,
+                                           grasp_pose=grasp_map)
+            conveyor_grasp = slot_grasp
     stages, stage_findings = build_return_stages(
         bindings, object_id=slot.object_id, origin_id=slot.support_id,
         target_id=target_rid, conveyor_grasp=conveyor_grasp,
@@ -2209,6 +2865,13 @@ def return_held_to_origin(args, data: dict) -> int:
             return blocked([(ReasonCode.EXEC_STOPPED,
                              f"정지 래치가 걸려 있다 — {detail}")])
         snapshot = client.snapshot()
+
+    # 다른 자재가 칸·다른 팔레트에 있으면 scene을 실제 위치로 맞춘다(기록↔관측 대조).
+    report["scene_sync"], sync_problems = sync_planning_scene(
+        client=client, fixture=fixture, data=data, grasp_file=grasp_file)
+    if sync_problems:
+        return blocked(sync_problems)
+    snapshot = client.snapshot()
 
     # ── 3. 현재 컨베이어 배치 · 원래 슬롯 비점유 ───────────────────────
     conveyor = data["models"][resources.resources[target_rid]["gazebo_model"]]
@@ -2263,157 +2926,25 @@ def return_held_to_origin(args, data: dict) -> int:
     if findings:
         return blocked(findings)
 
+    # 단계 사이 경로도 같은 scene·같은 접촉 규칙으로 본다(움직이기 전).
+    report["path_check"], path_problems = path_preflight(
+        client=client, transport=transport, stages=stages, bindings=bindings)
+    if path_problems:
+        return blocked(path_problems)
+
     # ── 5. 실행 ────────────────────────────────────────────────────────
-    joints_urdf, _links = parse_urdf(URDF)
-    mimics = load_mimics()
-    tcp_link = str(grasp_file["declared"]["tcp_link"])
-    offset = bindings.attached[slot.object_id]["offset_m"]
-    faults: list[tuple] = []
-    stage_records: list[dict] = []
-    follow_samples: list[dict] = []
-    follower = None
-    stop_requested = False
-    pending_checkpoint: dict | None = None
-    attached = detached = False
-    print(f"[복귀 시작] {model}: 컨베이어 → {slot.support_id}"
-          f" · scene {snapshot.content_hash[:12]}")
-    for stage in stages:
-        current = client.snapshot()
-        if current.content_hash != snapshot.content_hash:
-            faults.append((ReasonCode.GEOMETRY_SNAPSHOT_EXPIRED,
-                           f"{stage.label} 앞에서 scene이 바뀌었다"))
-            break
-        stage_checks, stage_bad = check_stages([stage], bindings=bindings,
-                                               client=client)
-        if not stage_checks[0].passed:
-            faults.append((stage_bad[0].reason_code if stage_bad
-                           else ReasonCode.GEOMETRY_COLLISION,
-                           f"{stage.label} 검사 미통과"))
-            break
-        joints = stage_joint_state(stage, bindings)
-        arm_target = {n: v for n, v in joints.items() if n.startswith("j")}
-        stop_here = args.stop_at == stage.stage
-        external_stop = EXTERNAL_STOP.requested()
-        if stage.stage in HOLDING_STAGES and stage.kind == "arm_motion":
-            follower = Follower(
-                fixture=fixture, model=model, transport=transport,
-                joints=joints_urdf, mimics=mimics, tcp_link=tcp_link,
-                offset=offset, gripper_value=bindings.gripper_grasp_rad)
-            follower.start()
-        if not stop_here and not external_stop:
-            if stage.kind == "gripper":
-                outcome = transport.send_gripper(
-                    float(stage.gripper_joint_rad), GRIPPER_SECONDS,
-                    ACTION_TIMEOUT, should_stop=EXTERNAL_STOP.requested)
-            else:
-                outcome = transport.send_arm(arm_target, ARM_SECONDS,
-                                             ACTION_TIMEOUT,
-                                             should_stop=EXTERNAL_STOP.requested)
-            external_stop = EXTERNAL_STOP.requested()
-        if external_stop:
-            print(f"[외부 정지 요청] {stage.label} 중 — STOP 절차로 들어간다")
-        if stop_here or external_stop:
-            if not external_stop:
-                transport.send_arm_async(arm_target, ARM_SECONDS, ACTION_TIMEOUT)
-                time.sleep(ARM_SECONDS / 3.0)
-            stop_requested = True
-            stop_requested_at = time.time()
-            stop_execution_id = f"simstop_{uuid.uuid4().hex[:16]}"
-            cancel = transport.cancel_all(5.0)
-            time.sleep(0.5)
-            observation = settled_observation(transport, timeout_sec=STOP_SETTLE_TIMEOUT_SEC)
-            peak = max((abs(v) for v in observation.velocities.values()),
-                       default=0.0)
-            confirmed = bool(cancel.accepted and observation.valid and peak < 0.01)
-            # 추종기를 켠 채 자재 수렴을 확인 → halt → 캡처.
-            convergence = settle_held_object(
-                follower=follower, fixture=fixture, model=model,
-                confirmed=confirmed, capture=True,
-                expected_pose_m=expected_held_pose(
-                    joints_urdf=joints_urdf, mimics=mimics, tcp_link=tcp_link,
-                    positions=observation.positions,
-                    gripper_joint=bindings.gripper_joint,
-                    gripper_default=bindings.gripper_grasp_rad, offset=offset))
-            if follower is not None:
-                follow_samples.extend(follower.samples)
-                follower = None
-            pending_checkpoint = capture_stop_checkpoint(
-                mode="return", model=model, object_id=slot.object_id,
-                source_id=target_rid, destination_id=slot.support_id,
-                origin_slot_id=slot.support_id, stages=stages,
-                stopped_stage=stage.stage, stage_records=stage_records,
-                confirmed=confirmed,
-                stop_execution_id=stop_execution_id,
-                stop_requested_at=stop_requested_at, observation=observation,
-                gripper_joint=bindings.gripper_joint, fixture=fixture,
-                client=client, scene_hash_at_stop=current.content_hash,
-                conveyor_zone=zone, origin_home_m=slot.home_pose_m,
-                convergence=convergence)
-            latch.latch({"at": time.time(), "stage": stage.stage,
-                         "stop_execution_id": stop_execution_id,
-                         "scene_hash": current.content_hash,
-                         "held_by_fixture": list(fixture.held()),
-                         "arm_peak_rad_s": peak,
-                         "goals_canceling": cancel.goals_canceling,
-                         "detail": "복귀 중 정지 — 새 시뮬레이션은 래치 해제와"
-                                   " scene 재검증을 요구한다"})
-            EXTERNAL_STOP.consume()   # 처리한 외부 정지 요청만 지운다
-            stage_records.append({"stage": stage.stage, "executed": True,
-                                  "stopped": True,
-                                  "stop_confirmed": bool(cancel.accepted
-                                                         and peak < 0.01)})
-            break
-        if follower is not None:
-            row = follower.sample()
-            if row is not None:
-                follow_samples.append(row)
-            follower.halt()
-            follow_samples.extend(follower.samples)
-            follower = None
-        observation = settled_observation(transport)
-        if stage.kind == "gripper":
-            error = abs(observation.positions.get(bindings.gripper_joint,
-                                                  float("nan"))
-                        - float(stage.gripper_joint_rad))
-        else:
-            error = max((abs(observation.positions.get(n, float("nan")) - v)
-                         for n, v in arm_target.items()), default=float("nan"))
-        reached = bool(error == error and error <= JOINT_TOLERANCE_RAD)
-        stage_records.append({"stage": stage.stage, "label": stage.label,
-                              "executed": True, "goal_accepted": outcome.accepted,
-                              "controller_error_code": outcome.error_code,
-                              "observed_error_rad": None if error != error
-                              else round(error, 6), "reached": reached})
-        if not outcome.accepted or outcome.error_code not in (0, None):
-            faults.append((ReasonCode.EXEC_GOAL_REJECTED,
-                           f"{stage.label} 컨트롤러 결과 {outcome.error_code}"))
-            break
-        if not reached:
-            faults.append((ReasonCode.EXEC_GOAL_NOT_REACHED,
-                           f"{stage.label} 목표 미도달 (오차 {error:.5f} rad)"))
-            break
-        if stage.stage == STAGE_GRIPPER_CLOSE:
-            try:
-                event = fixture.attach(model, pose_m=fixture.pose_of(
-                    model, timeout_sec=2.0, fresh=True))
-                attached = bool(event.verified)
-            except FixtureError as exc:
-                faults.append((exc.reason, str(exc)))
-                break
-        elif stage.stage == STAGE_GRIPPER_OPEN_RELEASE:
-            try:
-                event = fixture.detach(model, pose_m=fixture.pose_of(
-                    model, timeout_sec=2.0, fresh=True))
-                detached = bool(event.verified)
-            except FixtureError as exc:
-                faults.append((exc.reason, str(exc)))
-                break
-            fixture.settle(model)
-        print(f"  [{stage.no:2d}/{len(stages)}] {stage.label:16s}"
-              f" 오차 {error:.5f} rad · 도달={reached}")
-    if follower is not None:
-        follower.halt()
-        follow_samples.extend(follower.samples)
+    run = _run_held_route(
+        stages=stages, bindings=bindings, client=client, snapshot=snapshot,
+        transport=transport, fixture=fixture, model=model, object_id=slot.object_id,
+        latch=latch, zone=zone, stop_at=args.stop_at, grasp_file=grasp_file,
+        mode="return", source_id=target_rid, destination_id=slot.support_id,
+        origin_slot_id=slot.support_id, origin_home_m=slot.home_pose_m,
+        banner=(f"[복귀 시작] {model}: 컨베이어 → {slot.support_id}"
+                f" · scene {snapshot.content_hash[:12]}"))
+    faults, stage_records = run["faults"], run["stage_records"]
+    follow_samples, stop_requested = run["follow_samples"], run["stop_requested"]
+    pending_checkpoint = run["pending_checkpoint"]
+    attached, detached = run["attached"], run["detached"]
 
     # ── 6. 관측으로 판정하고 기록한다 ──────────────────────────────────
     final_pose = fixture.pose_of(model, timeout_sec=3.0, fresh=True)
@@ -2444,6 +2975,557 @@ def return_held_to_origin(args, data: dict) -> int:
                   stage_records=stage_records, follow_samples=follow_samples,
                   attached=attached, detached=detached,
                   simulation_demo=demo_state.status())
+
+
+def move_between_slots(args, data: dict) -> int:
+    """공통 `transfer`: 컨베이어 칸 → 다른 칸 **직접** 이송(원래 팔레트를 거치지 않는다).
+
+    자세는 계약(`core/transfer_skill.validate_transfer`)이 FR3 Capability에서 받은
+    검증된 것만 쓴다. 실행은 복귀와 같은 `_run_held_route`다. 도착 판정은 Gazebo
+    관측(도착 칸 중심 0.02 m)이고, 기록은 그 판정으로만 옮긴다.
+    """
+    from core.transfer_skill import TransferRequest, WorldView, validate_transfer
+    from robots.fr3_gazebo.transfer_capability import ROBOT_ID, Fr3TransferCapability
+    from validation.conveyor_slots import RECORD_MATCH_TOLERANCE_M, load_slots, slot_at
+    from validation.simulation_demo_state import HELD_ON_TARGET
+    from validation.transfer_stages import bind_route, build_route_stages
+
+    out = Path(args.out) if args.out != str(OUT) else SLOT_MOVE_OUT
+    demo_state = SimulationDemoState()
+    model = _model_of(data, args.object) or args.object
+    from_slot, to_slot = args.move_from_slot, args.move_to_slot
+    report: dict = {"schema": "forstick2.simulation_demo_slot_move/1",
+                    "mode": "slot_move", "skill": "transfer", "model": model,
+                    "from_slot": from_slot, "to_slot": to_slot,
+                    "is_simulated": True, "real_hardware_ready": False,
+                    "real_hardware_verified": False}
+
+    def finish(code: int, **fields) -> int:
+        report.update(fields)
+        report.update(_raw_log_fields())
+        report["written_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                       encoding="utf-8")
+        print(f"기록: {out}")
+        return code
+
+    def blocked(findings) -> int:
+        for code, text in findings:
+            print(f"칸 이동하지 않았다: [{code}] {text}", file=sys.stderr)
+        closer = globals().get("_active_fixture")
+        if closer is not None:
+            closer.close()
+        return finish(1, status="slot_move_not_started",
+                      reason_codes=[str(c) for c, _ in findings],
+                      findings=[{"reason_code": str(c), "detail": t} for c, t in findings],
+                      simulation_demo=demo_state.status())
+
+    if not from_slot or not to_slot:
+        return blocked([(ReasonCode.PLAN_UNKNOWN_RESOURCE,
+                         "--move-from-slot와 --move-to-slot이 모두 필요하다")])
+    # ── 1. 기록 · 계약 ──────────────────────────────────────────────
+    record = demo_state.held_record(model)
+    if record is None or record.get("state") != HELD_ON_TARGET:
+        return blocked([(ReasonCode.EXEC_PERMIT_DENIED,
+                         f"{model}이 컨베이어에 유지 중이라는 기록이 없다")])
+    if record_slot(record) != from_slot:
+        return blocked([(ReasonCode.PLAN_RESOURCE_MISMATCH,
+                         f"{model}의 기록 칸은 {record_slot(record)}인데"
+                         f" {from_slot}에서 집으라고 했다")])
+    capability = Fr3TransferCapability.from_files(ROOT)
+    if args.verify_live_path_only:
+        # 검증 전용: 측정 표(계획 보조)를 빼고 실행 직전 live 경로 검사만으로 막히는지 본다.
+        capability._clearance = {}
+        report["injected"] = ["verify_live_path_only: 계약의 경로 여유 표 검사 생략"]
+    location_of = {m: capability.origin_of(m) for m in capability.materials()}
+    for other, row in (demo_state.status().get("objects") or {}).items():
+        if row.get("state") == HELD_ON_TARGET:
+            location_of[other] = record_slot(row)
+        elif row.get("state") == ON_PALLET and row.get("pallet"):
+            location_of[other] = row["pallet"]
+        else:
+            return blocked([(ReasonCode.EXEC_PERMIT_DENIED,
+                             f"{other}의 기록이 확정되지 않았다({row.get('state')})")])
+    plan, contract = validate_transfer(
+        TransferRequest(ROBOT_ID, model, from_slot, to_slot), capability,
+        WorldView(location_of=location_of))
+    if plan is None:
+        return blocked([(_contract_reason(f), f"{f.code}: {f.detail}") for f in contract])
+    report["contract"] = plan.to_dict()
+    try:
+        origin = origin_slot(data, model)
+    except (KeyError, ValueError) as exc:
+        return blocked([(ReasonCode.PLAN_UNKNOWN_RESOURCE, str(exc))])
+
+    resources = load_workcell_resources(
+        WORKCELL, POSES, state_max_age_sec=0.5,
+        mounting_path=MOUNTING, grasp_path=GRASP)
+    grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
+    target_rid = str(record.get("target_id") or "loc_conveyor")
+    bindings = return_bindings(build_bindings(resources), object_id=origin.object_id,
+                               target_id=target_rid, grasp_config=grasp_file,
+                               origin_id=origin.support_id)
+    try:
+        bindings = bind_route(bindings, plan.poses)
+    except ValueError as exc:
+        return blocked([(ReasonCode.GEOMETRY_GRASP_POSE_UNAVAILABLE, str(exc))])
+    stages, stage_findings = build_route_stages(
+        bindings, object_id=origin.object_id, route=plan.poses,
+        source_resource_id=target_rid, destination_resource_id=target_rid)
+    if stage_findings:
+        return blocked(stage_findings)
+    slots = {slot.name: slot for slot in load_slots(grasp_file)}
+
+    profile_limits = {}
+    for joint in ET.parse(URDF).getroot().findall("joint"):
+        limit = joint.find("limit")
+        if limit is not None and joint.get("type") == "revolute":
+            profile_limits[joint.get("name")] = (float(limit.get("lower")),
+                                                 float(limit.get("upper")))
+    client, node, transport = scene_and_transport(resources, profile_limits)
+    objects = declarations_from_config(data["models"], data["frames"], source=str(WORKCELL))
+    fixture = GazeboObjectFixture(world_name=resources.world_name,
+                                  gz_partition=resources.gz_partition, objects=objects)
+    globals()["_active_fixture"] = fixture
+    latch = StopLatchFile(LATCH)
+    snapshot = client.snapshot()
+    if latch.latched() is not None:
+        released, detail = latch.release(
+            live_goals=transport.live_goals(), scene_hash=snapshot.content_hash,
+            latched_hash=latch.latched().get("scene_hash"))
+        print(f"[래치] {detail}")
+        if not released:
+            return blocked([(ReasonCode.EXEC_STOPPED, f"정지 래치가 걸려 있다 — {detail}")])
+        snapshot = client.snapshot()
+
+    # 다른 자재가 칸·다른 팔레트에 있으면 scene을 실제 위치로 맞춘다(기록↔관측 대조).
+    report["scene_sync"], sync_problems = sync_planning_scene(
+        client=client, fixture=fixture, data=data, grasp_file=grasp_file)
+    if sync_problems:
+        return blocked(sync_problems)
+    snapshot = client.snapshot()
+
+    # ── 2. 관측: 출발 칸에 있고, 도착 칸이 비어 있는가 ──────────────
+    conveyor = data["models"][resources.resources[target_rid]["gazebo_model"]]
+    belt = next(part for part in conveyor["parts"] if part["name"] == "belt")
+    rails = [part for part in conveyor["parts"] if part["name"].startswith("frame_")]
+    center = _resolve(data["frames"], conveyor["frame"])
+    rail_inner = min(abs(part["center_xyz_m"][1]) - part["size_m"][1] / 2
+                     for part in rails) if rails else belt["size_m"][1] / 2
+    zone = placement_zone(
+        target_center_m=center,
+        surface_half_extent_m=(belt["size_m"][0] / 2, min(belt["size_m"][1] / 2, rail_inner)),
+        object_size_m=objects[model].size_m, surface_top_z_m=center[2],
+        z_tolerance_m=PLACEMENT_Z_TOLERANCE_M)
+    findings = []
+    observed = fixture.pose_of(model, timeout_sec=5.0, fresh=True)
+    here = slot_at(slots.values(), observed, RECORD_MATCH_TOLERANCE_M)
+    if here is None or here.name != from_slot:
+        findings.append((ReasonCode.PLAN_RESOURCE_MISMATCH,
+                         f"{model}이 관측상 {from_slot}에 없다"
+                         f" (관측 {None if observed is None else [round(v, 4) for v in observed]})"))
+    for other in objects:
+        if other == model:
+            continue
+        pose = fixture.pose_of(other, timeout_sec=2.0, fresh=True)
+        if pose is None:
+            findings.append((ReasonCode.EXEC_UNVERIFIABLE, f"{other}의 위치를 관측하지 못했다"))
+            continue
+        spot = slot_at(slots.values(), pose, RECORD_MATCH_TOLERANCE_M)
+        if spot is not None and spot.name == to_slot:
+            findings.append((ReasonCode.EXEC_SIM_TARGET_OCCUPIED,
+                             f"{to_slot}에 {other}가 관측된다 — 먼저 비워야 한다"))
+    # ── 3. 든 물체 포함 사전 검사 ─────────────────────────────────
+    before = client.snapshot()
+    checks, check_findings = check_stages(stages, bindings=bindings, client=client)
+    after = client.snapshot()
+    if not (after.content_hash == before.content_hash == snapshot.content_hash):
+        findings.append((ReasonCode.GEOMETRY_SNAPSHOT_EXPIRED, "사전 검사 중 scene이 바뀌었다"))
+    findings.extend((f.reason_code, f.detail) for f in check_findings)
+    report["preflight"] = {
+        "observed_pose_m": None if observed is None else list(observed),
+        "observed_slot": None if here is None else here.name,
+        "checks": [c.to_dict() for c in checks],
+        "stages": [_stage_row(st) for st in stages]}
+    if findings:
+        return blocked(findings)
+
+    # 단계 사이 경로도 같은 scene·같은 접촉 규칙으로 본다(움직이기 전).
+    report["path_check"], path_problems = path_preflight(
+        client=client, transport=transport, stages=stages, bindings=bindings)
+    if path_problems:
+        return blocked(path_problems)
+
+    # ── 4. 실행(복귀와 같은 실행부) ───────────────────────────────
+    run = _run_held_route(
+        stages=stages, bindings=bindings, client=client, snapshot=snapshot,
+        transport=transport, fixture=fixture, model=model, object_id=origin.object_id,
+        latch=latch, zone=zone, stop_at=args.stop_at, grasp_file=grasp_file,
+        mode="slot_move", source_id=target_rid, destination_id=target_rid,
+        origin_slot_id=origin.support_id, origin_home_m=origin.home_pose_m,
+        source_slot=from_slot, destination_slot=to_slot,
+        banner=(f"[칸 이동 시작] {model}: {from_slot} → {to_slot}"
+                f" · scene {snapshot.content_hash[:12]}"))
+
+    # ── 5. 관측으로 판정하고 기록한다 ─────────────────────────────
+    final_pose = fixture.pose_of(model, timeout_sec=3.0, fresh=True)
+    home_row = next((r for r in run["stage_records"] if r["stage"] == STAGE_HOME_END), {})
+    moved_ok = bool(run["follow_samples"]) and all(r["with_tool"] for r in run["follow_samples"])
+    completed = bool(not run["faults"] and not run["stop_requested"] and run["attached"]
+                     and run["detached"] and moved_ok and home_row.get("reached")
+                     and len(run["stage_records"]) == len(stages))
+    codes = [str(c) for c, _ in run["faults"]]
+    if final_pose is None:
+        codes.append(str(ReasonCode.EXEC_UNVERIFIABLE))
+    attempt = demo_state.record_slot_move(
+        model, from_slot=from_slot, to_slot=to_slot,
+        to_center_m=slots[to_slot].center_m, completed=completed,
+        stop_requested=run["stop_requested"], attached=run["attached"],
+        final_pose_m=final_pose, reason_codes=codes,
+        detail=" · ".join(text for _, text in run["faults"]))
+    if completed and not attempt["arrived"]:
+        codes.append(str(ReasonCode.EXEC_SIM_PLACEMENT_OUT_OF_ZONE))
+    record_stop_checkpoint(demo_state, run["pending_checkpoint"])
+    shutdown_ros(transport=transport, fixture=fixture, node=node)
+    status = ("slot_moved" if attempt["arrived"]
+              else "slot_move_stopped" if run["stop_requested"] else "slot_move_failed")
+    print(f"\n판정: {status} · 도착 칸 중심과 {attempt['gap_m']} m"
+          f" (허용 {attempt['tolerance_m']} m) · real_hardware_ready=False")
+    return finish(0 if attempt["arrived"] else 1, status=status, reason_codes=codes,
+                  attempt=attempt, stage_records=run["stage_records"],
+                  follow_samples=run["follow_samples"], attached=run["attached"],
+                  detached=run["detached"], simulation_demo=demo_state.status())
+
+
+def _contract_reason(finding) -> ReasonCode:
+    """공통 계약 사유 → 실행기 사유 코드."""
+    if finding.code == "geometry.path_obstructed":
+        return ReasonCode.GEOMETRY_COLLISION
+    if finding.code.startswith("geometry"):
+        return ReasonCode.GEOMETRY_GRASP_POSE_UNAVAILABLE
+    if finding.decision == "ASK":
+        return ReasonCode.EXEC_PERMIT_DENIED
+    return ReasonCode.PLAN_RESOURCE_MISMATCH
+
+
+def location_center(data: dict, grasp_file: dict, location: str):
+    """위치 id → 그 자리의 자재 중심(선언·측정값). 칸은 측정 중심, 팔레트는 그
+    팔레트 원래 자재의 선언 위치다."""
+    if str(location).startswith("slot_"):
+        entry = slot_entry(grasp_file, location)
+        return None if entry is None else tuple(float(v) for v in entry["object_world_center_m"])
+    for model, item in data["models"].items():
+        if item.get("kind") != "material":
+            continue
+        slot = origin_slot(data, model)
+        if slot.support_id == location:
+            return tuple(float(v) for v in slot.home_pose_m)
+    return None
+
+
+def sync_planning_scene(*, client, fixture, data: dict, grasp_file: dict,
+                        exclude: tuple = (), apply: bool = True) -> tuple[dict, list]:
+    """실행 직전: 자재마다 **기록 ↔ Gazebo 관측**을 대조하고 planning scene의 자재
+    상자를 관측 pose로 옮긴 뒤 **되읽어** 확인한다. 로봇 명령 전에만 부른다.
+
+    반환 (보고, 막는 사유[(ReasonCode, 문구)]). 사유가 있으면 실행하지 않는다.
+    `apply=False`(재개)는 scene을 바꾸지 않고 일치만 확인한다 — 체크포인트의
+    scene hash를 지키기 위해서다. `exclude`는 지금 도구가 든 자재다.
+    """
+    from validation.conveyor_slots import record_slot
+    from validation.scene_sync import plan_scene_sync, verify_scene_sync
+    from validation.simulation_demo_state import HELD_ON_TARGET, ON_PALLET
+
+    materials = [m for m, item in data["models"].items() if item.get("kind") == "material"]
+    records = SimulationDemoState().status().get("objects") or {}
+
+    def expected_at(model, record):
+        if not record:
+            return origin_slot(data, model).home_pose_m, "원래 자리"
+        state = record.get("state")
+        if state == HELD_ON_TARGET:
+            slot = record_slot(record)
+            return (location_center(data, grasp_file, slot) if slot else None,
+                    slot or "컨베이어(칸 미상)")
+        if state == ON_PALLET and record.get("pallet"):
+            return location_center(data, grasp_file, record["pallet"]), record["pallet"]
+        return None, str(state)
+
+    def blocked(problems):
+        return [(ReasonCode.GEOMETRY_ENVIRONMENT_UNAVAILABLE,
+                 "planning scene을 실제 자재 위치로 맞추지 못해 실행하지 않는다: "
+                 + "; ".join(problems[:4]))]
+
+    try:
+        observed = {m: fixture.pose7_of(m, timeout_sec=3.0, fresh=True)
+                    for m in materials if m not in exclude}
+        scene = client.world_object_poses()
+    except Exception as exc:  # noqa: BLE001 — 관측·scene을 못 읽으면 막는다
+        return {"ok": False, "error": str(exc)[:200]}, blocked([f"관측/scene 읽기 실패: {exc}"])
+    plan = plan_scene_sync(materials=materials, records=records, observed=observed,
+                           scene_poses={k: v[1] for k, v in scene.items()},
+                           expected_at=expected_at, exclude=exclude)
+    report = {"plan": plan.to_dict(), "applied": None, "verified": False,
+              "apply_allowed": apply}
+    if not plan.ok:
+        return report, blocked(plan.findings)
+    if plan.moves:
+        if not apply:
+            return report, blocked([f"scene의 {', '.join(sorted(plan.moves))} 상자가 관측과"
+                                    " 다르다 — 재개는 scene을 바꾸지 않는다"])
+        try:
+            report["applied"] = client.move_world_objects(
+                {m: (scene[m][0], pose) for m, pose in plan.moves.items()})
+        except Exception as exc:  # noqa: BLE001
+            report["applied"] = False
+            report["error"] = str(exc)[:200]
+        if not report["applied"]:
+            return report, blocked(["scene 갱신 요청이 실패했다"])
+        time.sleep(0.2)
+    try:
+        after = {k: v[1] for k, v in client.world_object_poses().items()}
+    except Exception as exc:  # noqa: BLE001
+        return report, blocked([f"scene 되읽기 실패: {exc}"])
+    problems = verify_scene_sync(plan.desired, after)
+    report["verified"] = not problems
+    if problems:
+        return report, blocked(problems)
+    moved = ", ".join(sorted(plan.moves)) or "없음"
+    print(f"[scene 동기화] 기록↔관측 일치 {len(plan.desired)}개 · 옮긴 상자 {moved} · 되읽기 확인")
+    return report, []
+
+
+def path_preflight(*, client, transport, stages, bindings,
+                   start_joints=None) -> tuple[dict, list]:
+    """단계 사이 경로(관절 공간 직선) 표본 검사. 반환 (보고, 막는 사유)."""
+    from validation.pick_place_plan import PATH_STEP_RAD, check_path
+
+    if start_joints is None:
+        observation = settled_observation(transport, timeout_sec=5.0)
+        if not observation.valid:
+            return {"checked": False}, [(ReasonCode.ROBOT_STATE_UNAVAILABLE,
+                                         "현재 관절을 관측하지 못해 첫 경로를 검사하지 못했다")]
+        start_joints = observation.positions
+    try:
+        checks, findings, count = check_path(stages, bindings=bindings, client=client,
+                                             start_joints=start_joints)
+    except Exception as exc:  # noqa: BLE001 — 검사 실패를 통과로 쓰지 않는다
+        return {"checked": False, "error": str(exc)[:200]}, [
+            (ReasonCode.GEOMETRY_VALIDATOR_ERROR, f"경로 검사 오류: {exc}"[:200])]
+    failed = [c.to_dict() for c in checks if not c.passed]
+    report = {"checked": True, "samples": count, "step_rad": PATH_STEP_RAD,
+              "failed_samples": len(failed), "first_failures": failed[:4]}
+    print(f"[경로 검사] 표본 {count}개(간격 {PATH_STEP_RAD} rad) · 실패 {len(failed)}")
+    return report, [(f.reason_code, f.detail) for f in findings[:4]]
+
+
+def _route_bindings(resources, grasp_file, data, model, plan):
+    """계약이 준 자세·든 물체로 12단계 바인딩. 받침은 출발 위치다."""
+    from validation.transfer_stages import bind_route
+
+    origin = origin_slot(data, model)
+    base = build_bindings(resources)
+    source_rid = plan.request.source if not plan.request.source.startswith("slot_") \
+        else "loc_conveyor"
+    held = dict(plan.poses.grasp.held_object or {})
+    held["source"] = plan.poses.grasp.held_object_source
+    bindings = dataclasses.replace(
+        base, attached={**base.attached, origin.object_id: held},
+        object_support={**base.object_support, origin.object_id: source_rid})
+    return bind_route(bindings, plan.poses), origin, source_rid
+
+
+def transfer_route(args, data: dict) -> int:
+    """공통 `transfer`(팔레트가 끼는 경로): 팔레트 ↔ 다른 팔레트, 칸 ↔ 다른 팔레트.
+
+    자세는 계약(FR3 Capability)이 준 **측정된 것만**이고, 놓기 자세는 그 파지로 든
+    물체로 측정된 것이다. 실행은 `_run_held_route`(복귀·칸 이동과 같다). 도착은 Gazebo
+    관측(도착 자리 중심 0.02 m)으로만 판정해 기록한다.
+    """
+    from core.transfer_skill import TransferRequest, WorldView, validate_transfer
+    from robots.fr3_gazebo.transfer_capability import ROBOT_ID, Fr3TransferCapability
+    from validation.conveyor_slots import RECORD_MATCH_TOLERANCE_M
+    import math
+
+    from validation.simulation_demo_state import HELD_ON_TARGET, ON_PALLET, reset_command
+    from validation.transfer_stages import build_route_stages
+
+    out = Path(args.out) if args.out != str(OUT) else ROUTE_OUT
+    demo_state = SimulationDemoState()
+    model = _model_of(data, args.object) or args.object
+    source, destination = args.route_from, args.route_to
+    report: dict = {"schema": "forstick2.simulation_demo_route/1", "mode": "transfer_route",
+                    "skill": "transfer", "model": model, "source": source,
+                    "destination": destination, "is_simulated": True,
+                    "real_hardware_ready": False, "real_hardware_verified": False}
+
+    def finish(code: int, **fields) -> int:
+        report.update(fields)
+        report.update(_raw_log_fields())
+        report["written_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                       encoding="utf-8")
+        print(f"기록: {out}")
+        return code
+
+    def blocked(findings) -> int:
+        for code, text in findings:
+            print(f"이송하지 않았다: [{code}] {text}", file=sys.stderr)
+        closer = globals().get("_active_fixture")
+        if closer is not None:
+            closer.close()
+        return finish(1, status="route_not_started",
+                      reason_codes=[str(c) for c, _ in findings],
+                      findings=[{"reason_code": str(c), "detail": t} for c, t in findings],
+                      simulation_demo=demo_state.status())
+
+    if not source or not destination:
+        return blocked([(ReasonCode.PLAN_UNKNOWN_RESOURCE, "--route-from와 --route-to가 모두 필요하다")])
+    # ── 1. 기록 → 계약 ─────────────────────────────────────────────
+    capability = Fr3TransferCapability.from_files(ROOT)
+    location_of = {m: capability.origin_of(m) for m in capability.materials()}
+    records = demo_state.status().get("objects") or {}
+    for other, row in records.items():
+        state = row.get("state")
+        if state == HELD_ON_TARGET:
+            location_of[other] = record_slot(row)
+        elif state == ON_PALLET:
+            location_of[other] = row.get("pallet")
+        else:
+            return blocked([(ReasonCode.EXEC_PERMIT_DENIED,
+                             f"{other}의 기록이 확정되지 않았다({state})")])
+    plan, contract = validate_transfer(TransferRequest(ROBOT_ID, model, source, destination),
+                                       capability, WorldView(location_of=location_of))
+    if plan is None:
+        return blocked([(_contract_reason(f), f"{f.code}: {f.detail}") for f in contract])
+    report["contract"] = plan.to_dict()
+    resources = load_workcell_resources(WORKCELL, POSES, state_max_age_sec=0.5,
+                                        mounting_path=MOUNTING, grasp_path=GRASP)
+    grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
+    try:
+        bindings, origin, source_rid = _route_bindings(resources, grasp_file, data, model, plan)
+    except ValueError as exc:
+        return blocked([(ReasonCode.GEOMETRY_GRASP_POSE_UNAVAILABLE, str(exc))])
+    destination_rid = destination if not destination.startswith("slot_") else "loc_conveyor"
+    stages, stage_findings = build_route_stages(
+        bindings, object_id=origin.object_id, route=plan.poses,
+        source_resource_id=source_rid, destination_resource_id=destination_rid)
+    if stage_findings:
+        return blocked(stage_findings)
+    src_center = location_center(data, grasp_file, source)
+    dst_center = location_center(data, grasp_file, destination)
+    if src_center is None or dst_center is None:
+        return blocked([(ReasonCode.PLAN_UNKNOWN_RESOURCE, "출발·도착 자리 중심을 모른다")])
+
+    profile_limits = {}
+    for joint in ET.parse(URDF).getroot().findall("joint"):
+        limit = joint.find("limit")
+        if limit is not None and joint.get("type") == "revolute":
+            profile_limits[joint.get("name")] = (float(limit.get("lower")),
+                                                 float(limit.get("upper")))
+    client, node, transport = scene_and_transport(resources, profile_limits)
+    objects = declarations_from_config(data["models"], data["frames"], source=str(WORKCELL))
+    fixture = GazeboObjectFixture(world_name=resources.world_name,
+                                  gz_partition=resources.gz_partition, objects=objects)
+    globals()["_active_fixture"] = fixture
+    latch = StopLatchFile(LATCH)
+    snapshot = client.snapshot()
+    if latch.latched() is not None:
+        released, detail = latch.release(
+            live_goals=transport.live_goals(), scene_hash=snapshot.content_hash,
+            latched_hash=latch.latched().get("scene_hash"))
+        print(f"[래치] {detail}")
+        if not released:
+            return blocked([(ReasonCode.EXEC_STOPPED, f"정지 래치가 걸려 있다 — {detail}")])
+        snapshot = client.snapshot()
+
+    # 다른 자재가 칸·다른 팔레트에 있으면 scene을 실제 위치로 맞춘다(기록↔관측 대조).
+    report["scene_sync"], sync_problems = sync_planning_scene(
+        client=client, fixture=fixture, data=data, grasp_file=grasp_file)
+    if sync_problems:
+        return blocked(sync_problems)
+    snapshot = client.snapshot()
+
+    # ── 2. 관측: 출발지에 있고, 도착지가 비었는가 ──
+    findings = []
+    observed = fixture.pose_of(model, timeout_sec=5.0, fresh=True)
+    if observed is None or math.dist(observed, src_center) > RECORD_MATCH_TOLERANCE_M:
+        findings.append((ReasonCode.PLAN_RESOURCE_MISMATCH,
+                         f"{model}이 관측상 {source}에 없다"
+                         f" (관측 {None if observed is None else [round(v, 4) for v in observed]})"))
+    for other in objects:
+        if other == model or (data["models"].get(other) or {}).get("kind") != "material":
+            continue
+        pose = fixture.pose_of(other, timeout_sec=2.0, fresh=True)
+        if pose is None:
+            findings.append((ReasonCode.EXEC_UNVERIFIABLE, f"{other}의 위치를 관측하지 못했다"))
+            continue
+        if math.dist(pose, dst_center) <= RECORD_MATCH_TOLERANCE_M:
+            findings.append((ReasonCode.EXEC_SIM_TARGET_OCCUPIED,
+                             f"{destination}에 {other}가 관측된다 — 먼저 비워야 한다"))
+    before = client.snapshot()
+    checks, check_findings = check_stages(stages, bindings=bindings, client=client)
+    after = client.snapshot()
+    if not (after.content_hash == before.content_hash == snapshot.content_hash):
+        findings.append((ReasonCode.GEOMETRY_SNAPSHOT_EXPIRED, "사전 검사 중 scene이 바뀌었다"))
+    findings.extend((f.reason_code, f.detail) for f in check_findings)
+    report["preflight"] = {"observed_pose_m": None if observed is None else list(observed),
+                           "checks": [c.to_dict() for c in checks],
+                           "stages": [_stage_row(st) for st in stages]}
+    if findings:
+        return blocked(findings)
+
+    # 단계 사이 경로도 같은 scene·같은 접촉 규칙으로 본다(움직이기 전).
+    report["path_check"], path_problems = path_preflight(
+        client=client, transport=transport, stages=stages, bindings=bindings)
+    if path_problems:
+        return blocked(path_problems)
+
+    # ── 3. 실행(복귀·칸 이동과 같은 실행부) ─────────────────────────
+    zone = conveyor_zone_for(data, resources, "loc_conveyor", objects, model)
+    run = _run_held_route(
+        stages=stages, bindings=bindings, client=client, snapshot=snapshot,
+        transport=transport, fixture=fixture, model=model, object_id=origin.object_id,
+        latch=latch, zone=zone, stop_at=args.stop_at, grasp_file=grasp_file,
+        mode="route", source_id=source_rid, destination_id=destination_rid,
+        origin_slot_id=origin.support_id, origin_home_m=origin.home_pose_m,
+        source_slot=source, destination_slot=destination,
+        banner=f"[이송 시작] {model}: {source} → {destination} · scene {snapshot.content_hash[:12]}")
+
+    # ── 4. 관측으로 판정·기록 ──────────────────────────────────────
+    final_pose = fixture.pose_of(model, timeout_sec=3.0, fresh=True)
+    home_row = next((r for r in run["stage_records"] if r["stage"] == STAGE_HOME_END), {})
+    moved_ok = bool(run["follow_samples"]) and all(r["with_tool"] for r in run["follow_samples"])
+    completed = bool(not run["faults"] and not run["stop_requested"] and run["attached"]
+                     and run["detached"] and moved_ok and home_row.get("reached")
+                     and len(run["stage_records"]) == len(stages))
+    codes = [str(c) for c, _ in run["faults"]]
+    if final_pose is None:
+        codes.append(str(ReasonCode.EXEC_UNVERIFIABLE))
+    kind = "conveyor_slot" if destination.startswith("slot_") else "pallet"
+    attempt = demo_state.record_transfer(
+        model, source=source, destination=destination, destination_kind=kind,
+        destination_center_m=dst_center, own_origin=origin.support_id,
+        completed=completed, stop_requested=run["stop_requested"], attached=run["attached"],
+        final_pose_m=final_pose, reason_codes=codes,
+        detail=" · ".join(text for _, text in run["faults"]),
+        base={"scenario": f"{source}/{origin.object_id}->{destination}",
+              "object_id": origin.object_id, "support_id": origin.support_id,
+              "target_id": destination_rid, "reset_command": reset_command(model)})
+    if completed and not attempt["arrived"]:
+        codes.append(str(ReasonCode.EXEC_SIM_PLACEMENT_OUT_OF_ZONE))
+    record_stop_checkpoint(demo_state, run["pending_checkpoint"])
+    shutdown_ros(transport=transport, fixture=fixture, node=node)
+    status = ("route_arrived" if attempt["arrived"]
+              else "route_stopped" if run["stop_requested"] else "route_failed")
+    print(f"\n판정: {status} · 도착 자리 중심과 {attempt['gap_m']} m"
+          f" (허용 {attempt['tolerance_m']} m) · real_hardware_ready=False")
+    return finish(0 if attempt["arrived"] else 1, status=status, reason_codes=codes,
+                  attempt=attempt, stage_records=run["stage_records"],
+                  follow_samples=run["follow_samples"], attached=run["attached"],
+                  detached=run["detached"], simulation_demo=demo_state.status())
 
 
 def _apply_probe(node, *, add: bool) -> bool:
@@ -2506,10 +3588,11 @@ class _Slots:
         self.matches = [self.Match(rid) for rid in ids]
 
 
-def write(path, result: SimulationTransferResult) -> None:
+def write(path, result: SimulationTransferResult, extra: dict | None = None) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = result.to_dict()
+    payload.update(extra or {})
     payload["written_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     payload.update(_raw_log_fields())
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -2517,7 +3600,27 @@ def write(path, result: SimulationTransferResult) -> None:
 
 
 if __name__ == "__main__":
-    _code = main()
+    try:
+        _code = main()
+    except BaseException:  # noqa: BLE001 — 예외도 아래 즉시 종료 경로를 타야 한다
+        # 예외가 main 밖으로 나오면 os._exit에 닿지 못해 인터프리터 정리 중 gz 콜백이
+        # 들어와 -11로 죽었다(재현 3/3, 2026-09-25). 추적을 남기고 구독을 끊은 뒤 1로 끝낸다.
+        import traceback
+        traceback.print_exc()
+        _closer = globals().get("_active_fixture")
+        if _closer is not None:
+            try:
+                _closer.close()
+            except Exception:  # noqa: BLE001
+                pass
+        # ROS 참가자도 정리하고 끝낸다(강제 종료된 참가자가 공유 메모리 전송을 망가뜨린
+        # 것으로 보이는 사례가 있었다 — 2026-09-25, 원인 미확정).
+        if "rclpy" in sys.modules:
+            try:
+                sys.modules["rclpy"].try_shutdown()
+            except Exception:  # noqa: BLE001
+                pass
+        _code = 1
     sys.stdout.flush()
     sys.stderr.flush()
     # gz 구독 콜백은 C++ 스레드에서 파이썬을 호출한다. 인터프리터가 정리되는

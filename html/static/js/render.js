@@ -1,8 +1,19 @@
 /** 화면 그리기. 상태 → DOM. **여기서 상태를 바꾸지 않는다.**
  *
- * 원본 디자인: html/목업/src/App.tsx (레이아웃·색·문구 구조를 유지한다).
+ * 배치: `html/내가원하는구성.png` — 위 줄에 로봇 선택·연결·명령 감지·전체 정지,
+ * 왼쪽 큰 칸에 가제보 화면과 시뮬레이션 작업 명령, 오른쪽 칸에 생성된 작업 계획 ·
+ * 안전 판단 및 실행 · 차단된 요청.
+ * 디자인: `html/design.md` — 모노크롬 잉크/캔버스, 스타디움 필, 그림자 없음.
+ * 강조색(파랑)은 **결정을 요구하는 확인 카드에만** 쓴다.
+ *
  * 정책 차이: 작업자 승인 단계가 없다. 안전 판단은 PASS/BLOCK/ASK만 보여주고,
  * PASS일 때만 실행 시작을 누를 수 있다.
+ *
+ * 시뮬레이션 표시 배지는 화면에 두지 않는다. 실제 하드웨어처럼 보이는 문구·
+ * 선택지도 쓰지 않는다 — 내부 `is_simulated`와 안전 검증은 그대로다.
+ *
+ * 실기 준비도·검증 상태는 화면에 두지 않는다 — 내부 판정 코드와 설정은 그대로
+ * 있고, 공개 응답에서만 빠진다(`server/routes/common.py`).
  */
 
 import {
@@ -18,6 +29,7 @@ import {
   withWorkcell,
   workcellResources,
 } from './catalog.js';
+import { RECORD_LABELS, RESULT_LABELS } from './sim-demo.js';
 import {
   EXECUTION,
   VERDICT,
@@ -112,8 +124,7 @@ export function renderRobotCard(state) {
       ? `<div class="notice info">
            <span class="notice-mark">⬡</span>
            <p><strong>Gazebo 작업 셀에 연결됨</strong> — 실행은
-           ${esc(workcell.world || '')} 시뮬레이터에서 수행됩니다.
-           실제 하드웨어는 연결되지 않았습니다.</p>
+           ${esc(workcell.world || '')} 시뮬레이터에서 수행됩니다.</p>
          </div>`
       : '';
 
@@ -123,8 +134,7 @@ export function renderRobotCard(state) {
            <span class="notice-mark">⚠</span>
            <p><strong>개발용 Fake 실행</strong> — 실행은 개발용 Fake Adapter(${esc(
              server.robot_id || 'fake',
-           )})로 수행됩니다. ${esc(robot.name)} 실기·Gazebo 경로는 아직 실행 경로에
-           연결되지 않았습니다.</p>
+           )})로 수행됩니다. Gazebo 작업 셀에 연결되지 않았습니다.</p>
          </div>`
       : '';
 
@@ -170,7 +180,7 @@ export function renderRobotCard(state) {
 
       <div class="notice warning">
         <span class="notice-mark">⚠</span>
-        <p>현재 실행 결과는 시뮬레이션입니다. 실제 하드웨어는 검증되지 않았습니다.</p>
+        <p>실행 결과는 모두 Gazebo 시뮬레이션 결과입니다.</p>
       </div>
       ${workcellNotice}
       ${fakeNotice}
@@ -193,7 +203,95 @@ export function renderRobotCard(state) {
     </div>`;
 }
 
-// ── 작업 셀 장면 영상 ─────────────────────────────────────────────────
+// ── 왼쪽 큰 칸: 가제보 화면 ───────────────────────────────────────────
+/* 시뮬레이션 표시 배지는 화면에 두지 않는다(사용자 요구). 대체 배지·대체
+ * 문구도 넣지 않는다. **표시만 없앤 것이고 검증은 그대로다** — 서버 응답의
+ * `is_simulated`·`simulation_notice`와 모든 안전 검증은 변하지 않는다.
+ */
+/** 자유 pick/place가 막혔을 때 **할 수 있는 길**을 알려 주는 한 문장.
+ *  화면 여러 곳이 같은 말을 쓰도록 한 곳에 둔다. */
+export const SIM_PICK_PLACE_HINT =
+  '시뮬레이션 작업 명령에서 A/B/C 자재와 대상 위치를 지정하세요.';
+/** 영상 위 배지들. 실행 중인 시연 작업과 전체 정지를 함께 얹는다. */
+export function renderSceneBadges(state) {
+  const status = (state.simDemo || {}).status;
+  const running = status && status.running_job;
+  return [
+    running
+      ? `<span class="badge-overlay">▶ ${esc(running.action_label || '작업')} ·`
+        + ` ${esc(running.material || '')}</span>`
+      : '',
+    state.stopLatched ? '<span class="badge-overlay stop">■ 전체 정지</span>' : '',
+  ].join('');
+}
+
+/** 가제보 화면 아래 자재 상태 띠. 확인 카드가 말하는 "현재 자재 상태"를
+ *  명령을 보내기 전에도 볼 수 있게 상시로 둔다. 기록에서만 온다. */
+export function renderSceneStrip(state) {
+  const status = (state.simDemo || {}).status;
+  if (!status || !status.enabled || !(status.materials || []).length) {
+    return `<p class="hint"><span class="hint-mark">⬡</span>
+      ${esc(status && status.reason
+        ? `시뮬레이션 시연을 쓸 수 없습니다 — ${status.reason}`
+        : '시뮬레이션 작업 셀에 연결되면 자재 상태가 여기에 표시됩니다.')}</p>`;
+  }
+  const chips = (status.materials || [])
+    .map((material) => {
+      const record = material.record;
+      const label = record && RECORD_LABELS[record.state]
+        ? RECORD_LABELS[record.state][2] : '원래 자리';
+      const tone = record && RECORD_LABELS[record.state]
+        ? RECORD_LABELS[record.state][0] : 'muted';
+      return `<span class="material-chip">
+          <span class="material-swatch"></span>
+          <span>${esc(material.korean || material.model)}</span>
+          ${pill(tone, record && RECORD_LABELS[record.state]
+            ? RECORD_LABELS[record.state][1] : '▪', label)}
+        </span>`;
+    })
+    .join('');
+  return `<div>
+      <p class="label-caps">현재 자재 상태</p>
+      <div class="material-strip" style="margin-top:8px">${chips}</div>
+    </div>
+    ${renderSlotStrip(state)}`;
+}
+
+/** 컨베이어 슬롯별 점유 현황. 서버가 준 것만 보여준다 — 화면이 자리를 만들지
+ *  않는다. 슬롯 기능이 꺼져 있으면(검증된 슬롯 없음) 아무것도 그리지 않는다. */
+export function renderSlotStrip(state) {
+  const conveyor = ((state.simDemo || {}).status || {}).conveyor;
+  if (!conveyor || !conveyor.enabled || !(conveyor.slots || []).length) return '';
+  const chips = conveyor.slots
+    .map((slot) => `<span class="material-chip${slot.occupied ? ' taken' : ''}">
+        <span class="slot-no">${esc(String(slot.number ?? '?'))}</span>
+        <span>${esc(slot.occupied ? (slot.korean || slot.model) : '비어 있음')}</span>
+      </span>`)
+    .join('');
+  const note = conveyor.full
+    ? pill('warning', '!', '모두 참 — 다음 이송은 차단됩니다')
+    : pill('muted', '▫', `다음 자리: ${conveyor.next_slot_label || '—'}`);
+  return `<div style="margin-top:12px">
+      <p class="label-caps">컨베이어 위치 ${note}</p>
+      <div class="material-strip" style="margin-top:8px">${chips}</div>
+    </div>`;
+}
+
+/** 영상 위 안내문. 프레임이 오고 있으면 **아무것도 그리지 않는다.** */
+export function renderSceneEmpty(state) {
+  if (state.sceneAvailable === false) {
+    return `<div class="scene-empty"><span>✕</span><span>${
+      esc(state.sceneDetail || '장면 카메라를 쓸 수 없습니다.')}</span></div>`;
+  }
+  if (state.sceneStream === 'open') return '';
+  const text = state.sceneAvailable === null
+    ? '장면 카메라를 확인하고 있습니다…'
+    : state.sceneStream === 'stalled'
+      ? '프레임이 끊겼습니다 — 만들어 그리지 않습니다.'
+      : '장면 스트림에 연결하는 중입니다…';
+  return `<div class="scene-empty"><span>◉</span><span>${esc(text)}</span></div>`;
+}
+
 /** 작업 셀 화면. **Gazebo 서버가 렌더링한 프레임**이다.
  *
  * 이 카드가 있는 이유: 이 환경의 Gazebo GUI는 소프트웨어 렌더링만 가능하고
@@ -203,38 +301,36 @@ export function renderRobotCard(state) {
  * 서버가 프레임을 주지 못하면 **빈 그림을 그리지 않는다** — 이유를 적는다.
  */
 export function renderSceneCard(state) {
-  if (state.sceneAvailable === false) {
-    return `
-      ${cardHeader('작업 셀 화면', pill('muted', '◉', '사용 불가'))}
-      <div class="card-body">
-        <p class="hint"><span class="hint-mark">✕</span>
-          ${esc(state.sceneDetail || '장면 카메라를 쓸 수 없습니다.')}</p>
-      </div>`;
-  }
-  if (state.sceneAvailable === null) {
-    return `
-      ${cardHeader('작업 셀 화면', pill('muted', '◉', '확인 중'))}
-      <div class="card-body">
-        <p class="hint"><span class="hint-mark">◉</span>장면 카메라를 확인하고 있습니다…</p>
-      </div>`;
-  }
-  // **WebSocket이 프레임을 밀어 보낸다.** canvas에 그리므로 이미지 인코딩이
-  // 없다. 이 함수는 canvas 틀만 만들고, 그리기는 main.js의 스트림이 한다.
-  const live = state.sceneStream === 'open';
-  const statusPill = live
-    ? pill('success', '▶', `${state.sceneFps || 0} FPS`)
-    : state.sceneStream === 'stalled'
-      ? pill('warning', '!', '프레임 끊김')
-      : pill('muted', '◉', '연결 중');
+  const statusPill = state.sceneAvailable === false
+    ? pill('muted', '◉', '사용 불가')
+    : state.sceneAvailable === null
+      ? pill('muted', '◉', '확인 중')
+      : state.sceneStream === 'open'
+        ? pill('success', '▶', `${state.sceneFps || 0} FPS`)
+        : state.sceneStream === 'stalled'
+          ? pill('warning', '!', '프레임 끊김')
+          : pill('muted', '◉', '연결 중');
+  // 프레임을 받을 수 없으면 canvas를 두지 않는다 — 빈 화면을 영상처럼 보이게
+  // 하지 않는다. 안내문은 **canvas와 따로 갱신한다**(아래 renderSceneEmpty) —
+  // 카드 전체를 다시 그리면 그려 둔 프레임이 사라지기 때문에, 첫 프레임이 온
+  // 뒤에도 "확인하고 있습니다"가 남아 있었다(실측).
+  const frame = state.sceneAvailable === false
+    ? `<div class="scene-frame">
+         <div class="scene-badges" id="scene-badges">${renderSceneBadges(state)}</div>
+         <div id="scene-empty-slot">${renderSceneEmpty(state)}</div>
+       </div>`
+    : `<div class="scene-frame">
+         <canvas id="scene-canvas" width="640" height="360"></canvas>
+         <div class="scene-badges" id="scene-badges">${renderSceneBadges(state)}</div>
+         <div id="scene-empty-slot">${renderSceneEmpty(state)}</div>
+       </div>`;
   return `
-    ${cardHeader('작업 셀 화면', statusPill)}
+    ${cardHeader('가제보 화면', statusPill)}
     <div class="card-body">
-      <canvas id="scene-canvas" width="480" height="360"
-              style="width:100%;border-radius:8px;border:1px solid var(--border);
-                     display:block;background:#0b1218"></canvas>
+      ${frame}
+      <div id="scene-strip">${renderSceneStrip(state)}</div>
       <p class="hint"><span class="hint-mark">⬡</span>
-        Gazebo 서버가 렌더링한 장면을 WebSocket으로 받습니다.
-        GUI 창과 무관합니다.${
+        Gazebo 서버가 렌더링한 장면을 WebSocket으로 받습니다. GUI 창과 무관합니다.${
           state.sceneStreamDetail ? ` ${esc(state.sceneStreamDetail)}` : ''
         }</p>
     </div>`;
@@ -300,143 +396,14 @@ export function renderWorkcellCard(state) {
 }
 
 // ── 왼쪽: 음성 입력 ───────────────────────────────────────────────────
-export function renderHardwareCard(state) {
-  const readiness = state.hardwareReadiness;
-  // Gazebo 시연 상태와 실기 준비 상태를 **나란히 두되 합치지 않는다.**
-  const sim = state.simulationE2e;
-  const simDone = !!(sim && sim.available && sim.completed);
-  const simRow = row(
-    'Gazebo pick/place 시연',
-    simDone
-      ? '<span class="chip skill">완료</span>'
-      : '<span class="robot-pick-sub">기록 없음</span>',
-  );
-
-  if (!readiness || readiness.available === false) {
-    return `
-      ${cardHeader('실제 하드웨어 준비 상태', pill('muted', '◉', '판정 없음'))}
-      <div class="card-body">
-        <div class="rows">
-          ${simRow}
-          ${row('실제 pick/place 준비', '<span class="chip skill off">차단</span>')}
-        </div>
-        <p class="hint"><span class="hint-mark">✕</span>
-          실기 준비 판정을 읽지 못했습니다${
-            readiness && readiness.detail ? ` — ${esc(readiness.detail)}` : ''
-          }.</p>
-      </div>`;
-  }
-
-  const ready = readiness.real_hardware_ready === true;
-  // 고정 상태 다섯 줄. 서버가 한 곳에서 만든 문장을 그대로 쓴다 —
-  // 화면에서 숫자를 다시 세지 않는다(차단 검사 수와 섞이지 않게).
-  const stateLines = readiness.state_lines || [];
-  const inputs = readiness.inputs || {};
-  const rows = inputs.inputs || [];
-  const readyCount = (inputs.ready || []).length;
-  const checklist = readiness.checklist || {};
-  const guide = readiness.collection_guide || [];
-  const missing = readiness.missing_labels || [];
-
-  const pendingInputs = rows.filter((item) => !item.ready);
-  const inputRows = pendingInputs
-    .map(
-      (item) => `<div class="row">
-         <span class="truncate">${esc(item.label)}</span>
-         <span class="mono robot-pick-sub truncate">${esc(
-           item.measurement_method,
-         )}${item.has_value ? ' · 값 있음' : ' · 값 없음'}</span>
-       </div>
-       <p class="hint" style="margin:-4px 0 4px 0">${esc(item.needed || '')}</p>`,
-    )
-    .join('');
-
-  const guideRows = guide
-    .slice(0, 6)
-    .map(
-      (item) => `<div class="row">
-         <span class="truncate">${esc(item.label)}</span>
-         <span class="mono robot-pick-sub">${esc(item.reason_code)}</span>
-       </div>`,
-    )
-    .join('');
-
-  return `
-    ${cardHeader(
-      '실제 하드웨어 준비 상태',
-      ready
-        ? pill('success', '✓', '근거 확보')
-        : pill('danger', '✕', '차단'),
-    )}
-    <div class="card-body">
-      <div class="notice danger">
-        <span class="notice-mark">✕</span>
-        <p><strong>실제 하드웨어는 아직 연결되지 않았습니다.</strong><br />
-          이 화면은 읽기 전용이며, Gazebo 시연 결과는 실기 지원으로
-          승격되지 않습니다.</p>
-      </div>
-      ${
-        stateLines.length
-          ? `<div>
-               <p class="label-caps">지금 상태 (고정)</p>
-               <pre class="mono" style="margin:6px 0 0;white-space:pre-wrap">${esc(
-                 stateLines.join('\n'),
-               )}</pre>
-             </div>`
-          : ''
-      }
-      <div class="rows">
-        ${simRow}
-        ${row('실제 pick/place 준비', ready
-          ? '<span class="chip skill">근거 확보</span>'
-          : '<span class="chip skill off">차단</span>')}
-        ${row('실기 연결', readiness.real_hardware_connected
-          ? '<span class="chip skill">연결됨</span>'
-          : '<span class="chip skill off">미연결</span>')}
-        ${row('실기 검증', readiness.real_hardware_verified
-          ? '<span class="chip skill">완료</span>'
-          : '<span class="chip skill off">미검증</span>')}
-        ${row('근거 수집(입력)', `<span class="mono">${esc(String(readyCount))}/${esc(
-          String(rows.length),
-        )}</span> 확보`)}
-        ${row('근거 수집(체크리스트)', `<span class="mono">${esc(
-          String(checklist.blocking_done || 0),
-        )}/${esc(String(checklist.blocking_total || 0))}</span> 통과`)}
-        ${row('실기 어댑터 설정', readiness.adapter_configured
-          ? '<span class="chip skill">선언됨</span>'
-          : '<span class="chip skill off">없음</span>')}
-      </div>
-      ${
-        missing.length
-          ? `<div>
-               <p class="label-caps">부족한 입력 (${esc(String(missing.length))})</p>
-               <div class="rows" style="margin-top:6px">${guideRows}</div>
-               ${
-                 missing.length > 6
-                   ? `<p class="hint"><span class="hint-mark">›</span>그 밖 ${esc(
-                       String(missing.length - 6),
-                     )}건은 보고서에서 확인합니다.</p>`
-                   : ''
-               }
-             </div>`
-          : ''
-      }
-      ${
-        inputRows
-          ? `<div>
-               <p class="label-caps">무엇을 가져와야 하는가</p>
-               <div class="rows" style="margin-top:6px">${inputRows}</div>
-             </div>`
-          : ''
-      }
-      <p class="hint"><span class="hint-mark">⬡</span>
-        판정 관문 <span class="mono">validation/hardware_readiness.py</span> ·
-        입력 설정 <span class="mono">config/hardware/</span></p>
-    </div>`;
-}
+// 실기(실제 하드웨어) 준비 상태 카드는 화면에서 걷어냈다. 지금 서비스는 Gazebo
+// 시뮬레이션 전용이라, 실기 준비도·검증 체크리스트를 보여 주면 실제 로봇을 고르거나
+// 돌릴 수 있는 것처럼 읽힌다. 판정 코드(`validation/hardware_readiness.py`)와 설정·
+// 기준 데이터는 **그대로 있고** 계속 계산된다 — 공개 응답과 화면에서만 빠진다
+// (`server/routes/common.py`의 `public_payload`).
 
 export function renderVoiceCard(state) {
-  const { recording, partial, final, confidence, available, detail } = state.stt;
+  const { recording, partial, final, normalized, confidence, available, detail } = state.stt;
   const statusText = available ? 'STT 연결됨' : 'STT 미사용';
   const confidenceClass =
     confidence == null
@@ -456,13 +423,13 @@ export function renderVoiceCard(state) {
         + `<span class="robot-pick-sub">${esc(statusText)}</span></div>`,
     )}
     <div class="card-body">
+      <p class="hint"><span class="hint-mark">◎</span>
+        마이크 on/off는 <strong>시뮬레이션 작업 명령</strong> 칸에 있습니다.
+        여기는 전사 결과와 신뢰도만 보여줍니다.</p>
       <div class="row">
-        <button class="btn sm ${recording ? 'danger' : 'primary'}" type="button"
-          data-action="toggle-voice" ${available ? '' : 'disabled'}>
-          ${recording ? '● 녹음 중지' : '◎ 녹음 시작'}
-        </button>
-        <span class="row-value" style="color:${recording ? 'var(--danger)' : 'var(--muted)'}">
-          ${recording ? '⏺ 녹음 중...' : available ? '마이크 준비' : esc(detail || '서버 STT 없음')}
+        <span class="row-label">상태</span>
+        <span class="row-value">
+          ${recording ? '⏺ 듣는 중' : available ? '마이크 준비' : esc(detail || '서버 STT 없음')}
         </span>
       </div>
       <div class="transcript">
@@ -478,13 +445,14 @@ export function renderVoiceCard(state) {
               + `<p class="transcript-final">${esc(final)}</p></div>`
             : ''
         }
+        ${final && normalized ? row('정규화 결과', esc(normalized)) : ''}
         ${!partial && !final ? '<p class="transcript-empty">전사 결과가 여기에 표시됩니다.</p>' : ''}
       </div>
       ${
         confidence == null
           ? ''
           : `<div class="row"><span class="row-label">신뢰도</span>
-               <span class="row-value mono" style="color:var(--${confidenceClass})">
+               <span class="row-value mono ${confidenceClass}">
                  ${confidence.toFixed(2)} · ${esc(confidenceLabel)}</span></div>`
       }
     </div>`;
@@ -520,29 +488,142 @@ export function renderEventsCard(state) {
     <div class="event-list" id="event-list">${items}</div>`;
 }
 
-// ── 가운데: 작업 명령 ─────────────────────────────────────────────────
-/** 시뮬레이션 명령 결과(RUN/STOP/ASK/BLOCK). 계획 카드와 섞지 않는다.
+// ── 왼쪽 큰 칸 아래: 시뮬레이션 작업 명령 ────────────────────────────
+/** 명령 결과 영역. 규칙 판단(RUN/STOP/ASK/BLOCK)과 **확인 카드**가 여기 나온다.
  *
  * 모드 토글은 없다 — Gazebo 작업 셀에서는 자재 이송·복귀·정지·이어서가
  * **기본 동작**이고, 그 밖의 발화는 서버가 `PASS_THROUGH`로 돌려 기존 계획
  * 생성으로 간다. */
 export function renderSimCommandArea(state) {
+  // G1을 골랐으면 FR3 시연 확인 카드·결과를 여기 그리지 않는다(로봇 맥락 분리).
+  // G1의 확인 카드·진행은 G1 카드(#card-humanoid)가 그린다.
+  if (state.robotId === 'unitree_g1') return '';
   const sim = state.simDemo || {};
+  if (sim.confirmation) return renderConfirmCard(state);
   const result = sim.result;
-  const body = !result
-    ? `<p class="hint"><span class="hint-mark">⬡</span>
-         시뮬레이션 명령 예: "A 자재를 컨베이어로 옮겨줘" · "A 자재를 원래 자리로 돌려놔" ·
-         "돌려놔"(컨베이어에 하나만 있을 때) · "이어서 해줘" · "멈춰".
-         그 밖의 명령은 기존 계획 생성으로 갑니다(집기·놓기 차단은 그대로입니다).</p>`
-    : renderSimCommandResult(state, result);
-  return `<div class="rows">${body}</div>`;
+  if (!result) return '';
+  return `<div class="rows">${renderSimCommandResult(state, result)}</div>`;
 }
 
 function simDecisionPill(decision) {
   if (decision === 'RUN') return pill('success', '▶', '작업 생성');
+  if (decision === 'CONFIRM') return pill('decide', '◈', '확인 필요');
+  if (decision === 'CANCELLED') return pill('muted', '✕', '취소됨');
   if (decision === 'STOP') return pill('danger', '■', '정지 요청');
   if (decision === 'ASK') return pill('warning', '?', 'ASK');
+  if (decision === 'PASS_THROUGH') return pill('muted', '→', '계획 생성으로');
+  if (decision === 'NOOP') return pill('muted', '✓', '이미 목표 상태');
   return pill('danger', '✕', 'BLOCK');
+}
+
+/** 남은 시간 표시. 서버가 만료를 강제하고, 화면은 그 숫자를 **보여만 준다.** */
+function countdownText(seconds) {
+  if (seconds == null) return '';
+  return `확인 만료까지 ${Math.max(0, Math.ceil(seconds))}초`;
+}
+
+/** Qwen이 낸 해석의 **근거**. 모델이 무엇을 냈는지 숨기지 않는다. */
+function renderIntentEvidence(info, minConfidence) {
+  if (!info) return '';
+  const confidence = typeof info.confidence === 'number'
+    ? info.confidence.toFixed(2) : '—';
+  const threshold = typeof minConfidence === 'number'
+    ? minConfidence.toFixed(2) : (typeof info.min_confidence === 'number'
+      ? info.min_confidence.toFixed(2) : '—');
+  return `<div class="confirm-evidence">
+      <p class="label-caps">해석 근거 · Qwen 후보</p>
+      ${row('해석기', `<span class="mono">${esc(info.model_id || 'Qwen 분류기')}</span>`)}
+      ${row('intent', `<span class="mono">${esc(info.intent || '—')}</span>`)}
+      ${row('material_id', `<span class="mono">${esc(info.material_id || 'null')}</span>`)}
+      ${row('confidence', `<span class="mono">${esc(confidence)}</span>`
+        + ` <span class="robot-pick-sub">(기준 ${esc(threshold)})</span>`)}
+      <p class="hint"><span class="hint-mark">ℹ</span>
+        모델은 위 JSON만 냅니다. 계획을 만들지 않으며, 서버가 스키마·자재 후보·
+        지금 시뮬레이션 상태를 다시 검증합니다.</p>
+    </div>`;
+}
+
+/** 확인 대기가 말하는 **현재 자재 상태**. 서버가 해석 시점에 본 기록이다. */
+function renderConfirmState(rows) {
+  if (!rows || !rows.length) return '';
+  const items = rows
+    .map((item) => row(
+      item.korean || item.model,
+      `<span>${esc(item.state
+        ? (RECORD_LABELS[item.state] ? RECORD_LABELS[item.state][2] : item.state)
+        : '원래 자리')}</span>`
+      + (item.has_checkpoint ? ' <span class="robot-pick-sub">· 체크포인트 있음</span>' : ''),
+    ))
+    .join('');
+  return `<div class="confirm-evidence">
+      <p class="label-caps">현재 자재 상태</p>${items}</div>`;
+}
+
+/** 확인 카드 — **이 화면에서 결정을 요구하는 유일한 자리.**
+ *
+ * design.md: 강조색은 결정을 요구할 때만 나온다. 확인을 누르기 전까지 작업은
+ * 만들어지지 않는다. 취소·만료·상태 변경이면 그대로 사라진다.
+ *
+ * 음성 final 명령도 여기서 확인을 기다린다.
+ */
+/** 계획 단계의 공통 transfer 동작 이름(표시용). */
+const STEP_ACTION_LABELS = { move: '칸 직접 이동', transfer: '이송', return: '원래 자리 복귀' };
+
+export function renderConfirmCard(state) {
+  const sim = state.simDemo || {};
+  const pending = sim.confirmation;
+  if (!pending) return '';
+  const remaining = sim.remainingSec == null ? pending.remaining_sec : sim.remainingSec;
+  const evidence = pending.evidence || {};
+  const busy = Boolean(sim.busy);
+  const goalSteps = pending.kind === 'goal'
+    ? `<div class="confirm-evidence"><p class="label-caps">실행 순서</p>${(pending.plan || [])
+      .map((step) => row(`STEP ${String(step.step).padStart(2, '0')}`,
+        `<strong>${esc(step.material_label || step.material || '')}</strong> `
+        + (STEP_ACTION_LABELS[step.action] ? `<span>[${esc(STEP_ACTION_LABELS[step.action])}]</span> ` : '')
+        + `<span>${esc(step.from_label || step.from || '')} → ${esc(step.to_label || step.to || '')}</span>`
+        + (step.reason ? `<br><span class="robot-pick-sub">${esc(step.reason)}</span>` : '')))
+      .join('')}${((pending.reasoning || {}).notes || [])
+      .map((note) => row('판단', `<span>${esc(note)}</span>`)).join('')}</div>` : '';
+  const interpretation = ((pending.interpretation || {}).evidence || []);
+  const interpretationRows = interpretation.length
+    ? `<div class="confirm-evidence"><p class="label-caps">해석 근거</p>${interpretation
+      .map((line) => row('근거', `<span>${esc(line)}</span>`)).join('')}</div>` : '';
+  return `<div class="confirm">
+      <div class="confirm-head">
+        ${pill('decide', '◈', '확인 필요')}
+        <span class="confirm-countdown${remaining != null && remaining <= 10 ? ' urgent' : ''}"
+          >${esc(countdownText(remaining))}</span>
+      </div>
+      <p class="confirm-summary">${esc(pending.summary || '')}</p>
+      <div class="confirm-actions">
+        <button class="btn decide" type="button" data-action="sim-confirm" ${busy ? 'disabled' : ''}>
+          ${busy ? '<span class="spinner"></span>' : '✓'} 확인 — 시뮬레이션에서 실행
+        </button>
+        <button class="btn outline" type="button" data-action="sim-cancel" ${busy ? 'disabled' : ''}>
+          취소
+        </button>
+      </div>
+      <div class="rows">
+        ${row('인식한 명령', `<strong>${esc((sim.result || {}).raw_transcript || pending.utterance || '')}</strong>`)}
+        ${row('정규화 결과', `<span>${esc((sim.result || {}).normalized_transcript || pending.utterance || '')}</span>`)}
+        ${(sim.result || {}).stt_confidence != null
+          ? row('STT confidence', esc((sim.result || {}).stt_confidence)) : ''}
+        ${row(pending.kind === 'goal' ? '목표' : '동작', `<span class="mono">${esc(pending.action || '')}</span>`
+          + ` <span class="robot-pick-sub">${esc(evidence.material_korean || pending.material || '')}</span>`)}
+        ${evidence.slot_label
+          ? row('대상 위치', `<strong>${esc(evidence.slot_label)}</strong>`
+            + ' <span class="robot-pick-sub">서버가 배정</span>')
+          : ''}
+      </div>
+      ${interpretationRows}
+      ${goalSteps}
+      ${renderIntentEvidence(evidence.classifier)}
+      ${renderConfirmState(evidence.state)}
+      <p class="hint"><span class="hint-mark">⬡</span>
+        <strong>확인을 누르기 전에는 ${pending.kind === 'goal' ? '하위 작업이' : '작업이'} 만들어지지 않습니다.</strong>
+        누르면 Gazebo 시뮬레이터 안에서 실행됩니다.</p>
+    </div>`;
 }
 
 function renderSimCommandResult(state, result) {
@@ -553,12 +634,16 @@ function renderSimCommandResult(state, result) {
   const report = (job && job.report) || null;
   const stop = result.stop;
   return `
-    <div class="row"><span class="row-label">발화</span>
-      <div class="row-value truncate">${esc(result.utterance || '')}</div></div>
+    <div class="row"><span class="row-label">인식한 명령</span>
+      <div class="row-value">${esc(result.raw_transcript || result.utterance || '')}</div></div>
+    ${result.normalized_transcript ? row('정규화 결과', esc(result.normalized_transcript)) : ''}
+    ${result.stt_confidence != null ? row('STT confidence', esc(result.stt_confidence)) : ''}
     <div class="row"><span class="row-label">판단</span>
       <div class="row-value">${simDecisionPill(result.decision)}${
         result.intent ? ` <span class="mono robot-pick-sub">${esc(result.intent)}</span>` : ''
       }${result.material ? ` <span class="mono robot-pick-sub">${esc(result.material)}</span>` : ''}</div></div>
+    ${result.slot_label ? `<div class="row"><span class="row-label">대상 위치</span>
+      <div class="row-value"><strong>${esc(result.slot_label)}</strong></div></div>` : ''}
     ${result.reason ? `<p class="hint"><span class="hint-mark">!</span>${esc(result.reason)}</p>` : ''}
     ${job ? `<div class="row"><span class="row-label">작업</span>
       <div class="row-value mono truncate">${esc(job.job_id)} · ${esc(job.status || '')}</div></div>` : ''}
@@ -569,17 +654,31 @@ function renderSimCommandResult(state, result) {
     ${stop ? `<div class="row"><span class="row-label">정지</span>
       <div class="row-value">${stop.requested ? '요청됨 — 시뮬레이터가 정지를 확인하면 체크포인트가 남습니다'
         : esc(stop.detail || '실행 중인 시연 작업이 없습니다')}</div></div>` : ''}
-    <p class="hint"><span class="hint-mark">⬡</span>
-      ${esc(result.simulation_notice || 'Gazebo 시뮬레이션 · 실제 로봇 아님')}</p>`;
+    ${result.intent_result && ['ASK', 'BLOCK'].includes(result.decision)
+      ? renderIntentEvidence(result.intent_result) : ''}`;
 }
 
+/** 목업의 "시뮬레이션 작업 명령" 칸.
+ *
+ * 텍스트 + 마이크 on/off · 명령 보내기 / 지우기 · TTS 음성 on/off.
+ * TTS는 **기본 꺼짐**이고, 켜면 신뢰된 결과만 짧게 읽는다(`tts.js`).
+ * 브라우저가 SpeechSynthesis를 갖고 있지 않으면 토글이 잠기고 그 사실을 적는다.
+ */
 export function renderCommandCard(state, backendKind) {
   const busy = Boolean(state.simDemo && state.simDemo.busy);
+  const pendingConfirm = Boolean(state.simDemo && state.simDemo.confirmation);
   const disabled = !state.command.trim() || busy || state.planLoading || isActive(state);
-  // 작업 셀(시뮬레이터)에 붙어 있으면 제목·안내가 시뮬레이션 기준이다.
   const simulated = backendKind === 'server'
     && Boolean(state.serverWorkcell && state.serverWorkcell.registered);
-  const title = simulated ? '시뮬레이션 작업 명령' : '작업 명령';
+  const g1 = state.robotId === 'unitree_g1';
+  const title = g1 ? 'G1 이동 명령 (시뮬레이션)' : simulated ? '시뮬레이션 작업 명령' : '작업 명령';
+  const { recording, partial, final, normalized, available } = state.stt;
+  const transcript = partial || final
+    ? `<div class="transcript">${
+        partial ? `<p class="transcript-partial">${esc(partial)}</p>` : ''
+      }${final ? `<p class="label-caps">STT 원문</p><p class="transcript-final">${esc(final)}</p>` : ''}
+      ${final && normalized ? `<p class="label-caps">정규화 결과</p><p>${esc(normalized)}</p>` : ''}</div>`
+    : '';
   const simHint =
     backendKind === 'simulation'
       ? `<p class="hint"><span class="hint-mark">⬡</span>
@@ -588,24 +687,105 @@ export function renderCommandCard(state, backendKind) {
            ASK: "그거 저기로 옮겨줘"</p>`
       : '';
   return `
-    ${cardHeader(title, simulated ? pill('info', '⬡', 'Gazebo 시뮬레이션 · 실제 로봇 아님') : '')}
+    ${cardHeader(title)}
     <div class="card-body">
       <textarea class="textarea" id="command-input" rows="3" data-action="command-input"
-        placeholder="작업 명령을 입력하거나 음성으로 입력하세요.">${esc(state.command)}</textarea>
-      <div class="btn-row">
-        <button class="btn primary" type="button" data-action="generate" ${disabled ? 'disabled' : ''}>
-          ${busy || state.planLoading ? '<span class="spinner"></span>' : '◈'} 명령 보내기
-        </button>
-        <button class="btn ghost" type="button" data-action="clear-command">지우기</button>
+        placeholder="작업 명령을 입력하거나 마이크로 말하세요. (Enter 전송 · Shift+Enter 줄바꿈)">${esc(state.command)}</textarea>
+      <div class="btn-row" id="command-actions">${renderCommandActions(state)}</div>
+      <div id="command-transcript">${transcript}</div>
+      <div id="command-note">${g1 ? `<p class="hint"><span class="hint-mark">⬢</span>
+        G1 명령: "컨베이어 앞에 가" · "컨베이어 한번 찍고 와" · "출발 위치로 돌아와" · "멈춰".
+        이동은 <strong>확인 카드</strong>에서 승인한 뒤 실행하고, "멈춰"는 확인 없이 바로 전달합니다.
+        확인 카드와 진행은 위 G1 카드에 표시됩니다. FR3 명령은 로봇 선택에서 FR3를 고르세요.</p>`
+        : pendingConfirm ? '' : `<p class="hint"><span class="hint-mark">⬡</span>
+        예: "A 자재를 컨베이어로 옮겨줘" · "A 자재를 원래 자리로 돌려놔" ·
+        "돌려놔"(컨베이어에 하나만 있을 때) · "이어서 해줘" · "멈춰".
+        모호한 자재 작업 발화는 해석 뒤 <strong>확인 카드</strong>가 먼저 뜹니다.
+        그 밖의 명령은 기존 계획 생성으로 갑니다(집기·놓기 차단은 그대로입니다).</p>`}</div>
+      <div class="result-area" id="sim-command-area">${renderSimCommandArea(state)}</div>
+      <div id="command-foot">
+        <p class="hint"><span class="hint-mark">ℹ</span>
+          계획 생성은 로봇을 실행하지 않습니다. 안전 판단이 PASS일 때
+          <strong>실행 시작</strong>을 눌러야 실행됩니다.
+          TTS 음성은 판단·확인·작업 시작·완료·정지 결과만 짧게 읽습니다.</p>
+        ${simHint}
       </div>
-      ${simulated ? `<p class="hint"><span class="hint-mark">⬡</span>
-        이 작업 셀은 Gazebo 시뮬레이션입니다 — 실제 로봇이 아닙니다.</p>` : ''}
-      <div id="sim-command-area">${renderSimCommandArea(state)}</div>
-      <p class="hint"><span class="hint-mark">ℹ</span>
-        계획 생성은 로봇을 실행하지 않습니다. 안전 판단이 PASS일 때
-        <strong>실행 시작</strong>을 눌러야 실행됩니다.</p>
-      ${simHint}
     </div>`;
+}
+
+/** 명령 칸의 버튼 줄. **textarea와 따로 갱신한다.**
+ *
+ * 카드 전체를 다시 그리면 타이핑 중인 textarea가 새 요소로 바뀌어 포커스·
+ * 커서·한글 조합이 끊긴다. 그래서 카드는 한 번만 그리고 이 줄만 갈아 끼운다.
+ * (여기를 따로 갱신하지 않았더니 STT가 붙은 뒤에도 마이크 버튼이 첫 렌더의
+ *  `disabled` 상태로 남아 눌리지 않았다 — 실측.)
+ */
+export function renderCommandActions(state) {
+  const busy = Boolean(state.simDemo && state.simDemo.busy);
+  const disabled = !state.command.trim() || busy || state.planLoading || isActive(state);
+  const { recording, available } = state.stt;
+  return `
+    <button class="btn ${recording ? 'danger' : ''}" type="button"
+      data-action="toggle-voice" ${available ? '' : 'disabled'}
+      title="${esc(available ? '마이크 입력' : '서버 STT를 쓸 수 없습니다')}">
+      ${recording ? '● 마이크 끄기' : '◎ 마이크 켜기'}
+    </button>
+    <button class="btn primary" type="button" data-action="generate" ${disabled ? 'disabled' : ''}>
+      ${busy || state.planLoading ? '<span class="spinner"></span>' : '◈'} 명령 보내기
+    </button>
+    <button class="btn ghost" type="button" data-action="clear-command">지우기</button>
+    <div class="spacer"></div>
+    ${renderTtsToggle(state)}`;
+}
+
+/** TTS 켬/끔 단추. 상태는 `state.tts`에서만 온다 — 화면이 값을 만들지 않는다. */
+export function renderTtsToggle(state) {
+  const tts = state.tts || {};
+  if (!tts.supported) {
+    return `<button class="btn off sm" type="button" data-action="toggle-tts" disabled
+      title="이 브라우저는 음성 합성(SpeechSynthesis)을 지원하지 않습니다.">
+      ○ TTS 음성 없음</button>`;
+  }
+  return `<button class="btn ${tts.enabled ? 'on' : 'off'} sm" type="button"
+      data-action="toggle-tts" aria-pressed="${tts.enabled ? 'true' : 'false'}"
+      title="${esc(tts.enabled
+        ? '작업 결과를 짧게 읽습니다. 누르면 끕니다.'
+        : '켜면 작업 결과를 짧게 읽습니다. 진행 로그와 모델 원문은 읽지 않습니다.')}">
+      ${tts.enabled ? '♪ TTS 음성 on' : '○ TTS 음성 off'}</button>`;
+}
+
+/** 머리말의 로봇 선택 — 목업 위 줄의 "로봇 선택". */
+export function renderRobotPickHeader(state) {
+  const robot = withWorkcell(robotById(state.robotId), state.serverWorkcell);
+  return `<button class="robot-pick" data-action="open-robot" type="button"
+      title="로봇 구성 보기 · 변경">
+      <span aria-hidden="true">${esc(robot.icon)}</span>
+      <span class="robot-pick-name">${esc(robot.name)}</span>
+      <span class="robot-pick-more" aria-hidden="true">›</span>
+    </button>`;
+}
+
+/** 머리말의 명령 감지 — 지금 무엇을 받고 있는지. 추측하지 않는다. */
+export function renderDetect(state) {
+  const { recording, partial, final } = state.stt;
+  const sim = state.simDemo || {};
+  const live = recording || Boolean(partial) || sim.busy || state.planLoading;
+  const label = recording
+    ? (partial ? `듣는 중: ${partial}` : '음성 듣는 중')
+    : sim.busy
+      ? '명령 해석 중'
+      : state.planLoading
+        ? '계획 생성 중'
+        : sim.confirmation
+          ? '확인 대기'
+          : final
+            ? '전사 완료'
+            : state.command.trim()
+              ? '입력 중'
+              : '명령 감지 대기';
+  const tone = sim.confirmation ? 'warning' : live ? 'success' : 'muted';
+  return `<span class="dot ${tone}${live ? ' pulse' : ''}"></span>`
+    + `<span class="detect-label truncate">${esc(label)}</span>`;
 }
 
 // ── 가운데: 생성된 작업 계획 ──────────────────────────────────────────
@@ -952,11 +1132,153 @@ function renderPlanValidation(check) {
     </div>`;
 }
 
+/** "안전 판단 및 실행" 칸 안의 **시뮬레이션 작업** 구역.
+ *
+ * 목업에는 칸이 셋뿐이므로 기존 시연 카드의 진행·결과·체크포인트를 여기로
+ * 흡수한다. 시연 정지 버튼도 여기 둔다 — 헤더의 전체 정지와 별개 동작이다.
+ */
+export function renderSimExecution(state) {
+  const sim = state.simDemo || {};
+  const status = sim.status;
+  if (!status || !status.enabled) return '';
+  const running = status.running_job;
+  const demo = status.state || {};
+  const job = sim.job && (!running || sim.job.job_id === running.job_id) ? sim.job : running;
+  const progress = (job && job.progress) || [];
+  const last = progress[progress.length - 1];
+  const percent = last && last.of ? Math.round((last.no / last.of) * 100) : 0;
+  const report = (job && job.report) || null;
+  const result = report && RESULT_LABELS[report.status];
+  const checkpoint = demo.checkpoint;
+
+  const runningBlock = running
+    ? `<div class="rows">
+        ${row('작업', `${esc(running.action_label || '')} ·`
+          + ` <span class="mono">${esc(running.material || '')}</span>`)}
+        ${row('진행', `<span class="mono">${esc(last ? `${last.no}/${last.of} ${last.label}`
+          : '시작 준비 중')}</span>`)}
+        ${running.stop_requested ? row('정지', '요청됨 — 확인 대기') : ''}
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${percent}%"></div></div>
+      <button class="btn danger block" type="button" data-action="sim-stop">■ 시연 정지</button>`
+    : '';
+
+  const resultBlock = !running && report && report.status
+    ? `<div class="rows">
+        ${row('마지막 작업', result ? pill(result[0], result[1], result[2])
+          : `<span class="mono">${esc(report.status)}</span>`)}
+       </div>`
+    : '';
+
+  const checkpointBlock = checkpoint
+    ? `<div class="confirm-evidence">
+        <p class="label-caps">STOP 체크포인트</p>
+        ${row('자재 · 상태', `<span class="mono">${esc(checkpoint.model)}</span> ·`
+          + ` ${esc(checkpoint.object_state || '')}`)}
+        ${row('정지 단계', `<span class="mono">${esc(checkpoint.stopped_stage || '')}</span>`)}
+        <p class="hint"><span class="hint-mark">ℹ</span>
+          "이어서 해줘"라고 말하면 확인 뒤 체크포인트에서 이어서 실행합니다.</p>
+      </div>`
+    : '';
+
+  if (!runningBlock && !resultBlock && !checkpointBlock) return '';
+  return `<div class="rows" style="gap:12px">
+      <p class="label-caps">시뮬레이션 작업</p>
+      ${runningBlock}${resultBlock}${checkpointBlock}
+    </div>`;
+}
+
+/** "안전 판단 및 실행" 칸에 올라가는 **시뮬레이션 실행 준비** 구역.
+ *
+ * 확인 대기는 계획(`/v1/plan`)이 아니라 검증된 시연 작업이다. 그래서 여기서
+ * 보여 주는 것은 안전 판단 PASS/BLOCK/ASK가 아니라 **무엇을 어디로 옮기는지와
+ * 무엇이 확인됐는지**다. 확인 버튼을 누르기 전에는 작업이 만들어지지 않는다.
+ *
+ * 검사 표시는 서버가 준 `readiness.checks`를 그대로 읽는다 — 화면이 "통과"를
+ * 만들어 내지 않는다. `ok:null`은 아직 보지 않은 것이고, `recheck`는 실행
+ * 직전에 다시 본다는 뜻이다.
+ */
+export function renderSimReadiness(state) {
+  const pending = (state.simDemo || {}).confirmation;
+  const ready = pending && pending.evidence && pending.evidence.readiness;
+  if (!ready) return '';
+  const mark = (c) => (c.ok === true ? ['success', '✓'] : c.ok === false
+    ? ['danger', '✕'] : ['muted', '◌']);
+  const rows = (ready.checks || []).map((c) => {
+    const [tone, icon] = mark(c);
+    return `<div class="row">
+        <span class="row-label">${esc(c.label)}</span>
+        <div class="row-value">${pill(tone, icon, c.ok === true ? '통과'
+          : c.ok === false ? '차단' : '실행 직전 검사')}
+          ${c.recheck ? '<span class="robot-pick-sub">· 실행 직전 재검증</span>' : ''}
+        </div>
+      </div>
+      <p class="hint" style="margin:-2px 0 4px">${esc(c.detail || '')}</p>`;
+  }).join('');
+  const resource = (id) => id
+    ? ` <span class="mono robot-pick-sub">${esc(id)}</span>` : '';
+  // 상태 배지는 카드 머리말이 이미 갖고 있다. 여기서 되풀이하지 않는다.
+  return `<div class="rows" style="gap:10px">
+      <div class="rows">
+        ${row('자재', `<strong>${esc(ready.material_korean || ready.material || '')}</strong>`
+          + ` <span class="mono robot-pick-sub">${esc(ready.material || '')}</span>`)}
+        ${row('출발 → 도착', `${esc(ready.origin || '—')}${resource(ready.source_resource)}`
+          + ` <span class="robot-pick-sub">→</span> <strong>${esc(ready.target || '—')}</strong>`
+          + resource(ready.destination_resource))}
+        ${ready.slot_label
+          ? row('배정 슬롯', `<strong>${esc(ready.slot_label)}</strong>`
+            + ' <span class="robot-pick-sub">서버가 배정</span>') : ''}
+      </div>
+      <div class="confirm-evidence">
+        <p class="label-caps">검증 상태</p>
+        ${rows}
+      </div>
+      <p class="hint"><span class="hint-mark">⬡</span>
+        <strong>확인을 눌러야 시작됩니다.</strong>
+        확인 카드는 <strong>시뮬레이션 작업 명령</strong> 칸에 있습니다.</p>
+    </div>`;
+}
+
+/** 시뮬레이션 명령이 ASK/BLOCK으로 끝났을 때, 같은 카드에서 사유를 보인다.
+ *
+ * 확인 대기가 있으면 그리지 않는다 — 그때는 실행 준비 구역이 자리를 갖는다. */
+export function renderSimDecision(state) {
+  const sim = state.simDemo || {};
+  if (sim.confirmation) return '';
+  const result = sim.result;
+  if (!result || !['ASK', 'BLOCK'].includes(result.decision)) return '';
+  const blocked = result.decision === 'BLOCK';
+  const full = ((sim.status || {}).conveyor || {}).full;
+  // 서버 사유가 이미 같은 안내를 담고 있으면 되풀이하지 않는다.
+  const hintAlready = String(result.reason || '').includes('대상 위치를 지정하세요');
+  return `<div class="notice ${blocked ? 'danger' : 'warning'}">
+      <span class="notice-mark">${blocked ? '✕' : '?'}</span>
+      <p><strong>시뮬레이션 작업 ${blocked ? 'BLOCK' : 'ASK'}</strong> —
+      ${esc(result.reason || (blocked ? '지금 상태에서는 할 수 없습니다.'
+        : '명령을 더 구체적으로 말해 주세요.'))}</p>
+    </div>
+    ${blocked && full ? `<p class="hint"><span class="hint-mark">⬡</span>
+      컨베이어가 모두 찼습니다 — 하나를 원래 자리로 돌려놓으면 다시 이송할 수 있습니다.</p>`
+      : hintAlready ? '' : `<p class="hint"><span class="hint-mark">⬡</span>${esc(SIM_PICK_PLACE_HINT)}</p>`}`;
+}
+
 export function renderVerdictCard(state) {
   const { validation } = state;
   const verdict = validation ? validation.verdict : null;
-  const headerPill =
-    verdict === VERDICT.PASS
+  // 확인 대기가 있으면 **그것이 지금의 실행 후보**다. 계획 판정보다 앞선다.
+  // 근거(readiness)가 없으면 준비됐다고 말하지 않는다 — 서버가 그 값을 주지
+  // 않는 구성에서 머리말만 바뀌고 본문이 비는 일이 없도록 한다.
+  const pendingReady = Boolean(
+    ((state.simDemo || {}).confirmation || {}).evidence
+    && state.simDemo.confirmation.evidence.readiness);
+  // 시뮬레이션 쪽 판단(ASK/BLOCK)이 지금의 답이면, 계획 생성 안내를 겹쳐
+  // 띄우지 않는다 — 어느 것이 지금 판단인지 흐려진다.
+  const simAnswered = Boolean(
+    !state.plan && !pendingReady
+    && ['ASK', 'BLOCK'].includes(((state.simDemo || {}).result || {}).decision));
+  const headerPill = pendingReady
+    ? pill('decide', '◈', '실행 준비됨')
+    : verdict === VERDICT.PASS
       ? pill('success', '✓', 'PASS')
       : verdict === VERDICT.BLOCK
         ? pill('danger', '✕', 'BLOCK')
@@ -965,9 +1287,15 @@ export function renderVerdictCard(state) {
           : pill('muted', '◉', '판단 없음');
 
   let body;
-  if (!validation) {
+  if (simAnswered && !validation) {
+    // 시뮬레이션 판단 구역이 답을 갖고 있다.
+    body = '';
+  } else if (pendingReady && !validation) {
+    // 실행 후보가 이미 있다 — 계획 생성 안내를 겹쳐 띄우지 않는다.
+    body = '';
+  } else if (!validation) {
     body = `<div class="notice">
-        <span class="notice-mark">🛡</span>
+        <span class="notice-mark">⬡</span>
         <p>계획을 생성하면 안전 판단(PASS / BLOCK / ASK)이 여기에 표시됩니다.</p>
       </div>`;
   } else if (verdict === VERDICT.PASS) {
@@ -980,6 +1308,11 @@ export function renderVerdictCard(state) {
     const reasons = (validation.reasonCodes || [])
       .map((code) => `<span class="chip reason">${esc(code)}</span>`)
       .join('');
+    // 자유 pick/place는 계속 막는다. 다만 **할 수 있는 길**을 알려 준다 —
+    // A/B/C 팔레트↔컨베이어는 검증된 시뮬레이션 작업으로 실행할 수 있다.
+    const pickPlaceBlocked = (validation.reasonCodes || []).some(
+      (code) => String(code).startsWith('capability.'))
+      || /집|놓|pick|place/i.test(String(validation.detail || ''));
     const items = (validation.blocked || [])
       .map((line) => `<li>${esc(line)}</li>`)
       .join('');
@@ -991,7 +1324,13 @@ export function renderVerdictCard(state) {
       <div>
         <p class="label-caps">Reason Code</p>
         <div class="pill-row" style="margin-top:6px">${reasons || '<span class="hint">—</span>'}</div>
-      </div>`;
+      </div>
+      ${pickPlaceBlocked ? `<div class="notice">
+        <span class="notice-mark">⬡</span>
+        <p><strong>${esc(SIM_PICK_PLACE_HINT)}</strong><br />
+        A·B·C 자재를 팔레트와 컨베이어 사이로 옮기는 작업은 검증된 시뮬레이션
+        작업으로 실행할 수 있습니다. 자유 집기·놓기 계획은 그대로 차단됩니다.</p>
+      </div>` : ''}`;
   } else {
     const missing = (validation.missing || []).map((line) => `<li>${esc(line)}</li>`).join('');
     const fixes = (validation.fixes || []).map((line) => `<li>${esc(line)}</li>`).join('');
@@ -1021,11 +1360,22 @@ export function renderVerdictCard(state) {
       </div>`;
   }
 
+  // 정지 래치는 **사람이 푼다.** 예전에는 "새 계획을 생성하면 풀립니다"라고만
+  // 적었는데, 이 화면은 계획을 만들지 않아서 풀 길이 없었다(실측 2026-09-22).
+  // 해제 단추를 여기 둔다 — 누르면 서버가 판단하고, 진행 중인 동작이 있으면
+  // 거부한다. 화면이 스스로 래치를 걷지 않는다.
   const latchNotice = state.stopLatched
     ? `<div class="notice danger"><span class="notice-mark">■</span>
-         <p>전체 정지가 걸려 있습니다. 새 계획을 생성하면 정지 상태가 풀립니다.</p></div>`
+         <p><strong>전체 정지가 걸려 있습니다.</strong><br />
+         멈춘 이유가 해결됐으면 정지를 해제하세요. 진행 중인 동작이 있으면
+         해제되지 않습니다.</p></div>
+       <button class="btn danger block" type="button" data-action="release-stop">
+         ◇ 정지 해제</button>`
     : '';
 
+  // 계획이 없고 시뮬레이션 실행 후보만 있으면, 계획용 실행 버튼을 띄우지
+  // 않는다. 누를 수 없는 버튼과 "계획이 없습니다"가 준비 상태와 겹쳐 보인다.
+  const planOnly = !((pendingReady || simAnswered) && !state.plan);
   const executeDisabled = canExecute(state) ? '' : 'disabled';
   const reason = !state.plan
     ? '계획이 없습니다.'
@@ -1040,12 +1390,14 @@ export function renderVerdictCard(state) {
   return `
     ${cardHeader('안전 판단 및 실행', headerPill)}
     <div class="card-body">
+      ${renderSimReadiness(state)}
+      ${renderSimDecision(state)}
+      ${renderSimExecution(state)}
       ${body}
       ${latchNotice}
-      <button class="btn primary block" type="button" data-action="execute" ${executeDisabled}>
-        ▶ 실행 시작
-      </button>
-      ${reason ? `<p class="hint"><span class="hint-mark">ℹ</span>${esc(reason)}</p>` : ''}
+      ${planOnly ? `<button class="btn primary block" type="button"
+        data-action="execute" ${executeDisabled}>▶ 실행 시작</button>` : ''}
+      ${planOnly && reason ? `<p class="hint"><span class="hint-mark">ℹ</span>${esc(reason)}</p>` : ''}
     </div>`;
 }
 
@@ -1362,7 +1714,7 @@ function renderObservation(state) {
       ${
         evidence.is_simulated
           ? `<p class="hint" style="margin-top:6px"><span class="hint-mark">⬡</span>
-               Gazebo simulation 관측값입니다. 실하드웨어 미검증.</p>`
+               Gazebo 시뮬레이션 관측값입니다.</p>`
           : ''
       }
     </div>`;
@@ -1530,7 +1882,7 @@ export function renderExecutionCard(state) {
                      .join('')}
                  </div>
                  <p class="hint" style="margin-top:8px"><span class="hint-mark">⬡</span>
-                   시뮬레이션 실행 결과입니다. 실제 로봇 실행으로 집계되지 않습니다.</p>
+                   Gazebo 시뮬레이션 실행 결과입니다.</p>
                </div>`
             : ''
         }
@@ -1675,7 +2027,6 @@ export function renderModal(state) {
           <div class="modal-head">
             <div>
               <h2>로봇 선택</h2>
-              <p>검증된 구성만 선택할 수 있습니다. 미구현 로봇은 선택되지 않습니다.</p>
             </div>
             <button class="modal-close" type="button" data-action="close-modal">✕</button>
           </div>
@@ -1717,6 +2068,16 @@ export function render(state, backendKind) {
   if (sessionNode) {
     sessionNode.textContent = state.session ? state.session.session_id : '세션 없음';
   }
+  // 목업 위 줄의 로봇 선택과 명령 감지.
+  set('robot-pick-slot', renderRobotPickHeader(state));
+  const detectNode = document.getElementById('detect');
+  if (detectNode) {
+    const detectHtml = renderDetect(state);
+    if (detectNode.innerHTML !== detectHtml) detectNode.innerHTML = detectHtml;
+    if (typeof detectNode.classList !== 'undefined') {
+      detectNode.classList.toggle('live', detectHtml.includes('pulse'));
+    }
+  }
 
   // 계획 화면
   set('card-robot', renderRobotCard(state));
@@ -1738,39 +2099,43 @@ export function render(state, backendKind) {
       header.innerHTML = freshHeader.innerHTML;
     }
   }
+  // 영상 위 배지(실행 중 작업·전체 정지)와 자재 상태 띠는 canvas와 따로
+  // 갱신한다 — 카드 전체를 다시 그리면 그려 둔 프레임이 사라진다.
+  set('scene-badges', renderSceneBadges(state));
+  set('scene-empty-slot', renderSceneEmpty(state));
+  set('scene-strip', renderSceneStrip(state));
   set('card-workcell', renderWorkcellCard(state));
-  set('card-hardware', renderHardwareCard(state));
   set('card-voice', renderVoiceCard(state));
   set('card-events', renderEventsCard(state));
   // **타이핑 중인 textarea를 부수지 않는다.** 입력 이벤트마다 상태가 바뀌고
   // 다시 그리는데, 카드 전체의 innerHTML을 갈아 끼우면 textarea가 새 요소로
   // 바뀌어 포커스·커서·한글 조합이 끊긴다(실측: 글자가 안 쳐진다). textarea가
   // 이미 있으면 버튼 상태만 맞추고, 안내문 구성이 바뀔 때만 전체를 다시 그린다.
-  const commandHtml = renderCommandCard(state, backendKind);
+  // **타이핑 중인 textarea를 부수지 않는다.** 입력 이벤트마다 상태가 바뀌고
+  // 다시 그리는데, 카드 전체의 innerHTML을 갈아 끼우면 textarea가 새 요소로
+  // 바뀌어 포커스·커서·한글 조합이 끊긴다(실측: 글자가 안 쳐진다).
+  //
+  // 그래서 카드는 textarea가 없을 때 **한 번만** 그리고, 그 뒤로는 textarea를
+  // 뺀 조각들(머리말·버튼 줄·전사·안내·명령 결과)만 각자 갈아 끼운다. 예전에는
+  // "안내문 개수가 달라졌을 때만 전체를 다시 그린다"는 어림짐작을 썼는데, 그
+  // 개수가 그대로면 조각이 낡은 채로 남았다 — 서버 연결 뒤에도 제목이 "작업
+  // 명령"이고 STT가 붙어도 마이크 버튼이 잠겨 있었다(둘 다 실측).
   const commandNode = document.getElementById('card-command');
   const canQueryCommand = commandNode && typeof commandNode.querySelector === 'function';
   const liveInput = canQueryCommand ? commandNode.querySelector('#command-input') : null;
   if (!liveInput) {
-    set('card-command', commandHtml);
+    set('card-command', renderCommandCard(state, backendKind));
   } else if (typeof document.createElement === 'function') {
     const fresh = document.createElement('div');
-    fresh.innerHTML = commandHtml;
-    const freshButton = fresh.querySelector ? fresh.querySelector('[data-action="generate"]') : null;
-    const liveButton = commandNode.querySelector('[data-action="generate"]');
-    if (freshButton && liveButton) {
-      if (liveButton.disabled !== freshButton.disabled) liveButton.disabled = freshButton.disabled;
-      if (liveButton.innerHTML !== freshButton.innerHTML) liveButton.innerHTML = freshButton.innerHTML;
-    }
-    const freshHints = fresh.querySelectorAll ? fresh.querySelectorAll('.hint').length : 0;
-    const liveHints = commandNode.querySelectorAll ? commandNode.querySelectorAll('.hint').length : 0;
-    const typing = typeof document.activeElement !== 'undefined' && document.activeElement === liveInput;
-    if (freshHints !== liveHints && !typing) set('card-command', commandHtml);
+    fresh.innerHTML = renderCommandCard(state, backendKind);
+    ['.card-header', '#command-actions', '#command-transcript', '#command-note',
+     '#command-foot'].forEach((selector) => {
+      const live = commandNode.querySelector(selector);
+      const next = fresh.querySelector ? fresh.querySelector(selector) : null;
+      if (live && next && live.innerHTML !== next.innerHTML) live.innerHTML = next.innerHTML;
+    });
   }
-  const simArea = document.getElementById('sim-command-area');
-  if (simArea) {
-    const simHtml = renderSimCommandArea(state);
-    if (simArea.innerHTML !== simHtml) simArea.innerHTML = simHtml;
-  }
+  set('sim-command-area', renderSimCommandArea(state));
   set('card-plan', renderPlanCard(state));
   set('card-verdict', renderVerdictCard(state));
   const blockHtml = renderBlockCard(state);

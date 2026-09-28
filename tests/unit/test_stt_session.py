@@ -373,7 +373,7 @@ class TestTermCorrectionAndConfidence(unittest.TestCase):
 
 
 class TestVoiceStopBypass(unittest.TestCase):
-    """4-08 — partial STOP 키워드가 계획 생성을 우회한다."""
+    """partial은 STOP·확인·작업 후보를 만들지 않는다."""
 
     def test_stop_keyword_in_partial_bypasses_planning(self):
         s = make_session(
@@ -384,21 +384,22 @@ class TestVoiceStopBypass(unittest.TestCase):
         for at in (0.1, 0.2, 0.8):
             events.extend(s.feed_audio(FRAME, at_sec=at, at_utc=100.0 + at))
         stop_events = [e for e in events if e.reason is ReasonCode.EXEC_STOPPED]
-        self.assertTrue(stop_events, "정지 이벤트가 나와야 한다")
-        self.assertTrue(s.stop_requested)
+        self.assertFalse(stop_events)
+        self.assertFalse(s.stop_requested)
         self.assertNotIn(ServerMessage.FINAL, kinds(events))
-        self.assertIs(s.state, SttSessionState.CLOSED)
+        self.assertIn(ServerMessage.PARTIAL, kinds(events))
+        self.assertIs(s.state, SttSessionState.SPEAKING)
 
     def test_stop_closes_the_session_so_no_final_can_follow(self):
         s = make_session(vad_script=[True], results=[Transcript("STOPWORD", 0.9)])
         s.start(at_utc=100.0)
         for at in (0.1, 0.2, 0.8):
             s.feed_audio(FRAME, at_sec=at, at_utc=100.0 + at)
-        self.assertTrue(s.stop_requested)
-        self.assertIs(s.state, SttSessionState.CLOSED)
+        self.assertFalse(s.stop_requested)
+        self.assertIs(s.state, SttSessionState.SPEAKING)
         self.assertFalse(s.final_emitted)
-        with self.assertRaises(SttSessionError):
-            s.flush(at_sec=1.0, at_utc=101.0)
+        events = s.flush(at_sec=1.0, at_utc=101.0)
+        self.assertIn(ServerMessage.FINAL, kinds(events))
 
     def test_abort_message_bypasses_transcription(self):
         transcriber = ScriptedTranscriber([Transcript("무엇이든", 0.9)])
@@ -421,7 +422,8 @@ class TestVoiceStopBypass(unittest.TestCase):
         events = []
         for at in (0.1, 0.2, 0.8):
             events.extend(s.feed_audio(FRAME, at_sec=at, at_utc=100.0 + at))
-        self.assertTrue(s.stop_requested)
+        self.assertFalse(s.stop_requested)
+        self.assertIn(ServerMessage.PARTIAL, kinds(events))
 
 
 class TestPersistenceLinkage(unittest.TestCase):
@@ -444,6 +446,22 @@ class TestPersistenceLinkage(unittest.TestCase):
         self.assertEqual(stored.utterance, "옮겨줘")
         self.assertEqual(stored.schema_version, TASK_PLAN_SCHEMA_VERSION)
         self.assertEqual(stored.created_at, 100.5)
+
+    def test_raw_and_normalized_final_are_separate_in_diagnostics(self):
+        repo = SqliteRepository(now=0.0)
+        self.addCleanup(repo.close)
+        s = make_session(results=[Transcript("에이 자재를 팔렛에서 벨트로 갖다 놔", 0.91)],
+                         repo=repo)
+        s.start(at_utc=100.0)
+        s.feed_audio(FRAME, at_sec=0.1, at_utc=100.1)
+        events = s.flush(at_sec=0.5, at_utc=100.5)
+        final = next(e for e in events if e.kind is ServerMessage.FINAL)
+        self.assertEqual(final.raw_text, "에이 자재를 팔렛에서 벨트로 갖다 놔")
+        self.assertEqual(final.text, "A 자재를 팔레트에서 컨베이어로 옮겨")
+        inference = repo.selected_stt_inference("req_1")
+        self.assertEqual(inference.raw_transcript, final.raw_text)
+        self.assertEqual(inference.transcript, final.text)
+        self.assertEqual(inference.confidence, 0.91)
 
     def test_no_repository_means_no_persist_claim(self):
         final = self._finalize(None)
@@ -506,6 +524,7 @@ class TestPersistenceLinkage(unittest.TestCase):
         inference = repo.selected_stt_inference("req_1")
         self.assertIsNotNone(inference)
         self.assertEqual(inference.transcript, "옮겨줘")
+        self.assertEqual(inference.raw_transcript, "옮겨줘")
         self.assertEqual(inference.confidence, 0.9)
         self.assertTrue(inference.final_adopted)
         self.assertEqual(inference.request_id, "req_1")

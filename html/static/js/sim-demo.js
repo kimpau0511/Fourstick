@@ -33,7 +33,7 @@ const POLL_IDLE_MS = 6000;
 /** 로봇이 움직이는 동작. 누를 때 확인을 받는다. */
 const MOVING_ACTIONS = new Set(['transfer', 'return', 'resume']);
 
-const RECORD_LABELS = {
+export const RECORD_LABELS = {
   held_on_target: ['info', '▣', '컨베이어에 유지'],
   stopped_unrestored: ['danger', '■', '정지됨 · 복구 필요'],
   fault_unrestored: ['danger', '✕', '실패 · 복구 필요'],
@@ -41,7 +41,7 @@ const RECORD_LABELS = {
   return_failed: ['danger', '✕', '복귀 실패 · 복구 필요'],
 };
 
-const RESULT_LABELS = {
+export const RESULT_LABELS = {
   simulation_transfer_completed: ['success', '✓', '이송 완료'],
   simulation_transfer_resumed_completed: ['success', '✓', '이어서 이송 완료'],
   returned_to_origin: ['success', '✓', '원래 슬롯 복귀'],
@@ -69,7 +69,14 @@ async function call(method, path, body) {
   return { ok: response.ok, status: response.status, payload };
 }
 
-export function createSimDemoCard({ root, fetchImpl = null, confirmImpl = null } = {}) {
+/** 시연 카드.
+ *
+ * `onStatus`를 주면 새로 읽은 `/v1/sim-demo` 상태와 마지막 작업 상세를 그대로
+ * 넘긴다. 목업의 가제보 화면 아래 자재 상태 띠와 "안전 판단 및 실행" 칸이
+ * 그 값을 쓴다 — **읽기만 한다.** 카드는 계속 자기 DOM만 그린다.
+ */
+export function createSimDemoCard({ root, fetchImpl = null, confirmImpl = null,
+                                    onStatus = null } = {}) {
   const state = {
     available: null, // null=확인 전, false=서버 없음
     status: null,
@@ -106,13 +113,15 @@ export function createSimDemoCard({ root, fetchImpl = null, confirmImpl = null }
       state.available = false;
       state.notice = '서버에 연결되어 있을 때만 쓸 수 있습니다.';
     }
+    if (onStatus) onStatus({ status: state.status, job: state.job, available: state.available });
     draw();
     schedule();
   }
 
   function schedule() {
     if (timer) clearTimeout(timer);
-    const running = state.status && state.status.running_job;
+    const running = state.status && (state.status.running_job
+      || (state.status.goal && ['running', 'stopping'].includes(state.status.goal.status)));
     timer = setTimeout(refresh, running ? POLL_RUNNING_MS : POLL_IDLE_MS);
   }
 
@@ -132,7 +141,7 @@ export function createSimDemoCard({ root, fetchImpl = null, confirmImpl = null }
     }
     if (MOVING_ACTIONS.has(action)) {
       const text = `[시뮬레이터] ${row.korean || material}: ${labels[action] || action}\n`
-        + 'Gazebo 시뮬레이터에서 로봇이 움직입니다. 실제 로봇이 아닙니다. 진행할까요?';
+        + 'Gazebo 시뮬레이터에서 로봇이 움직입니다. 진행할까요?';
       if (!confirmAction(text)) return;
     }
     state.busy = true;
@@ -157,17 +166,69 @@ export function createSimDemoCard({ root, fetchImpl = null, confirmImpl = null }
     await refresh();
   }
 
+  /** Ask the server for the fixed return-all plan, then confirm that exact plan. */
+  async function startReturnAllGoal() {
+    state.busy = true;
+    draw();
+    const planned = await request('POST', '/v1/sim-demo/goals', {
+      goal: 'return_all_to_origin',
+    });
+    state.busy = false;
+    if (!planned.ok) {
+      state.notice = planned.payload.detail || planned.payload.message
+        || `목표를 계획하지 못했습니다 (${planned.status})`;
+      draw();
+      return;
+    }
+    state.status = { ...(state.status || {}), goal: planned.payload };
+    draw();
+    const lines = (planned.payload.plan || []).map((step) =>
+      `${step.step}. ${step.material_label}: ${step.from_label} → ${step.to_label}`);
+    const prompt = `[시뮬레이터] ${planned.payload.summary}\n${lines.join('\n')}`
+      + '\n한 번에 한 자재씩 복귀합니다. 이 계획을 실행할까요?';
+    if (!confirmAction(prompt)) {
+      await request('POST', `/v1/sim-demo/goals/${encodeURIComponent(planned.payload.goal_id)}/confirm`,
+        { action: 'cancel' });
+      await refresh();
+      return;
+    }
+    const confirmed = await request('POST',
+      `/v1/sim-demo/goals/${encodeURIComponent(planned.payload.goal_id)}/confirm`,
+      { action: 'confirm' });
+    state.notice = confirmed.ok ? '전체 복귀 목표를 시작했습니다.'
+      : (confirmed.payload.detail || confirmed.payload.message || '목표 확인이 거부되었습니다.');
+    await refresh();
+  }
+
+  /** 기록↔관측 정합. 로봇 명령이 아니라 관측만이므로 확인을 받지 않는다. */
+  async function reconcile() {
+    state.busy = true;
+    draw();
+    const response = await request('POST', '/v1/sim-demo/reconcile', {});
+    state.busy = false;
+    if (response.ok) {
+      state.job = response.payload;
+      state.notice = '기록을 지금 Gazebo 관측과 맞추는 중입니다(읽기 전용).';
+    } else {
+      state.notice = response.payload.detail || response.payload.message
+        || `정합을 시작하지 못했습니다 (${response.status})`;
+    }
+    await refresh();
+  }
+
   function onClick(event) {
     const target = event.target.closest('[data-sim-action]');
     if (!target || !root.contains(target) || target.disabled) return;
     const action = target.getAttribute('data-sim-action');
     if (action === 'stop') stop();
+    else if (action === 'reconcile') reconcile();
+    else if (action === 'return-all-goal') startReturnAllGoal();
     else start(action, target.getAttribute('data-material'));
   }
 
   if (root) root.addEventListener('click', onClick);
   draw();
-  return { refresh, state, start, stop };
+  return { refresh, state, start, stop, reconcile, startReturnAllGoal };
 }
 
 // ── 그리기 ────────────────────────────────────────────────────────────
@@ -193,6 +254,7 @@ function renderCard(state) {
   }
   const demo = status.state || {};
   const running = status.running_job;
+  const goal = status.goal;
   const badge = running
     ? pill('success', '●', '실행 중')
     : demo.state_hold_active
@@ -201,14 +263,58 @@ function renderCard(state) {
   return `${header('시뮬레이션 시연', badge)}
     <div class="card-body">
       <p class="hint"><span class="hint-mark">⬡</span>
-        Gazebo 시뮬레이터 안의 이송입니다. 실제 로봇 결과가 아니며
-        (<span class="mono">is_simulated=true</span>), 일반 명령의 집기·놓기는 계속 차단됩니다.</p>
+        Gazebo 시뮬레이터 안의 이송입니다(<span class="mono">is_simulated=true</span>).
+        일반 명령의 집기·놓기는 계속 차단됩니다.</p>
+      ${renderEnvironment(status.environment, status.materials)}
       ${renderRunning(state, running)}
-      ${renderMaterials(status, Boolean(running) || state.busy)}
+      ${renderGoal(goal, Boolean(running) || state.busy)}
+      ${renderReconcile(status, Boolean(running) || Boolean(goal && ['planned', 'running', 'stopping'].includes(goal.status)) || state.busy)}
+      ${renderMaterials(status, Boolean(running) || Boolean(goal && ['planned', 'running', 'stopping'].includes(goal.status)) || state.busy)}
       ${renderCheckpoint(demo)}
       ${renderLastJob(state.job, running)}
       ${state.notice ? `<p class="hint" role="status"><span class="hint-mark">!</span>${esc(state.notice)}</p>` : ''}
     </div>`;
+}
+
+function renderEnvironment(env, materials) {
+  if (!env) return '';
+  const names = Object.fromEntries((materials || []).map((m) => [m.model, m.korean || m.model]));
+  const blocked = (env.blocked_slots || []).join(', ') || '없음';
+  const unavailable = (env.unavailable_materials || []).map((m) => names[m] || m).join(', ') || '없음';
+  return `<p class="hint" data-sim-environment>작업 환경 · 사용 금지 위치: ${esc(blocked)} · 쓰지 않는 자재: ${esc(unavailable)}</p>`;
+}
+
+function renderGoal(goal, locked = false) {
+  if (!goal) {
+    return `<button class="btn primary block" type="button" data-sim-action="return-all-goal"${locked ? ' disabled' : ''}>
+      ↩ 컨베이어 자재 모두 원래 자리로</button>`;
+  }
+  const progress = goal.progress || {};
+  const final = goal.final_result;
+  const rows = (goal.plan || []).map((step) =>
+    `<div class="row"><span class="row-label">${esc(step.step)}. ${esc(step.material_label)}</span>
+      <div class="row-value">${step.action === 'move' ? '[칸 직접 이동] ' : ''}${esc(step.from_label)} → ${esc(step.to_label)} · ${esc(step.status)}${
+        step.reason ? `<br><span class="hint">${esc(step.reason)}${
+          (step.depends_on || []).length ? ` (선행: ${esc(step.depends_on.join(', '))})` : ''}</span>` : ''}${
+        step.status === 'failed' && step.result && step.result.detail
+          ? `<br><span class="hint">${esc(step.result.detail)}</span>` : ''}</div></div>`).join('');
+  const reasoning = goal.reasoning || {};
+  const notes = (reasoning.notes || []).map((note) => `<p class="hint">판단: ${esc(note)}</p>`).join('');
+  const blocked = (reasoning.blocked_slots || []).length
+    ? `<p class="hint">사용 금지 위치: ${esc(reasoning.blocked_slots.join(', '))}</p>` : '';
+  const active = ['planned', 'running', 'stopping'].includes(goal.status);
+  return `<div class="rows" style="margin:8px 0">
+      <p class="label-caps">${goal.goal === 'arrange' ? '목표 배치' : '전체 복귀 목표'}</p>
+      ${goal.summary ? `<p class="hint">${esc(goal.summary)}</p>` : ''}
+      ${blocked}${notes}
+      ${rows || '<p class="hint">움직일 작업이 없습니다.</p>'}
+      <div class="row"><span class="row-label">진행</span>
+        <div class="row-value">${esc(progress.completed || 0)} / ${esc(progress.total || 0)} (${esc(progress.percent || 0)}%) · ${esc(goal.status)}</div></div>
+      ${goal.current_step ? `<div class="row"><span class="row-label">현재 단계</span><div class="row-value">${esc(goal.current_step)}</div></div>` : ''}
+      ${final ? `<p class="hint">${esc(final.detail)}</p>` : ''}
+    </div>
+    ${active ? '<button class="btn danger block" type="button" data-sim-action="stop">■ 목표 STOP</button>'
+      : '<button class="btn primary block" type="button" data-sim-action="return-all-goal">↩ 새 전체 복귀 계획</button>'}`;
 }
 
 function renderRunning(state, running) {
@@ -225,6 +331,35 @@ function renderRunning(state, running) {
       ${running.stop_requested ? '<div class="row"><span class="row-label">정지</span><div class="row-value">요청됨 — 확인 대기</div></div>' : ''}
     </div>
     <button class="btn danger block" type="button" data-sim-action="stop">■ 시연 정지</button>`;
+}
+
+/** 기록↔관측 정합. Gazebo를 다시 띄우면 기록만 남아 어긋난다.
+ *
+ * 서버가 기동할 때 기록이 있으면 스스로 한 번 맞춘다. 이 버튼은 그 뒤에
+ * (예: 서버는 그대로 두고 Gazebo만 다시 띄운 경우) 사람이 부르는 입구다.
+ * 관측만 하므로 확인을 받지 않는다. */
+function renderReconcile(status, locked) {
+  const info = status.reconcile || {};
+  const last = info.last;
+  const cleared = last && last.cleared ? last.cleared : [];
+  const detail = !last
+    ? '맞춘 기록이 아직 없습니다.'
+    : `${esc(last.at || '')} · 기록에서 뺀 자재 ${cleared.length ? esc(cleared.join(', ')) : '없음'}`;
+  return `<div class="rows" style="margin-bottom:8px">
+      <div class="row"><span class="row-label">기록 정합</span>
+        <div class="row-value">${info.needed ? '맞출 기록이 있습니다' : '기록 없음 — 맞출 것이 없습니다'}</div></div>
+      <div class="row"><span class="row-label">마지막 확인</span>
+        <div class="row-value">${detail}</div></div>
+    </div>
+    <button class="btn sm" type="button" data-sim-action="reconcile"
+      ${locked ? 'disabled' : ''} title="지금 Gazebo 관측으로 기록을 맞춥니다(로봇 명령 없음)">⟳ 기록↔관측 정합</button>`;
+}
+
+/** 자재를 부를 수 있는 색 이름. 서버가 셀 설정 선언에서 실어 보낸 것만 보인다. */
+function colorNames(material) {
+  const colors = material.korean_colors || [];
+  if (!colors.length) return '';
+  return ` <span class="robot-pick-sub">(${esc(colors.join(' · '))})</span>`;
 }
 
 function renderMaterials(status, locked) {
@@ -245,7 +380,7 @@ function renderMaterials(status, locked) {
         })
         .join('');
       return `<div style="margin-top:10px">
-          <div class="row"><span class="truncate">${esc(material.korean)} <span class="mono robot-pick-sub">${esc(material.model)}</span></span>${tag}</div>
+          <div class="row"><span class="truncate">${esc(material.korean)}${colorNames(material)} <span class="mono robot-pick-sub">${esc(material.model)}</span></span>${tag}</div>
           <div class="pill-row" style="margin-top:6px">${buttons}</div>
         </div>`;
     })

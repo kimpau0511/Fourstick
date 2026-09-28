@@ -68,9 +68,9 @@ export function initialState() {
     // 시뮬레이션 작업 셀 연결 상태(서버 /v1/config의 robot.workcell).
     // 붙지 않았으면 null이거나 registered=false다 — 추측하지 않는다.
     serverWorkcell: null,
-    // 실기 전환 준비 상태(8-12). **읽기 전용이다.**
-    hardwareReadiness: null,
-    // Gazebo 이송 시연 요약(8-11). 실기 준비와 다른 축이다.
+    // Gazebo 이송 시연 요약(8-11).
+    // 실기 준비 상태는 화면에 두지 않는다 — 서버가 공개 응답에서 빼고,
+    // 내부 판정 코드와 설정은 그대로 있다.
     simulationE2e: null,
     /** 작업 셀 장면 영상 갱신 카운터. tick마다 올라간다. */
     sceneSeq: 0,
@@ -87,11 +87,29 @@ export function initialState() {
     serverConfig: null,
     session: null,
     connection: { state: 'connecting', detail: '' },
-    stt: { recording: false, partial: '', final: '', confidence: null, available: false },
+    stt: { recording: false, partial: '', final: '', normalized: '', confidence: null, available: false },
     /** 시뮬레이션 명령(자재 이송·복귀·정지·이어서)의 마지막 응답과 그 작업의
      *  최신 상세. 모드 토글은 없다 — 시뮬레이션 작업 셀에서는 기본 동작이고,
-     *  그 밖의 발화는 서버가 PASS_THROUGH로 돌려 기존 계획 생성으로 간다. */
-    simDemo: { busy: false, result: null, job: null },
+     *  그 밖의 발화는 서버가 PASS_THROUGH로 돌려 기존 계획 생성으로 간다.
+     *
+     *  `confirmation`은 **작업이 아니다.** 해석이 통과해 사람의 확인을 기다리는
+     *  대기 한 건이고, 확인을 누르기 전에는 job이 만들어지지 않는다.
+     *  `remainingSec`은 만료까지 남은 초다 — 화면 표시용이고, **만료를 강제하는
+     *  쪽은 서버**다(화면이 0을 놓쳐도 서버가 거부한다).
+     *  `status`는 `/v1/sim-demo` 상태(자재 기록·체크포인트·실행 중 작업)다. */
+    simDemo: {
+      busy: false,
+      result: null,
+      job: null,
+      status: null,
+      confirmation: null,
+      remainingSec: null,
+    },
+    /** 웹 음성 안내(TTS). **기본은 꺼짐**이고, 켜면 브라우저 저장소에 남는다.
+     *  `supported`는 이 브라우저가 SpeechSynthesis를 갖고 있는지다 — 없으면
+     *  토글이 잠기고 화면이 그 사실을 적는다(없는 기능을 켤 수 있는 것처럼
+     *  보이게 하지 않는다). 읽는 문장은 `html/static/js/tts.js`가 만든다. */
+    tts: { supported: false, enabled: false },
     modal: null, // 'execute' | 'cancel' | 'robot' | null
     eventFilter: 'all',
     policyOpen: false,
@@ -171,9 +189,6 @@ export function reduce(state, action) {
         ...state,
         serverRobot: action.robot,
         serverWorkcell: (action.robot && action.robot.workcell) || null,
-        // Gazebo 시연 상태와 **다른 축**이다. 하나로 합치지 않는다.
-        hardwareReadiness:
-          (action.robot && action.robot.hardware_readiness) || null,
         simulationE2e: (action.robot && action.robot.simulation_e2e) || null,
       };
 
@@ -201,15 +216,73 @@ export function reduce(state, action) {
     case 'stt':
       return { ...state, stt: { ...state.stt, ...action.stt } };
 
+    case 'tts':
+      return { ...state, tts: { ...state.tts, ...action.tts } };
+
     case 'sim-demo-busy':
       return { ...state, simDemo: { ...state.simDemo, busy: Boolean(action.busy) } };
 
-    case 'sim-demo-result':
-      return { ...state, simDemo: { ...state.simDemo, busy: false, result: action.result,
-        job: (action.result && action.result.job) || null } };
+    case 'sim-demo-result': {
+      // CONFIRM이면 **작업이 아니다** — 확인 대기만 세운다.
+      const confirmation = (action.result && action.result.confirmation) || null;
+      return {
+        ...state,
+        simDemo: {
+          ...state.simDemo,
+          busy: false,
+          result: action.result,
+          job: (action.result && action.result.job) || null,
+          confirmation,
+          remainingSec: confirmation
+            ? (confirmation.remaining_sec != null
+              ? confirmation.remaining_sec : confirmation.ttl_sec)
+            : null,
+        },
+      };
+    }
 
     case 'sim-demo-job':
       return { ...state, simDemo: { ...state.simDemo, job: action.job } };
+
+    case 'sim-demo-status':
+      return {
+        ...state,
+        simDemo: {
+          ...state.simDemo,
+          status: action.status || null,
+          job: action.job === undefined ? state.simDemo.job : action.job,
+        },
+      };
+
+    case 'sim-demo-confirmation':
+      // 서버가 준 확인 대기를 그대로 세운다(새로고침 복원도 이 길이다).
+      return {
+        ...state,
+        simDemo: {
+          ...state.simDemo,
+          confirmation: action.confirmation || null,
+          remainingSec: action.confirmation
+            ? (action.confirmation.remaining_sec != null
+              ? action.confirmation.remaining_sec : action.confirmation.ttl_sec)
+            : null,
+        },
+      };
+
+    case 'sim-demo-passed-through':
+      // 이 발화는 시뮬레이션 명령이 아니었다 — 기존 계획 생성이 맡는다.
+      // **낡은 ASK/BLOCK을 남기지 않는다.** 남기면 계획 결과와 함께 보여
+      // 어느 것이 지금 판단인지 알 수 없다(실측).
+      return {
+        ...state,
+        simDemo: { ...state.simDemo, busy: false, result: null },
+      };
+
+    case 'sim-demo-confirm-cleared':
+      // 확인을 눌렀거나 취소·만료됐다. **작업은 여기서 만들어지지 않는다.**
+      return {
+        ...state,
+        simDemo: { ...state.simDemo, busy: false, confirmation: null, remainingSec: null },
+      };
 
     case 'robot':
       // 실행 중에는 로봇을 바꾸지 않는다.
@@ -277,14 +350,23 @@ export function reduce(state, action) {
         },
       };
 
-    case 'tick':
+    case 'tick': {
+      // 확인 대기의 남은 시간은 **표시용**이다. 0이 되면 화면에서 카드를 내리고,
+      // 실제 거부는 서버가 한다(화면이 잘못 세어도 실행되지 않는다).
+      const simDemo = state.simDemo.confirmation && state.simDemo.remainingSec != null
+        ? (state.simDemo.remainingSec <= 1
+          ? { ...state.simDemo, confirmation: null, remainingSec: null }
+          : { ...state.simDemo, remainingSec: state.simDemo.remainingSec - 1 })
+        : state.simDemo;
       // 장면 영상 갱신은 실행 중이 아닐 때도 돌아야 한다.
-      if (!isActive(state)) return { ...state, sceneSeq: state.sceneSeq + 1 };
+      if (!isActive(state)) return { ...state, simDemo, sceneSeq: state.sceneSeq + 1 };
       return {
         ...state,
+        simDemo,
         sceneSeq: state.sceneSeq + 1,
         execution: { ...state.execution, elapsedSec: state.execution.elapsedSec + 1 },
       };
+    }
 
     case 'step-started':
       return {
@@ -370,6 +452,18 @@ export function reduce(state, action) {
 
     case 'stop-dismissed':
       return { ...state, stopRecord: null };
+
+    // 정지 해제는 **서버가 풀렸다고 답했을 때만** 온다. 화면이 스스로 풀지
+    // 않는다 — 진행 중인 동작이 있으면 서버가 거부하고, 그때는 래치가 그대로다.
+    case 'stop-released':
+      return {
+        ...state,
+        stopLatched: false,
+        stopRecord: null,
+        execution: state.execution.status === EXECUTION.GLOBAL_STOPPED
+          ? { ...state.execution, status: EXECUTION.IDLE }
+          : state.execution,
+      };
 
     case 'restore':
       return { ...state, ...action.state };

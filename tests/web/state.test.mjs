@@ -26,6 +26,7 @@ import {
 import { SimulationBackend, scenarioFor } from '../../html/static/js/backend-sim.js';
 import { planFromBundle, validationFromBundle } from '../../html/static/js/backend-http.js';
 import {
+  ROBOTS,
   activeNodeIndex,
   describeStep,
   planResourceMapping,
@@ -320,7 +321,7 @@ test('정지 래치는 새 계획을 받을 때만 풀린다', async () => {
 test('실행 중에는 로봇을 바꾸지 않는다', () => {
   let state = initialState();
   state = reduce(state, { type: 'execution-started', executionId: 'exec_1', step: 1 });
-  const next = reduce(state, { type: 'robot', robotId: 'ur5e' });
+  const next = reduce(state, { type: 'robot', robotId: 'other_robot' });
   assert.equal(next.robotId, 'fairino_fr3');
 });
 
@@ -329,7 +330,7 @@ test('로봇을 바꾸면 계획과 판정이 사라진다(재생성이 필요�
   const backend = new SimulationBackend(FAST);
   await planned(store, backend, '1번 팔레트로 이동한 뒤 안전 위치로 복귀해줘');
   assert.ok(store.get().plan);
-  store.dispatch({ type: 'robot', robotId: 'ur5e' });
+  store.dispatch({ type: 'robot', robotId: 'other_robot' });
   assert.equal(store.get().plan, null);
   assert.equal(store.get().validation, null);
   assert.equal(canExecute(store.get()), false);
@@ -347,7 +348,8 @@ test('FR3-WMS + 2F-85 작업 셀 데이터가 요구된 문구와 배지를 그�
     '2F-85 장착 근거, 그리퍼 close 안정성, 파지 관측, pick/place 재검증 미완료',
   );
   const labels = robot.badges.map((badge) => badge.label);
-  assert.deepEqual(labels, ['MoveIt2 검증 완료', '시뮬레이션 전용', '실하드웨어 미검증']);
+  // 실기 검증 배지는 뺀다 — 지금 서비스는 Gazebo 시뮬레이션 전용이다.
+  assert.deepEqual(labels, ['MoveIt2 검증 완료', '시뮬레이션 전용']);
 });
 
 test('서버가 준 작업 셀 값이 로봇 카드 데이터를 덮어쓴다', () => {
@@ -405,14 +407,14 @@ test('계획 자원 대조는 대조표에 없는 자원을 모른다고 표시�
   assert.equal(rows[1].model, null);
 });
 
-test('미구현 로봇은 수치를 만들지 않고 선택도 되지 않는다', () => {
-  ['doosan_m1013', 'kinova_gen3', 'ur5e'].forEach((id) => {
-    const robot = robotById(id);
-    assert.equal(robot.implemented, false);
-    assert.equal(robot.payload, '미확보');
-    assert.equal(robot.reach, '미확보');
-    assert.deepEqual(robot.skills, []);
-  });
+test('로봇 목록에는 검증된 구성(FR3 작업 셀·G1 보행)만 있다', () => {
+  // 고를 수 없는 "미구현" 항목을 화면에 늘어놓지 않는다. 확장 후보는 코드가
+  // 아니라 계획 문서에서 관리한다.
+  assert.deepEqual(ROBOTS.map((r) => r.id), ['fairino_fr3', 'unitree_g1']);
+  assert.ok(ROBOTS.every((r) => r.implemented === true));
+  assert.equal(ROBOTS[0].id, 'fairino_fr3');
+  // 목록에 없는 id를 물으면 만들어 내지 않고 그 하나를 돌려준다.
+  assert.equal(robotById('ur5e').id, 'fairino_fr3');
 });
 
 // ── 계획 표현 ─────────────────────────────────────────────────────────
@@ -526,4 +528,11 @@ test('관문 판정이 없으면 통과로 만들지 않는다', () => {
   const result = validationFromBundle({ plan: {}, safety: { rules: [] } });
   assert.equal(result.verdict, 'ASK');
   assert.ok(result.missing.length >= 1);
+});
+
+test('서버 작업 셀(FR3) 값은 G1 표시에 덮어쓰지 않는다', () => {
+  const g1 = robotById('unitree_g1');
+  const merged = withWorkcell(g1, { registered: true, supported_skills: ['home'], world: 'w' });
+  assert.equal(merged, g1);
+  assert.equal(merged.adapter, 'G1 GAZEBO (별도 제어기)');
 });

@@ -90,7 +90,9 @@ class TestDeclaredRobotIsVisible(IsolationCase):
         # 비활성 스킬과 사유가 화면 데이터에 있다.
         self.assertIn("'pick', 'place'", catalog)
         self.assertIn("파지 관측", catalog)
-        self.assertIn("실하드웨어 미검증", catalog)
+        # 실기 검증 배지는 화면 데이터에 두지 않는다 — 시뮬레이션 전용이다.
+        self.assertNotIn("실하드웨어 미검증", catalog)
+        self.assertIn("시뮬레이션 전용", catalog)
         # 화면 코드가 확인되지 않은 모델 수치를 갖지 않는다.
         self.assertNotIn("0.7929", catalog)
         self.assertNotIn("0.920864", catalog)

@@ -423,6 +423,25 @@ class TestApprovalAndExecution(WebCase):
         self.assertTrue(trace.transitions)
         self.assertTrue(trace.results)
         self.assertEqual(executions[0].attempt_no, 1)
+        self.assertIsNone(self.app.runtime.cell_execution.current())
+
+    async def test_sim_demo_lease_blocks_general_execute(self):
+        payload = (await self.plan()).json()
+        await self.decide(payload["plan"]["plan_id"], bundle=payload)
+        lease = self.app.runtime.cell_execution.try_acquire(
+            owner="sim_demo", operation_id="simjob_busy")
+        self.assertIsNotNone(lease)
+        try:
+            response = await self.run_execute(payload)
+        finally:
+            self.app.runtime.cell_execution.release(lease)
+        self.assertEqual(response.status, 409)
+        self.assertEqual(
+            response.json()["reason_code"], ReasonCode.EXEC_GOAL_REJECTED.value)
+        self.assertIn("simjob_busy", response.json()["error"])
+        self.assertEqual(
+            self.app.runtime.repository.executions_for_request(payload["request_id"]),
+            ())
 
     async def test_final_result_exposes_all_five_axes(self):
         payload = (await self.plan()).json()

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import sys
@@ -203,11 +204,17 @@ class ConveyorGraspPoseTest(unittest.TestCase):
 
 
 class PalletPlacePoseTest(unittest.TestCase):
-    """A/C 원래 슬롯 놓기 자세(`derive_grasp_poses.py --pallet-place`)."""
+    """A/B/C 원래 슬롯 놓기 자세(`derive_grasp_poses.py --pallet-place`).
 
-    def test_a_and_c_have_measured_place_poses_b_does_not(self):
+    B는 2026-09-24에 같은 도구로 측정했다(`--materials mat_b`, 유효 dz
+    +0.040..+0.060 m). 그 전에는 B 복귀가 팔레트 파지 자세로 놓으려다 기하
+    검사에서 막혔다(`conveyor__belt↔material_b__held`).
+    """
+
+    def test_all_materials_have_measured_place_poses(self):
         entries = GRASP[PALLET_PLACE_KEY]
         for rid, model, pallet in (("mat_a", "material_a", "loc_pallet_1"),
+                                   ("mat_b", "material_b", "loc_pallet_2"),
                                    ("mat_c", "material_c", "loc_pallet_3")):
             with self.subTest(model=model):
                 name = pallet_place_pose(GRASP, object_id=rid, support_id=pallet)
@@ -228,18 +235,21 @@ class PalletPlacePoseTest(unittest.TestCase):
                 # 든 자재 선언은 복귀가 실제로 쓰는 컨베이어 파지에서 왔다.
                 self.assertEqual(pose["held_object_source"],
                                  f"conveyor_grasp_poses.{model}_conveyor_grasp")
-                # 파지 자세보다 높다(트레이 접촉 회피) — 파지 자세를 복사하지 않았다.
+                # 파지 자세보다 낮지 않다(트레이 접촉 회피). 높이는 훑기의 최저
+                # 유효값이라 같을 수 있다(B: 둘 다 +0.040 m). 복사하지 않았다는
+                # 것은 아래 관절값 비교가 본다 — 든 자재 선언이 다르다.
                 grasp_dz = GRASP["poses"][f"{model}_grasp"]["target_offset_m"][2]
-                self.assertGreater(pose["target_offset_m"][2], grasp_dz)
-                self.assertNotEqual(pose["joint_rad"],
-                                    GRASP["poses"][f"{model}_grasp"]["joint_rad"])
-        self.assertIsNone(pallet_place_pose(GRASP, object_id="mat_b",
-                                            support_id="loc_pallet_2"))
+                self.assertGreaterEqual(pose["target_offset_m"][2], grasp_dz)
+                if pose["target_offset_m"][2] > grasp_dz:
+                    self.assertNotEqual(pose["joint_rad"],
+                                        GRASP["poses"][f"{model}_grasp"]["joint_rad"])
+                # 높이가 같으면 같은 IK 해가 나올 수 있다(실측: B). 그래도 이 자세는
+                # 훑기가 든 자재·해제·경로를 따로 검사해 등록한 값이다(위 단언들).
 
-    def test_a_c_use_pallet_place_b_keeps_grasp_pose(self):
+    def test_returns_use_measured_pallet_place(self):
         for rid, model, pallet, expected in (
                 ("mat_a", "material_a", "loc_pallet_1", "material_a_pallet_place"),
-                ("mat_b", "material_b", "loc_pallet_2", "material_b_grasp"),
+                ("mat_b", "material_b", "loc_pallet_2", "material_b_pallet_place"),
                 ("mat_c", "material_c", "loc_pallet_3", "material_c_pallet_place")):
             with self.subTest(model=model):
                 base = return_bindings(bindings(), object_id=rid,
@@ -529,3 +539,32 @@ class HeldStateStaysSimulationOnlyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ReturnPlaceFallbackTest(unittest.TestCase):
+    """놓기 자세가 없을 때 대신 쓰는 자세가 컨베이어 파지가 되면 안 된다.
+
+    2026-09-24 재현: 슬롯 적용이 grasp_pose[자재]를 컨베이어 슬롯 파지로 바꾼
+    뒤 복귀가 그것을 원래 슬롯 놓기로 썼다 → conveyor__belt↔material_b__held.
+    """
+
+    def test_conveyor_grasp_as_origin_place_is_refused(self):
+        rid, pallet = "mat_b", "loc_pallet_2"
+        conveyor = conveyor_grasp_pose(GRASP, object_id=rid, target_id="loc_conveyor")
+        base = return_bindings(bindings(), object_id=rid, target_id="loc_conveyor",
+                               grasp_config=GRASP, origin_id=pallet)
+        grasp_map = dict(base.grasp_pose)
+        grasp_map[rid] = conveyor        # 슬롯 적용이 한 일과 같다
+        swapped = dataclasses.replace(base, grasp_pose=grasp_map)
+        stages, findings = build_return_stages(
+            swapped, object_id=rid, origin_id=pallet, target_id="loc_conveyor",
+            conveyor_grasp=conveyor, origin_place=None)
+        self.assertEqual(stages, ())
+        self.assertEqual(findings[0][0], ReasonCode.GEOMETRY_GRASP_POSE_UNAVAILABLE)
+
+    def test_script_captures_pallet_grasp_before_slot_override(self):
+        source = (ROOT / "scripts/demo_workcell_pick_place.py").read_text(encoding="utf-8")
+        capture = source.index(
+            "origin_place = origin_place or bindings.grasp_pose.get(slot.object_id)")
+        override = source.index("grasp_map[slot.object_id] = slot_grasp")
+        self.assertLess(capture, override)

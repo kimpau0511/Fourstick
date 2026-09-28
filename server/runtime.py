@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import importlib
 import json
-import threading
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -65,6 +65,7 @@ from planning.vllm_provider import VllmPlanProvider
 import json
 
 from core.asset_manifest import AssetManifest
+from server.cell_execution import CellExecutionManager
 from core.robot_profile import CompositeRobotProfile, Environment
 from core.stop_contract import JointSample
 from robots.fake.geometry import DevFakeGeometryValidator, FakeCell
@@ -166,8 +167,8 @@ class Runtime:
     #: 공유 어댑터. **로봇은 하나다** — 세션마다 새 어댑터를 만들면 같은 로봇에
     #: 여러 연결이 붙어 STOP이 다른 인스턴스의 동작을 멈추지 못한다.
     _adapter: Any = field(default=None, repr=False)
-    #: 실행 직렬화. 한 로봇에 동시에 두 실행을 보내지 않는다.
-    execution_lock: Any = field(default_factory=threading.Lock, repr=False)
+    #: 일반 실행과 시연 실행이 함께 쓰는 작업 셀 움직임 권한.
+    cell_execution: CellExecutionManager = field(default_factory=CellExecutionManager, repr=False)
     #: 기하 검사 구현체. **없으면 기하 검사는 ASK다** — 검사하지 않은 상태를
     #: 안전으로 보지 않는다(6-05). 개발용 Fake 셀에서만 개발용 구현체를 붙인다.
     geometry_validator: Any = field(default=None, repr=False)
@@ -194,6 +195,12 @@ class Runtime:
     scene_client: Any = None
     #: 작업 셀 장면 영상 공급자. 장면 카메라가 꺼져 있으면 None이다.
     scene_viewer: Any = None
+    sim_view: Any = None
+    #: G1 휴머노이드(시뮬레이션) 웹 작업·3D 화면(`server/humanoid_service.py`). 꺼져 있으면 None.
+    humanoid_service: Any = None
+    humanoid_view: Any = None
+    humanoid_bridge: Any = None
+    humanoid_disabled_reason: Any = None
     #: 기하 검사기를 만드는 함수(scene client를 받는다). 작업 셀이 준다.
     geometry_validator_factory: Any = None
     #: pick/place 계획 검증에 넘길 셀 선언을 만드는 함수. 작업 셀이 준다.
@@ -216,6 +223,19 @@ class Runtime:
     sim_demo_jobs: Any = None
     #: 시연 작업을 쓸 수 없는 이유(켜져 있으면 None).
     sim_demo_disabled_reason: str | None = "시뮬레이션 작업 셀이 아니다"
+    #: 기동 시 띄운 기록↔관측 정합 작업의 결과(읽기 전용). 기록이 없으면
+    #: `{"started": False, ...}`다 — 무엇도 띄우지 않았다는 뜻이다.
+    sim_demo_reconcile: Any = None
+    #: 확인 대기함(`server/sim_demo_confirm.py`). 해석 결과를 사람이 누를 때까지
+    #: 붙잡아 둔다. **여기 있는 것은 작업이 아니다.**
+    sim_demo_confirm: Any = None
+    #: 제한된 다단계 목표 실행기. 현재는 컨베이어 전체 복귀만 허용한다.
+    sim_demo_goals: Any = None
+    #: 모호한 자재 작업 발화 분류기(`server/sim_demo_intent.py`). 모델 서버가
+    #: 없으면 None이고, 그때는 규칙 해석만 쓴다.
+    sim_demo_intent: Any = None
+    #: 분류기를 쓸 수 없는 이유(쓸 수 있으면 None).
+    sim_demo_intent_disabled_reason: str | None = "설정을 읽기 전이다"
     #: 이 어댑터 종류가 **항상 시뮬레이션**인가. 시뮬레이터에 붙는 어댑터는
     #: 개발용 Fake가 아니지만 실하드웨어도 아니다 — 두 축을 따로 둔다.
     #: None이면 모름(연결 확인 뒤에 정한다).
@@ -825,8 +845,88 @@ def _attach_sim_demo_jobs(runtime, config, manifest, workcell_path) -> None:
     kwargs = {}
     if runtime.simulation_demo_state_path is not None:
         kwargs["state_path"] = runtime.simulation_demo_state_path
-    runtime.sim_demo_jobs = SimDemoJobs(workcell=workcell, **kwargs)
+    # 검증된 컨베이어 슬롯을 함께 넘긴다. 좌표는 설정에서만 오고, 서버가
+    # 만들지 않는다(`scripts/derive_conveyor_slots.py`가 측정·검증한 값).
+    # 매니페스트에 파지 설정 키가 없다. 시연 스크립트와 **같은 규칙**으로
+    # 찾는다 — 작업 셀 설정 옆의 `<이름>_grasp.json`. 없으면 슬롯 기능이 꺼지고
+    # 기존 단일 배치 경로가 그대로 쓰인다(값을 만들지 않는다).
+    try:
+        cfg_path = workcell_path("workcell_config")
+        grasp_path = cfg_path.with_name(f"{cfg_path.stem}_grasp.json")
+        grasp_config = json.loads(grasp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, KeyError):
+        grasp_config = {}
+    # 자세 설정. 안전 위치가 자연어 어휘에 들어갈지는 **여기 선언된 것**이
+    # 정한다. 못 읽으면 어휘에서 빠질 뿐, 기존 경로는 그대로다.
+    try:
+        poses_config = json.loads(
+            workcell_path("poses").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, KeyError):
+        poses_config = {}
+    cell_execution = getattr(runtime, "cell_execution", None)
+    if cell_execution is None:
+        cell_execution = CellExecutionManager()
+        runtime.cell_execution = cell_execution
+    runtime.sim_demo_jobs = SimDemoJobs(workcell=workcell,
+                                        grasp_config=grasp_config,
+                                        poses_config=poses_config,
+                                        cell_execution=cell_execution,
+                                        **kwargs)
     runtime.sim_demo_disabled_reason = None
+    # 확인 대기함. 분류기가 없어도 만든다 — 확인 계약은 분류기와 별개다.
+    from server.sim_demo_confirm import DEFAULT_TTL_SEC, ConfirmStore
+
+    runtime.sim_demo_confirm = ConfirmStore(
+        ttl_sec=getattr(config, "sim_demo_confirm_ttl_sec", DEFAULT_TTL_SEC))
+    from server.sim_demo_goals import SimDemoGoals
+
+    runtime.sim_demo_goals = SimDemoGoals(runtime.sim_demo_jobs)
+    # 색 지정의 관측: 실행 중인 Gazebo 장면의 자재 표시 색(읽기 전용, 30초 캐시).
+    from server.material_colors import observe_gazebo_colors
+
+    _workcell = runtime.sim_demo_jobs.workcell or {}
+
+    def _observe_colors(models):
+        return observe_gazebo_colors(str(_workcell.get("world_name") or ""),
+                                     str(_workcell.get("gz_partition") or ""), models)
+
+    runtime.sim_demo_color_observer = _observe_colors
+    # 생략·지시 표현의 짧은 대화 맥락 — 브라우저 세션별(서버 메모리, 10분). 인증 아님.
+    from server.sim_demo_context import DialogueContexts
+
+    runtime.sim_demo_contexts = DialogueContexts()
+    # Gazebo를 다시 띄우면 world는 선언된 초기 자리로 돌아가지만 시연 기록 파일은
+    # 남는다. 기록이 남아 있을 때만 **읽기 전용** 정합 작업을 한 번 띄워 관측으로
+    # 맞춘다. 로봇에 명령을 보내지 않으며, 기록이 없으면 아무것도 하지 않는다.
+    runtime.sim_demo_reconcile = runtime.sim_demo_jobs.start_reconcile_if_needed()
+
+
+def _attach_sim_demo_intent(runtime, config) -> None:
+    """Qwen 분류기를 붙인다. 시연 작업이 열려 있고 모델 설정이 있을 때만."""
+    if runtime.sim_demo_jobs is None:
+        runtime.sim_demo_intent_disabled_reason = (
+            runtime.sim_demo_disabled_reason or "시뮬레이션 시연이 열려 있지 않다")
+        return
+    if not getattr(config, "enable_sim_demo_intent", True):
+        runtime.sim_demo_intent_disabled_reason = (
+            "FORSTICK2_SIM_DEMO_INTENT=0으로 꺼져 있다")
+        return
+    if runtime.llm_config is None:
+        runtime.sim_demo_intent_disabled_reason = "LLM 설정을 읽을 수 없다"
+        return
+    if runtime.provider is None:
+        # 계획 생성이 서버 확인에 실패했다. 같은 서버이므로 분류기도 쓰지 않는다.
+        runtime.sim_demo_intent_disabled_reason = (
+            runtime.planning.detail if runtime.planning is not None
+            else "모델 서버를 확인할 수 없다")
+        return
+    from server.sim_demo_intent import IntentClassifier
+
+    runtime.sim_demo_intent = IntentClassifier(
+        client=OpenAiCompatClient(config=runtime.llm_config),
+        min_confidence=getattr(config, "sim_demo_intent_min_confidence", 0.7),
+    )
+    runtime.sim_demo_intent_disabled_reason = None
 
 
 def _load_simulation_e2e() -> dict:
@@ -1140,6 +1240,37 @@ def build_runtime(config: ServerConfig) -> Runtime:
         if available:
             # 첫 요청 전에 구독을 시작해 버퍼를 채워 둔다(백그라운드, 막지 않는다).
             viewer.start_live()
+    # Three.js 작업 셀 화면(읽기 전용): 관절·자재 pose 구독. 실패해도 서버는 뜬다.
+    if workcell_manifest and workcell_manifest.get("enabled"):
+        try:
+            # importlib은 모듈 위에서 이미 가져왔다. 여기서 다시 import하면 이 함수 전체에서
+            # 지역 변수가 되어, 위의 작업 셀 어댑터 등록이 UnboundLocalError로 실패한다
+            # (로봇 미등록으로 떨어진다).
+            from server.sim_view import SimView
+
+            # 로봇 몫(URDF·메시·관절 이름)은 매니페스트가 가리키는 어댑터 패키지가 준다.
+            adapter = importlib.import_module(str(workcell_manifest["adapter_module"]))
+            runtime.sim_view = SimView(_workcell_path("workcell_config"),
+                                       adapter.build_view_source())
+            runtime.sim_view.start()
+        except Exception:  # noqa: BLE001 — 화면 부가 기능이다
+            runtime.sim_view = None
+    # G1 휴머노이드(별도 파티션·별도 제어기). 웹 실행기(`scripts/run_web_workcell.sh`)가
+    # FORSTICK2_HUMANOID_WEB=1로 켠다 — 기본은 꺼짐(시험·다른 실행에서 gz 노드를 열지 않는다).
+    # 켜지면 제어기가 꺼져 있어도 붙여 두고, 상태 확인이 실행을 막는다. FR3 구성과 무관하다.
+    if os.environ.get("FORSTICK2_HUMANOID_WEB", "0") == "1":
+        try:
+            from server.humanoid_service import build as build_humanoid
+            from server.humanoid_view import HumanoidView
+
+            bridge, service = build_humanoid()
+            runtime.humanoid_bridge = bridge
+            runtime.humanoid_service = service
+            runtime.humanoid_view = HumanoidView(bridge, service.site)
+        except Exception as exc:  # noqa: BLE001 — 부가 기능이다. 이유를 남긴다
+            runtime.humanoid_disabled_reason = f"{type(exc).__name__}: {exc}"[:300]
+    else:
+        runtime.humanoid_disabled_reason = "FORSTICK2_HUMANOID_WEB=1이 아니다(G1 웹 연결 꺼짐)"
     runtime.motion_resolver = workcell_extras.get("motion_resolver")
     runtime.scene_client_factory = workcell_extras.get("scene_client_factory")
     runtime.geometry_validator_factory = workcell_extras.get(
@@ -1210,6 +1341,11 @@ def build_runtime(config: ServerConfig) -> Runtime:
                 True,
                 f"{llm_config.model_id} / {info.server_version or '버전 불명'}",
             )
+
+    # ── 자재 작업 발화 분류기 ────────────────────────────────────────────
+    # 계획 생성과 **같은 모델 서버**를 쓰되 다른 계약이다 — 좁은 JSON 분류만
+    # 받고, 통과해도 확인 카드를 거쳐야 작업이 만들어진다.
+    _attach_sim_demo_intent(runtime, config)
 
     # ── STT ────────────────────────────────────────────────────────────
     if not config.enable_stt:

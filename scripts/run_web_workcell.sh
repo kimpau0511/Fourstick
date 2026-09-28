@@ -13,6 +13,8 @@ set -eo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export FORSTICK2_WORKCELL_ROBOT=1
+# G1 휴머노이드(별도 Gazebo 파티션·별도 제어기)를 웹에서 고를 수 있게 한다. 끄려면 0.
+export FORSTICK2_HUMANOID_WEB="${FORSTICK2_HUMANOID_WEB:-1}"
 # 작업 셀 Adapter가 붙으므로 개발용 Fake는 쓰지 않는다.
 export FORSTICK2_FAKE_ROBOT="${FORSTICK2_FAKE_ROBOT:-0}"
 # 작업 셀과 같은 격리에서 ROS에 말한다.
@@ -61,6 +63,6 @@ print(f"[web-wc] 활성 작업 셀: {data['adapter_module']}"
       f" (is_simulated={data.get('is_simulated')})")
 PYCHECK
 
-echo "[web-wc] 주소: http://127.0.0.1:${FORSTICK2_PORT:-8092}"
+echo "[web-wc] 주소: http://${FORSTICK2_HOST:-127.0.0.1}:${FORSTICK2_PORT:-8092}"
 echo "[web-wc] **실하드웨어가 아니다.** Gazebo 작업 셀에 붙는다."
 exec "$ROOT/scripts/run_web.sh" "$@"

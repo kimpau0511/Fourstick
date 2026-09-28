@@ -119,12 +119,15 @@ class TestScreenFiles(unittest.TestCase):
             "2F-85 장착 근거, 그리퍼 close 안정성, 파지 관측, pick/place 재검증 미완료",
             catalog,
         )
-        for badge in ("MoveIt2 검증 완료", "시뮬레이션 전용", "실하드웨어 미검증"):
+        for badge in ("MoveIt2 검증 완료", "시뮬레이션 전용"):
             with self.subTest(badge=badge):
                 self.assertIn(badge, catalog)
         # 검증되지 않은 값을 만들어 넣지 않는다.
         self.assertIn("'미확보'", catalog)
-        self.assertIn("실기 하드웨어", catalog)
+        # 실기 준비·검증 표시는 화면 데이터에서 빠졌다(서비스가 시뮬레이션 전용).
+        for gone in ("실하드웨어 미검증", "실기 하드웨어"):
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, catalog)
 
     def test_no_framework_and_no_build_step(self):
         """프레임워크를 쓰지 않고 빌드 단계도 없다(문구 언급은 허용).

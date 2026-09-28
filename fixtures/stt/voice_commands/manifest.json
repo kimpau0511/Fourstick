@@ -1,0 +1,95 @@
+{
+  "schema": "forstick2.voice_commands/1",
+  "cases": [
+    {
+      "id": "v01",
+      "text": "에이 자재를 컨베이어 1번에 옮겨줘",
+      "category": "normal·letter_reading",
+      "expected_decision": "CONFIRM",
+      "expected_material": "material_a",
+      "run_in_gazebo": true,
+      "audio": "v01.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    },
+    {
+      "id": "v02",
+      "text": "비 자재는 컨베이어 2번, 씨 자재는 컨베이어 3번에 놓아줘",
+      "category": "multi_goal",
+      "expected_decision": "CONFIRM_GOAL",
+      "expected_material": null,
+      "run_in_gazebo": true,
+      "audio": "v02.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    },
+    {
+      "id": "v03",
+      "text": "파란색 자재를 원래 자리로 돌려놔",
+      "category": "color",
+      "expected_decision": "CONFIRM",
+      "expected_material": "material_b",
+      "run_in_gazebo": true,
+      "audio": "v03.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    },
+    {
+      "id": "v04",
+      "text": "저거 저쪽에 좀 놔줘",
+      "category": "ambiguous",
+      "expected_decision": "ASK",
+      "expected_material": null,
+      "run_in_gazebo": false,
+      "audio": "v04.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    },
+    {
+      "id": "v05",
+      "text": "에이 자재를 3번 팔레트로 옮겨",
+      "category": "dangerous_wrong_pallet",
+      "expected_decision": "BLOCK",
+      "expected_material": null,
+      "run_in_gazebo": false,
+      "audio": "v05.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    },
+    {
+      "id": "v06",
+      "text": "빨간 자재 옮겨줘",
+      "category": "unregistered_color",
+      "expected_decision": "ASK",
+      "expected_material": null,
+      "run_in_gazebo": false,
+      "audio": "v06.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    },
+    {
+      "id": "v07",
+      "text": "2번 칸 고장났어",
+      "category": "environment",
+      "expected_decision": "ENVIRONMENT",
+      "expected_material": null,
+      "run_in_gazebo": false,
+      "audio": "v07.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    },
+    {
+      "id": "v08",
+      "text": "멈춰",
+      "category": "stop",
+      "expected_decision": "STOP",
+      "expected_material": null,
+      "run_in_gazebo": false,
+      "audio": "v08.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    },
+    {
+      "id": "v09",
+      "text": "씨 자재를 제자리로 돌려놔",
+      "category": "letter_reading·return",
+      "expected_decision": "CONFIRM",
+      "expected_material": "material_c",
+      "run_in_gazebo": true,
+      "audio": "v09.mp3",
+      "source": "gTTS(ko) 합성 음성 — 실제 마이크 녹음 아님"
+    }
+  ]
+}
