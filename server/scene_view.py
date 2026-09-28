@@ -100,7 +100,7 @@ class RosFrameSource:
             import rclpy
             from rclpy.executors import SingleThreadedExecutor
             from rclpy.node import Node
-            from rclpy.qos import qos_profile_sensor_data
+            from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
             from sensor_msgs.msg import Image
         except Exception as exc:  # noqa: BLE001 — rclpy가 없으면 느린 경로다
             self._detail = f"rclpy를 쓸 수 없다: {exc}"[:200]
@@ -127,8 +127,14 @@ class RosFrameSource:
                     self._latest = (data, int(message.width), int(message.height),
                                     channels, time.time())
 
-            node.create_subscription(Image, self._topic, on_image,
-                                     qos_profile_sensor_data)
+            # RELIABLE로 받는다. 브리지는 RELIABLE로 내보내는데 이 구독이
+            # BEST_EFFORT였을 때, 토픽에 약 5.5 Hz가 흐르는데도 한 장도 받지 못했다
+            # (2026-09-28 작업 셀, `ros2 topic info -v`로 불일치 확인). 한 장이
+            # 약 500KB라 조각으로 나뉘고, BEST_EFFORT는 조각 하나만 빠져도 그 장을
+            # 버린다. 최신 한 장만 쓰므로 depth 1로 밀린 프레임을 쌓지 않는다.
+            qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                             history=HistoryPolicy.KEEP_LAST, depth=1)
+            node.create_subscription(Image, self._topic, on_image, qos)
             executor = SingleThreadedExecutor()
             executor.add_node(node)
             thread = threading.Thread(target=executor.spin, daemon=True)
