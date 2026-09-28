@@ -91,7 +91,7 @@ Gazebo 안에서 팔레트 → 컨베이어 이송 전체를 돌려 본다. 개�
 계속 차단된다**(`capability.profile_incomplete`).
 
 ```bash
-# 이송(끝나면 자재를 원래 자리로 되돌린다 — E2E와 같은 기본 정책)
+# 이송(끝나면 자재를 원래 자리로 되돌린다 — 종단 간 시험과 같은 기본 정책)
 FORSTICK2_SIM_PICK_PLACE_DEMO=1 ./scripts/demo_workcell_pick_place.sh pallet_1 mat_a
 
 # 시연용: 이송 뒤 자재를 컨베이어에 그대로 둔다
@@ -143,7 +143,7 @@ FORSTICK2_SIM_PICK_PLACE_DEMO=1 ./scripts/demo_workcell_pick_place.sh \
   - **대화 맥락은 브라우저 세션별**이다. 다른 탭·세션의 "그거"와 섞이지 않는다.
 
 - **파지 고정·충돌 검사** — 든 자재는 Gazebo 분리 관절(DetachableJoint)로 손에 붙는다(순간
-  이동 추종 없음). 실행 전 MoveIt 장면을 Gazebo 관측과 맞추고(scene sync), 관절 공간 경로를
+  이동 추종 없음). 실행 전 MoveIt 장면을 Gazebo 관측과 맞추고(장면 동기화), 관절 공간 경로를
   0.02 rad 간격으로 검사한다. 파지 자세는 자재–너클 여유(±4 mm) 기준으로 재측정한 값이며,
   이전 값은 `config/workcell/backup/`에 보관했다.
 
@@ -246,7 +246,7 @@ FORSTICK_TEST_TIMEOUT_SEC=120 ./scripts/run_tests.sh
 node --test tests/web/*.test.mjs                    # 웹 화면(JS)
 ```
 
-실제 브라우저 E2E(Playwright, 헤드리스 Chromium — 프로젝트 의존성이 아니다):
+실제 브라우저 종단 간 확인(Playwright, 화면 없는 Chromium — 프로젝트 의존성이 아니다):
 `scripts/verify_web_fr3_e2e.py`(일반 계획·이송·복귀), `scripts/verify_web_g1_e2e.py`
 (G1 확인 카드·왕복·이동 중 STOP·FR3 색 지정 이송까지 같은 브라우저에서, 로봇별 요청 격리 확인),
 `scripts/verify_sim_view.py`(3D 화면), `scripts/verify_arrangement_e2e.py`(이송·복구 스위트).
@@ -258,7 +258,7 @@ FR3 작업 셀과 **별개**다 — Gazebo 파티션·세계·파이썬 환경�
 
 | 세계(`run_gazebo.sh` 인자) | 쓰임 | 제어기 |
 |---|---|---|
-| (없음) `forstick2_humanoid` | 보행 검증(서기·걷기·회전·정지) | `verify_walk.py`(lockstep) |
+| (없음) `forstick2_humanoid` | 보행 검증(서기·걷기·회전·정지) | `verify_walk.py`(스텝 맞물림 제어) |
 | `--nav` `forstick2_humanoid_nav` | 연속 제어·컨베이어 앞 왕복·웹 연결 | `nav_controller.py` |
 | `--manip` `forstick2_humanoid_manip` | 팔·손(Dex3-1) 조작 실험 | `manip_controller.py` |
 | `--wbc` `forstick2_humanoid_wbc` | 조작용 균형 정책(GR00T-WBC Balance) 실험 | `gr00t_controller.py` |
@@ -274,7 +274,7 @@ humanoid/g1/run_nav.sh verify_roundtrip.py --trips 5 --stops 5
 - 웹: 로봇 선택에서 G1 → "컨베이어 앞에 가" · "컨베이어 한번 찍고 와" · "출발 위치로 돌아와" · "멈춰".
   이동은 확인 카드 승인 뒤, "멈춰"는 즉시. 도착·복귀는 Gazebo 관측으로 판단, 선언된 지점만 쓴다.
   정지·대기 중에는 제자리 걸음 표류를 자리 유지로 묶는다(정지 자세가 아니다).
-- **실시간이 아니다** — 제어기가 스텝을 미는 lockstep(RTF 약 0.8, CPU 부하에 따라 더 낮다).
+- **실시간이 아니다** — 제어기가 물리 스텝을 직접 밀어 한 걸음씩 맞물려 돈다(lockstep). 실시간 배율(RTF)은 약 0.8이고, CPU 부하에 따라 더 낮다.
 - **팔·손 조작은 실험 단계**다. 보행 정책(팔 고정 학습)으로는 팔·손 제어만 확인했고 **안정적인 근접
   접근 기준은 충족하지 못했다**(손 흔들림 4–5 cm, 접근 1/3). GR00T-WBC Balance 정책으로 바꾸면 접근 6/6,
   손 흔들림 0.2–0.4 mm, 몸 이동 ≤ 5 mm였지만, 접근 거리는 기존 안전 규칙(질량 중심 이동 한계) 때문에
