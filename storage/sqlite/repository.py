@@ -398,7 +398,6 @@ class SqliteRepository(Repository):
         "transcript", "confidence", "confidence_metric",
         "vad_speech_detected", "vad_max_probability", "final_adopted",
         "reason_code", "execution_path", "request_id",
-        "raw_transcript",
     )
 
     @staticmethod
@@ -414,7 +413,7 @@ class SqliteRepository(Repository):
             None if r.vad_speech_detected is None else from_bool(r.vad_speech_detected),
             r.vad_max_probability, from_bool(r.final_adopted),
             None if r.reason_code is None else r.reason_code.value,
-            r.execution_path.value, r.request_id, r.raw_transcript,
+            r.execution_path.value, r.request_id,
         )
 
     @staticmethod
@@ -441,7 +440,6 @@ class SqliteRepository(Repository):
                 model_load_duration_ms=row["model_load_duration_ms"],
                 transcript=row["transcript"], confidence=row["confidence"],
                 confidence_metric=row["confidence_metric"],
-                raw_transcript=row["raw_transcript"],
                 vad_speech_detected=None if vad is None else to_bool(vad),
                 vad_max_probability=row["vad_max_probability"],
                 final_adopted=to_bool(row["final_adopted"]),

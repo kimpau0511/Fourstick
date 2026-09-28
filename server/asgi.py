@@ -30,7 +30,6 @@ from server.routes import (
     HTTP_ROUTES,
     execution as execution_routes,
     scene as scene_routes,
-    sim_view as sim_view_routes,
     stt as stt_routes,
 )
 from server.routes.common import (
@@ -84,13 +83,6 @@ class Application:
                 await send({"type": "lifespan.startup.complete"})
             elif message["type"] == "lifespan.shutdown":
                 self.runtime.repository.close()
-                # gz 구독을 끊고 끝낸다(인터프리터 정리 중 콜백이 들어오면 죽는다).
-                view = getattr(self.runtime, "sim_view", None)
-                if view is not None:
-                    view.close()
-                bridge = getattr(self.runtime, "humanoid_bridge", None)
-                if bridge is not None:
-                    bridge.close()
                 await send({"type": "lifespan.shutdown.complete"})
                 return
 
@@ -184,9 +176,6 @@ class Application:
             return
         if path == SCENE_STREAM_PATH:
             await scene_routes.scene_socket(self.ctx, receive, send)
-            return
-        if path == sim_view_routes.STREAM_PATH:
-            await sim_view_routes.stream_socket(self.ctx, receive, send)
             return
         await receive()
         await send({"type": "websocket.close", "code": 4404})

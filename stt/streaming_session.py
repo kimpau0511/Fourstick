@@ -5,7 +5,7 @@
   4-05 rolling window 전사와 partial revision
   4-06 무음 또는 end에서 final 한 번만 확정
   4-07 승인된 현장 용어 후보정과 신뢰도 기록
-  partial은 표시 전용이며 STOP도 final에서만 판정한다.
+  4-08 partial STOP 키워드의 LLM 우회 경로
 
 담지 않는 범위: 프론트엔드(4-01·4-02·4-09), 실제 모델 설치, WebSocket 전송.
 프레임을 넣으면 이벤트를 돌려주는 순수 객체다 — 전송 계층은 7단계가 붙인다.
@@ -56,7 +56,6 @@ from stt.protocol import (
 from stt.transcription_guard import GuardOutcome, TranscriptionGuard
 from stt.vad import SpeechEvent, SpeechStateMachine, VadBackend
 from stt.whisper_backend import Transcriber
-from stt.command_normalization import normalize_command
 
 
 @dataclass(frozen=True)
@@ -344,6 +343,20 @@ class StreamingSTTSession:
         corrected = self._terms.apply(result.text)
         events: list[SttEvent] = []
 
+        # 4-08 STOP 키워드 우회: partial에서 보이면 즉시 정지로 직행한다.
+        if any(k in corrected for k in self.policy.stop_keywords):
+            self._stop_requested = True
+            events.append(
+                SttEvent(
+                    ServerMessage.ERROR, self.request_id, at_utc,
+                    reason=ReasonCode.EXEC_STOPPED,
+                    detail="partial에서 정지 키워드 감지 — 계획 생성 우회",
+                    text=corrected, confidence=result.confidence, raw_text=result.text,
+                )
+            )
+            events.append(self._go(SttSessionState.CLOSED, at_utc))
+            return tuple(events)
+
         # 4-05 partial revision: 내용이 바뀔 때만 내보낸다.
         if corrected != self._partial_text:
             self._partial_text = corrected
@@ -410,7 +423,7 @@ class StreamingSTTSession:
         result = outcome.transcript
         process_sec = outcome.waited_sec
 
-        corrected = normalize_command(self._terms.apply(result.text))
+        corrected = self._terms.apply(result.text)
 
         # 4-07 신뢰도 기준: 낮으면 계획 생성으로 넘기지 않고 되묻는다.
         if result.confidence < self.policy.min_final_confidence:
@@ -419,7 +432,6 @@ class StreamingSTTSession:
                 at_utc=at_utc, process_sec=process_sec, transcript=corrected,
                 confidence=result.confidence, adopted=False,
                 reason=ReasonCode.STT_LOW_CONFIDENCE,
-                raw_transcript=result.text,
             )
             events.append(
                 SttEvent(
@@ -433,8 +445,7 @@ class StreamingSTTSession:
             return tuple(events)
 
         persisted, persist_reason, recoverable = self._persist(
-            corrected, at_utc, confidence=result.confidence, process_sec=process_sec,
-            raw_transcript=result.text,
+            corrected, at_utc, confidence=result.confidence, process_sec=process_sec
         )
         events.append(
             SttEvent(
@@ -451,7 +462,6 @@ class StreamingSTTSession:
     def _inference(
         self, *, at_utc: float, process_sec: float, transcript: str,
         confidence: float, adopted: bool, reason: ReasonCode | None,
-        raw_transcript: str | None = None,
     ) -> SttInferenceRecord | None:
         """이번 시도의 실행 기록을 만든다. 구성이 없으면 만들지 않는다."""
         if self._model_config is None:
@@ -486,7 +496,6 @@ class StreamingSTTSession:
                 else int(round(self._model_load_sec * 1000))
             ),
             transcript=transcript,
-            raw_transcript=raw_transcript,
             confidence=confidence,
             confidence_metric=self._confidence_metric or "unknown",
             final_adopted=adopted,
@@ -501,7 +510,6 @@ class StreamingSTTSession:
         self, *, at_utc: float, process_sec: float, transcript: str,
         confidence: float, adopted: bool, reason: ReasonCode | None,
         link_request: bool = False,
-        raw_transcript: str | None = None,
     ) -> None:
         """채택되지 않은 시도를 기록한다. 실패해도 세션을 멈추지 않는다.
 
@@ -514,7 +522,6 @@ class StreamingSTTSession:
         record = self._inference(
             at_utc=at_utc, process_sec=process_sec, transcript=transcript,
             confidence=confidence, adopted=adopted, reason=reason,
-            raw_transcript=raw_transcript,
         )
         if record is None:
             return
@@ -526,8 +533,7 @@ class StreamingSTTSession:
             pass
 
     def _persist(
-        self, utterance: str, at_utc: float, *, confidence: float, process_sec: float,
-        raw_transcript: str | None = None,
+        self, utterance: str, at_utc: float, *, confidence: float, process_sec: float
     ) -> tuple[bool | None, ReasonCode | None, bool | None]:
         """확정된 요청과 채택된 실행 기록을 저장소에 남긴다.
 
@@ -542,7 +548,6 @@ class StreamingSTTSession:
         inference = self._inference(
             at_utc=at_utc, process_sec=process_sec, transcript=utterance,
             confidence=confidence, adopted=True, reason=None,
-            raw_transcript=raw_transcript,
         )
         request = RequestRecord(
             request_id=self.request_id,
@@ -564,7 +569,7 @@ class StreamingSTTSession:
                 self._append_inference(
                     at_utc=at_utc, process_sec=process_sec, transcript=utterance,
                     confidence=confidence, adopted=False, reason=None,
-                    link_request=True, raw_transcript=raw_transcript,
+                    link_request=True,
                 )
                 return (True, None, None)
             # 같은 request_id로 다른 내용이 이미 있다 — 재시도해도 같은 결과다.

@@ -12,13 +12,10 @@
 from __future__ import annotations
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import dataclasses
 import json
 import sys
 import tempfile
-import threading
-import time
 import types
 import unittest
 from pathlib import Path
@@ -27,7 +24,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from server.api import ApiError  # noqa: E402
-from server.cell_execution import CellExecutionManager  # noqa: E402
 from server.sim_demo_jobs import (  # noqa: E402
     SimDemoJobError,
     SimDemoJobs,
@@ -47,8 +43,6 @@ from tests.unit.test_simulation_demo_checkpoint import (  # noqa: E402
 
 WORKCELL = json.loads((ROOT / "config/workcell/fr3_2f85_workcell.json")
                       .read_text(encoding="utf-8"))
-GRASP = json.loads((ROOT / "config/workcell/fr3_2f85_workcell_grasp.json")
-                   .read_text(encoding="utf-8"))
 
 
 class FakeProc:
@@ -71,20 +65,6 @@ class FakePopen:
         return proc
 
 
-class WaitableProc(FakeProc):
-    def __init__(self):
-        super().__init__()
-        self.exited = threading.Event()
-
-    def finish(self, code=0):
-        self.code = code
-        self.exited.set()
-
-    def wait(self):
-        self.exited.wait()
-        return self.code
-
-
 class JobsBase(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -96,25 +76,6 @@ class JobsBase(unittest.TestCase):
                                 jobs_dir=self.tmp / "jobs",
                                 stop_request=self.tmp / "stop.json",
                                 popen=self.popen, environ={"PATH": "/usr/bin"})
-
-
-class CellExecutionManagerTest(unittest.TestCase):
-    def test_one_holder_and_token_scoped_release(self):
-        manager = CellExecutionManager(clock=lambda: 123.0)
-        first = manager.try_acquire(owner="general_execute", operation_id="plan_1")
-        self.assertIsNotNone(first)
-        self.assertEqual(first.to_dict(), {
-            "owner": "general_execute", "operation_id": "plan_1",
-            "started_at": 123.0,
-        })
-        self.assertIsNone(manager.try_acquire(
-            owner="sim_demo", operation_id="simjob_1"))
-
-        impostor = dataclasses.replace(first, token="not-the-holder")
-        self.assertFalse(manager.release(impostor))
-        self.assertIs(manager.current(), first)
-        self.assertTrue(manager.release(first))
-        self.assertIsNone(manager.current())
 
 
 class JobRunnerTest(JobsBase):
@@ -158,74 +119,6 @@ class JobRunnerTest(JobsBase):
         self.popen.procs[0].code = 1
         self.jobs.start("restore", "material_a")   # 끝나면 다음 작업 가능
 
-    def test_general_execution_lease_blocks_motion_job(self):
-        lease = self.jobs.cell_execution.try_acquire(
-            owner="general_execute", operation_id="plan_busy")
-        self.assertIsNotNone(lease)
-        with self.assertRaises(SimDemoJobError) as caught:
-            self.jobs.start("transfer", "material_a")
-        self.assertEqual(caught.exception.status, 409)
-        self.assertIn("general_execute", str(caught.exception))
-        self.assertEqual(self.popen.calls, [])
-        self.jobs.cell_execution.release(lease)
-
-    def test_motion_job_holds_lease_until_process_finishes(self):
-        job = self.jobs.start("transfer", "material_a")
-        active = self.jobs.cell_execution.current()
-        self.assertIsNotNone(active)
-        self.assertEqual(active.owner, "sim_demo")
-        self.assertEqual(active.operation_id, job["job_id"])
-        self.assertIsNone(self.jobs.cell_execution.try_acquire(
-            owner="general_execute", operation_id="plan_waiting"))
-
-        self.popen.procs[0].code = 0
-        self.jobs.job(job["job_id"])
-        self.assertIsNone(self.jobs.cell_execution.current())
-        next_lease = self.jobs.cell_execution.try_acquire(
-            owner="general_execute", operation_id="plan_next")
-        self.assertIsNotNone(next_lease)
-        self.jobs.cell_execution.release(next_lease)
-
-    def test_process_watcher_releases_without_status_poll(self):
-        proc = WaitableProc()
-        manager = CellExecutionManager()
-        jobs = SimDemoJobs(
-            workcell=WORKCELL, state_path=self.state_path,
-            jobs_dir=self.tmp / "watched-jobs", stop_request=self.tmp / "stop.json",
-            popen=lambda *args, **kwargs: proc, environ={"PATH": "/usr/bin"},
-            cell_execution=manager)
-        jobs.start("transfer", "material_a")
-        self.assertIsNotNone(manager.current())
-
-        proc.finish()
-        deadline = time.monotonic() + 1.0
-        while manager.current() is not None and time.monotonic() < deadline:
-            proc.exited.wait(0.01)
-            time.sleep(0.001)
-        self.assertIsNone(manager.current())
-
-    def test_reconcile_does_not_hold_motion_lease(self):
-        self.jobs.start("reconcile")
-        lease = self.jobs.cell_execution.try_acquire(
-            owner="general_execute", operation_id="plan_during_reconcile")
-        self.assertIsNotNone(lease)
-        self.jobs.cell_execution.release(lease)
-
-    def test_spawn_failure_releases_motion_lease(self):
-        manager = CellExecutionManager()
-
-        def broken_popen(*args, **kwargs):
-            raise OSError("spawn failed")
-
-        jobs = SimDemoJobs(
-            workcell=WORKCELL, state_path=self.state_path,
-            jobs_dir=self.tmp / "broken-jobs", stop_request=self.tmp / "stop.json",
-            popen=broken_popen, environ={"PATH": "/usr/bin"},
-            cell_execution=manager)
-        with self.assertRaises(OSError):
-            jobs.start("transfer", "material_a")
-        self.assertIsNone(manager.current())
-
     def test_invalid_requests_are_rejected(self):
         for action, material, checkpoint in (("fly", "material_a", None),
                                              ("transfer", "material_z", None),
@@ -260,73 +153,6 @@ class JobRunnerTest(JobsBase):
         rows = parse_progress("  [10/12] 그리퍼 열기(해제)       오차 0.00009 rad · 도달=False")
         self.assertEqual(rows, [{"no": 10, "of": 12, "label": "그리퍼 열기(해제)",
                                  "error_rad": 0.00009, "reached": False}])
-
-
-class AtomicSlotAssignmentTest(JobsBase):
-    """All transfer callers converge on the lease-protected runner decision."""
-
-    def setUp(self):
-        super().setUp()
-        self.jobs = SimDemoJobs(
-            workcell=WORKCELL, grasp_config=GRASP, state_path=self.state_path,
-            jobs_dir=self.tmp / "slot-jobs", stop_request=self.tmp / "stop.json",
-            popen=self.popen, environ={"PATH": "/usr/bin"})
-
-    def hold(self, model, slot):
-        SimulationDemoState(self.state_path).record_run(
-            policy=POLICY_DEMO_HOLD, model=model, result=completed_result(),
-            final_pose_m=(0.25, -0.5, 0.75), restored=None, slot=slot)
-
-    def test_transfer_ignores_legacy_caller_slot_and_persists_first_free(self):
-        self.hold("material_a", "slot_1")
-        job = self.jobs.start("transfer", "material_b", slot="slot_3")
-        self.assertEqual(job["slot"], "slot_2")
-        self.assertEqual(job["slot_label"], "컨베이어 2번 위치")
-        argv = self.popen.calls[-1]["argv"]
-        self.assertEqual(argv[argv.index("--slot") + 1], "slot_2")
-        self.assertEqual(self.jobs.status()["running_job"]["slot"], "slot_2")
-
-    def test_competing_transfers_cannot_both_allocate(self):
-        gate = threading.Barrier(3)
-
-        def attempt(model):
-            gate.wait()
-            try:
-                return self.jobs.start("transfer", model)
-            except SimDemoJobError as exc:
-                return exc
-
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(attempt, model)
-                       for model in ("material_a", "material_b")]
-            gate.wait()
-            results = [future.result() for future in futures]
-        started = [row for row in results if isinstance(row, dict)]
-        rejected = [row for row in results if isinstance(row, SimDemoJobError)]
-        self.assertEqual(len(started), 1)
-        self.assertEqual(started[0]["slot"], "slot_1")
-        self.assertEqual(len(rejected), 1)
-        self.assertEqual(rejected[0].status, 409)
-        self.assertEqual(len(self.popen.calls), 1)
-
-    def test_full_conveyor_is_rejected_after_lease_acquisition(self):
-        for model, slot in (("material_a", "slot_1"),
-                            ("material_b", "slot_2"),
-                            ("material_c", "slot_3")):
-            self.hold(model, slot)
-        with self.assertRaises(SimDemoJobError) as caught:
-            self.jobs.start("transfer", "material_a")
-        self.assertEqual(caught.exception.status, 409)
-        self.assertIn("모두 찼습니다", str(caught.exception))
-        self.assertEqual(self.popen.calls, [])
-        self.assertIsNone(self.jobs.cell_execution.current())
-
-    def test_return_uses_recorded_assignment_not_caller_slot(self):
-        self.hold("material_b", "slot_2")
-        job = self.jobs.start("return", "material_b", slot="slot_3")
-        self.assertEqual(job["slot"], "slot_2")
-        argv = self.popen.calls[-1]["argv"]
-        self.assertEqual(argv[argv.index("--slot") + 1], "slot_2")
 
 
 class StopRequestTest(JobsBase):
@@ -445,21 +271,6 @@ class RoutesTest(JobsBase):
                       {"action": "transfer", "material": "material_a"})
         self.assertEqual(caught.exception.status, 409)
 
-    def test_direct_card_cannot_choose_a_transfer_slot(self):
-        self.runtime.sim_demo_jobs = SimDemoJobs(
-            workcell=WORKCELL, grasp_config=GRASP, state_path=self.state_path,
-            jobs_dir=self.tmp / "direct-card-jobs",
-            stop_request=self.tmp / "stop.json", popen=self.popen,
-            environ={"PATH": "/usr/bin"})
-        status, _, raw = self.call(
-            "POST", "/v1/sim-demo/jobs",
-            {"action": "transfer", "material": "material_a", "slot": "slot_3"})
-        job = json.loads(raw)
-        self.assertEqual(status, 202)
-        self.assertEqual(job["slot"], "slot_1")
-        argv = self.popen.calls[-1]["argv"]
-        self.assertEqual(argv[argv.index("--slot") + 1], "slot_1")
-
     def test_global_stop_also_requests_sim_demo_stop(self):
         from server.routes import execution
 
@@ -504,13 +315,11 @@ class RoutesTest(JobsBase):
                 self.assertIsNone(runtime.sim_demo_jobs)
                 self.assertIn(text, runtime.sim_demo_disabled_reason)
         runtime = types.SimpleNamespace(sim_demo_jobs=None, sim_demo_disabled_reason="x",
-                                        simulation_demo_state_path=self.state_path,
-                                        cell_execution=CellExecutionManager())
+                                        simulation_demo_state_path=self.state_path)
         _attach_sim_demo_jobs(runtime, types.SimpleNamespace(
             enable_sim_demo_web=True, enable_workcell_robot=True), manifest, path)
         self.assertIsNotNone(runtime.sim_demo_jobs)
         self.assertIsNone(runtime.sim_demo_disabled_reason)
-        self.assertIs(runtime.sim_demo_jobs.cell_execution, runtime.cell_execution)
 
     def test_general_pick_place_stays_blocked(self):
         from tests.unit.test_fr3_gazebo_adapter import build as build_adapter

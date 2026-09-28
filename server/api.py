@@ -1278,17 +1278,10 @@ class Api:
                 "전체 정지가 걸려 있다 — 새 계획을 요청하면 정지 래치가 풀린다",
             )
 
-        lease = runtime.cell_execution.try_acquire(
-            owner="general_execute", operation_id=plan_id)
-        if lease is None:
-            active = runtime.cell_execution.current()
-            active_detail = ""
-            if active is not None:
-                active_detail = (f" (owner={active.owner}, "
-                                 f"operation_id={active.operation_id})")
+        if not runtime.execution_lock.acquire(blocking=False):
             raise ApiError(
                 409, ReasonCode.EXEC_GOAL_REJECTED,
-                f"다른 작업 셀 실행이 진행 중이다{active_detail}"
+                f"다른 실행이 진행 중이다 (execution_id={self.running_execution_id})"
                 " — 로봇은 하나이므로 동시에 실행하지 않는다",
             )
         try:
@@ -1301,7 +1294,7 @@ class Api:
                 if finished is not None:
                     self._active_executions.pop(finished, None)
             self.running_execution_id = None
-            runtime.cell_execution.release(lease)
+            runtime.execution_lock.release()
 
     def _require_matching_bindings(
         self, approval: ApprovalRecord, gate: GateOutcome
@@ -1751,53 +1744,6 @@ class Api:
             "adapter_kind": runtime.adapter_kind,
             "is_simulated": runtime.is_simulated,
         })
-
-    def release_stop(self, *, session_id: str | None = None) -> dict:
-        """**전체 정지 래치 해제.** 사람이 판단해서 푼다.
-
-        지금까지 해제 지점은 `plan`(새 계획 수락) 하나뿐이었다. 시뮬레이션 작업
-        화면은 계획을 만들지 않으므로, 정지를 걸면 화면에서 풀 길이 없었다
-        (실측 2026-09-22). 여기서 **같은 계약을 그대로 부른다** —
-        `runtime.reset_stop_latch()`는 `core/stop_contract`의
-        `reset_for_new_plan`이고, 추적 중인 goal이 남아 있으면 그쪽이 해제를
-        거부한다. 그 거부를 성공으로 바꾸지 않는다.
-
-        **살아 있는 동작 위에서는 풀지 않는다.** 진행 중인 실행이나 시뮬레이션
-        작업이 있으면 거부하고 사유를 돌려준다. 정지를 건 이유가 아직 끝나지
-        않았는데 래치만 걷어내지 않는다.
-
-        돌려주는 모양은 `plan`의 `stop_latch`와 같다(`released`/`detail`).
-        """
-        runtime = self.runtime
-        with self._flag_lock:
-            active = len(self._active_executions)
-
-        def finish(payload: dict) -> dict:
-            self.emit({"type": "stop_released", "payload": payload}, scope="global")
-            return payload
-
-        base = {"scope": "global", "at": self.now(),
-                "is_simulated": runtime.is_simulated}
-        if active:
-            return finish({**base, "ok": False, "released": False,
-                           "detail": f"진행 중인 실행이 {active}건 있어 풀지 않았다"})
-        jobs = getattr(runtime, "sim_demo_jobs", None)
-        running = None
-        if jobs is not None:
-            try:
-                running = (jobs.status() or {}).get("running_job")
-            except Exception as exc:  # noqa: BLE001 — 조회 실패를 해제 근거로 쓰지 않는다
-                return finish({**base, "ok": False, "released": False,
-                               "detail": f"시뮬레이션 작업 상태를 읽지 못했다: {exc}"[:200]})
-        if running:
-            return finish({**base, "ok": False, "released": False,
-                           "detail": "시뮬레이션 작업이 아직 돌고 있어 풀지 않았다"})
-
-        released, detail = runtime.reset_stop_latch()
-        if released:
-            with self._flag_lock:
-                self._stop_requested = False
-        return finish({**base, "ok": released, "released": released, "detail": detail})
 
     def cancel_execution(self, *, session_id: str, execution_id: str) -> dict:
         """**특정 실행 취소.** 전체 정지와 다른 계약이다.

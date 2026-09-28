@@ -25,8 +25,8 @@ import {
   renderStopCard,
   renderVerdictCard,
   renderVoiceCard,
+  renderHardwareCard,
   renderWorkcellCard,
-  renderSimCommandArea,
 } from '../../html/static/js/render.js';
 import { EXECUTION, createStore, initialState, makeEvent } from '../../html/static/js/state.js';
 import { SimulationBackend } from '../../html/static/js/backend-sim.js';
@@ -181,7 +181,7 @@ test('실행 완료 화면: 5축 결과와 시뮬레이션 표기가 나온다',
   assert.ok(html.includes('완료'));
   assert.ok(html.includes('최종 결과 (5축)'));
   assert.ok(html.includes('단계별 결과'));
-  assert.match(html, /Gazebo 시뮬레이션 실행 결과입니다/);
+  assert.match(html, /실제 로봇 실행으로 집계되지 않습니다/);
 });
 
 // ── 개별 취소 vs 전체 정지 ────────────────────────────────────────────
@@ -261,9 +261,7 @@ test('로봇 카드: FR3 구성·스킬·비활성 사유·배지가 그대로 �
   assert.ok(html.includes('FAIRINO FR3-WMS + 2F-85 · Gazebo workcell simulation'));
   assert.ok(html.includes('MoveIt2 검증 완료'));
   assert.ok(html.includes('시뮬레이션 전용'));
-  // 실기 검증 배지는 화면에 두지 않는다 — 시뮬레이션 전용 배지만 남는다.
-  assert.ok(!html.includes('실하드웨어 미검증'));
-  assert.ok(html.includes('시뮬레이션 전용'));
+  assert.ok(html.includes('실하드웨어 미검증'));
   assert.ok(
     html.includes('2F-85 장착 근거, 그리퍼 close 안정성, 파지 관측, pick/place 재검증 미완료'),
   );
@@ -273,23 +271,18 @@ test('로봇 카드: FR3 구성·스킬·비활성 사유·배지가 그대로 �
   ['pick', 'place'].forEach((skill) =>
     assert.ok(html.includes(`chip skill off" title="비활성">${skill}`), `${skill} 비활성 표시 없음`),
   );
-  // 실행 결과가 시뮬레이션임을 적되, 실기 준비·검증 상태는 보여 주지 않는다.
-  assert.match(html, /실행 결과는 모두 Gazebo 시뮬레이션 결과입니다/);
-  ['실기', '실하드웨어', '실제 하드웨어'].forEach((word) =>
-    assert.ok(!html.includes(word), `"${word}"가 로봇 카드에 남아 있다`));
+  // 검증되지 않은 것을 검증된 것처럼 적지 않는다.
+  assert.match(html, /실제 하드웨어는 검증되지 않았습니다/);
+  assert.ok(html.includes('미검증'));
 });
 
-test('로봇 선택 모달: 검증된 구성(FR3·G1)만 나오고 잠긴 항목이 없다', () => {
+test('로봇 선택 모달: 미구현 로봇은 버튼이 잠겨 있다', () => {
   const html = renderModal({ ...initialState(), modal: 'robot' });
   assert.ok(html.includes('FAIRINO FR3-WMS'));
-  assert.ok(html.includes('Unitree G1'));
-  // 고를 수 없는 "미구현" 항목을 늘어놓지 않는다.
-  assert.equal((html.match(/robot-option[^>]*disabled/g) || []).length, 0);
-  assert.equal((html.match(/data-action="select-robot"/g) || []).length, 2);
-  ['Doosan', 'Kinova', 'UR5e'].forEach((name) => {
-    assert.ok(!html.includes(name), `${name}가 아직 목록에 있다`);
-  });
-  assert.ok(!html.includes('지금은 하나입니다'));
+  assert.ok(html.includes('미구현'));
+  const disabledCount = (html.match(/robot-option[^>]*disabled/g) || []).length;
+  assert.equal(disabledCount, 3);
+  assert.match(html, /검증된 구성만 선택할 수 있습니다/);
 });
 
 // ── 계획 카드 ─────────────────────────────────────────────────────────
@@ -418,94 +411,58 @@ test('render()가 index.html의 컨테이너를 모두 채운다', async () => {
 });
 
 test('render(): 타이핑 중에는 명령 textarea를 갈아 끼우지 않는다', async () => {
-  // 카드는 textarea가 생긴 뒤로 통째로 다시 그려지지 않는다. 대신 textarea를
-  // 뺀 조각들(머리말·버튼 줄·전사·안내)만 갈아 끼운다. 여기서는 그 조각 갱신이
-  // 실제로 일어나는지를 본다 — 예전처럼 "안내문 개수"로 어림짐작하면 조각이
-  // 낡은 채 남는다(실측: 제목이 안 바뀌고 마이크 버튼이 안 풀렸다).
   const textarea = { id: 'command-input', value: '', tagName: 'TEXTAREA' };
-  const REGIONS = ['.card-header', '#command-actions', '#command-transcript',
-                   '#command-note', '#command-foot'];
-  const live = Object.fromEntries(REGIONS.map((sel) => [sel, { innerHTML: '' }]));
+  const button = { disabled: true, innerHTML: '◈ 계획 생성' };
+  const hints = [{}, {}];
   const card = {
     innerHTML: '',
-    querySelector: (sel) => (sel === '#command-input' ? textarea : live[sel] || null),
-    querySelectorAll: () => [],
+    querySelector: (sel) =>
+      sel === '#command-input' ? textarea : sel === '[data-action="generate"]' ? button : null,
+    querySelectorAll: (sel) => (sel === '.hint' ? hints : []),
   };
   const nodes = new Map([['card-command', card], ['command-input', textarea]]);
   const ids = [
     'card-robot', 'card-scene', 'card-workcell', 'card-hardware', 'card-voice', 'card-events',
     'card-plan', 'card-verdict', 'card-block', 'goto-workspace-slot', 'stop-slot-plan',
     'card-sim', 'card-execution', 'stop-slot-workspace', 'modal-root', 'event-list',
-    'robot-pick-slot', 'detect', 'scene-badges', 'scene-empty-slot', 'scene-strip',
-    'sim-command-area', 'session-id', 'conn', 'sub-verdict', 'sub-plan-id',
   ];
-  ids.forEach((id) => nodes.set(id, {
-    innerHTML: '', textContent: '', hidden: false, scrollTop: 0, scrollHeight: 0,
-    classList: { toggle() {} },
-  }));
+  ids.forEach((id) => nodes.set(id, { innerHTML: '', hidden: false, scrollTop: 0, scrollHeight: 0 }));
   globalThis.document = {
     getElementById: (id) => nodes.get(id) || null,
     activeElement: textarea,
     createElement: () => {
       const fresh = { innerHTML: '' };
-      // 새로 그린 카드에서 조각을 읽는다. 진짜 DOM이 없으므로 조각마다
-      // "지금 무엇이 달라졌는지"를 나타내는 표식을 만들어 돌려준다.
-      fresh.querySelector = (sel) => {
-        if (!REGIONS.includes(sel)) return null;
-        if (sel === '#command-actions') {
-          return {
-            innerHTML: [
-              /data-action="generate"[^>]*disabled/.test(fresh.innerHTML) ? '보내기:잠김' : '보내기:열림',
-              /data-action="toggle-voice"[^>]*disabled/.test(fresh.innerHTML) ? '마이크:잠김' : '마이크:열림',
-            ].join(' '),
-          };
-        }
-        if (sel === '.card-header') {
-          return { innerHTML: /시뮬레이션 작업 명령/.test(fresh.innerHTML) ? '제목:시뮬' : '제목:일반' };
-        }
-        return { innerHTML: sel };
-      };
-      fresh.querySelectorAll = () => [];
+      // 새로 그린 HTML에서 버튼 상태만 읽는다.
+      fresh.querySelector = (sel) =>
+        sel === '[data-action="generate"]'
+          ? { disabled: /data-action="generate" disabled/.test(fresh.innerHTML), innerHTML: '◈ 계획 생성' }
+          : null;
+      fresh.querySelectorAll = (sel) =>
+        sel === '.hint' ? Array.from(fresh.innerHTML.matchAll(/class="hint"/g)) : [];
       return fresh;
     },
   };
   const { render } = await import('../../html/static/js/render.js');
   const store = createStore(initialState());
   store.dispatch({ type: 'connection', state: 'ok', detail: '' });
-
-  // 첫 글자 — 카드의 innerHTML은 그대로이고 보내기 버튼만 풀린다.
+  // 첫 글자 — 카드의 innerHTML은 그대로이고 버튼만 풀린다.
   store.dispatch({ type: 'command', command: '1' });
   textarea.value = '1';
   render(store.get(), 'server');
-  assert.equal(card.innerHTML, '', '카드를 통째로 다시 그렸다');
-  assert.match(live['#command-actions'].innerHTML, /보내기:열림/);
+  assert.equal(card.innerHTML, '');
+  assert.equal(button.disabled, false);
   assert.equal(textarea.value, '1');
-
   // 조합 중인 글자도 값이 되돌아가지 않는다.
   store.dispatch({ type: 'command', command: '1번 팔ㄹ' });
   textarea.value = '1번 팔ㄹ';
   render(store.get(), 'server');
   assert.equal(card.innerHTML, '');
   assert.equal(textarea.value, '1번 팔ㄹ');
-
-  // STT가 나중에 붙어도 마이크 버튼이 풀린다(첫 렌더 상태로 굳지 않는다).
-  assert.match(live['#command-actions'].innerHTML, /마이크:잠김/);
-  store.dispatch({ type: 'stt', stt: { available: true } });
-  render(store.get(), 'server');
-  assert.match(live['#command-actions'].innerHTML, /마이크:열림/);
-  assert.equal(card.innerHTML, '', 'STT가 붙었다고 카드를 통째로 다시 그렸다');
-
-  // 작업 셀에 붙으면 제목이 바뀐다(첫 렌더 제목으로 굳지 않는다).
-  assert.equal(live['.card-header'].innerHTML, '제목:일반');
-  store.dispatch({ type: 'server-robot', robot: { workcell: { registered: true } } });
-  render(store.get(), 'server');
-  assert.equal(live['.card-header'].innerHTML, '제목:시뮬');
-
-  // 지우기 — 값은 상태를 따라가고 보내기 버튼은 다시 잠긴다.
+  // 지우기 — 값은 상태를 따라가고 버튼은 다시 잠긴다.
   store.dispatch({ type: 'command', command: '' });
   render(store.get(), 'server');
   assert.equal(textarea.value, '');
-  assert.match(live['#command-actions'].innerHTML, /보내기:잠김/);
+  assert.equal(button.disabled, true);
   delete globalThis.document;
 });
 
@@ -539,7 +496,7 @@ test('서버 모드에서는 실제 실행 어댑터를 밝힌다', () => {
   assert.ok(html.includes('개발용 Fake 실행'));
   // 선언된 구성은 그대로 보여주되, 실행이 FR3에서 되는 것처럼 적지 않는다.
   assert.ok(html.includes('FAIRINO FR3-WMS'));
-  assert.match(html, /Gazebo 작업 셀에 연결되지 않았습니다/);
+  assert.match(html, /실행 경로에\s*\n?\s*연결되지 않았습니다/);
 });
 
 // ── 작업 셀 화면 (8-08 우선순위 6) ─────────────────────────────────────
@@ -597,7 +554,7 @@ test('로봇 카드: 작업 셀에 붙으면 world·격리를 보여주고 실�
   assert.ok(html.includes('forstick2_fr3_workcell'));
   assert.ok(html.includes('domain 44'));
   assert.ok(html.includes('Gazebo 작업 셀에 연결됨'));
-  assert.match(html, /시뮬레이터에서 수행됩니다/);
+  assert.match(html, /실제 하드웨어는 연결되지 않았습니다/);
   // 작업 셀에 붙었으면 Fake 경고를 띄우지 않는다.
   assert.ok(!html.includes('개발용 Fake 실행'));
   // pick/place는 계속 비활성이다.
@@ -690,7 +647,7 @@ test('실행 카드: 어댑터 근거의 관측값만 보여준다', () => {
   assert.ok(html.includes('j1 0.3812'));
   assert.ok(html.includes('85.0 mm'));
   assert.ok(html.includes('0.0031 rad'));
-  assert.match(html, /Gazebo 시뮬레이션 관측값입니다/);
+  assert.match(html, /Gazebo simulation 관측값입니다/);
 });
 
 test('실행 카드: 개구 모델이 없으면 개구를 주장하지 않는다', () => {
@@ -803,11 +760,193 @@ test('차단 카드: 모호 명령은 되묻기 문구를 보여준다', () => {
   assert.ok(html.includes('계획 초안이 없습니다'));
 });
 
-// ── 실제 하드웨어 준비 상태 표시는 화면에서 걷어냈다 ──────────────────
-// 지금 서비스는 Gazebo 시뮬레이션 전용이라 실기 준비도·검증 체크리스트를
-// 사용자에게 보여 주지 않는다. 판정 코드와 설정·기준 데이터는 그대로 있고
-// (`validation/hardware_readiness.py`, `tests/unit/test_hardware_adapters.py`),
-// 공개 응답에서 빠지는지는 `tests/unit/test_public_payload.py`가 지킨다.
+// ── 실제 하드웨어 준비 상태 표시 (8-12) ────────────────────────────────
+function readiness(overrides = {}) {
+  return {
+    available: true,
+    real_hardware_ready: false,
+    real_hardware_verified: false,
+    real_hardware_connected: false,
+    adapter_configured: false,
+    missing_labels: ['장착 yaw 근거', '커플링 실측 질량', '커플링 관성 텐서'],
+    collection_guide: [
+      { label: '장착 yaw 근거', reason_code: 'hardware.input_missing',
+        needed: '도면의 핀 위치 또는 조립 사진이 필요합니다' },
+      { label: '커플링 실측 질량', reason_code: 'hardware.input_missing',
+        needed: '저울 실측값(g)과 측정 사진이 필요합니다' },
+    ],
+    inputs: {
+      ready: [],
+      pending: ['mounting_yaw_evidence', 'coupling_measured_mass'],
+      inputs: [
+        { key: 'mounting_yaw_evidence', label: '장착 yaw 근거', ready: false,
+          has_value: false, measurement_method: 'none',
+          needed: '도면의 핀 위치 또는 조립 사진이 필요합니다' },
+        { key: 'coupling_measured_mass', label: '커플링 실측 질량', ready: false,
+          has_value: false, measurement_method: 'none',
+          needed: '저울 실측값(g)과 측정 사진이 필요합니다' },
+      ],
+    },
+    checklist: { blocking_total: 11, blocking_done: 0, counts: { not_started: 11 } },
+    state: {
+      simulation_e2e: true, real_hardware_ready: false,
+      real_hardware_verified: false,
+      hardware_evidence: '0/18', hardware_checklist: '0/11',
+    },
+    state_lines: [
+      'simulation_e2e=true',
+      'real_hardware_ready=false',
+      'real_hardware_verified=false',
+      'hardware_evidence=0/18',
+      'hardware_checklist=0/11',
+    ],
+    ...overrides,
+  };
+}
+
+test('하드웨어 카드: Gazebo 시연과 실기 준비를 나란히 두되 합치지 않는다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    simulationE2e: { available: true, completed: true, real_hardware_ready: false },
+    hardwareReadiness: readiness(),
+  });
+  // 두 줄이 **따로** 있다.
+  const simRow = html.match(
+    /<span class="row-label">Gazebo pick\/place 시연<\/span><div class="row-value">([\s\S]*?)<\/div>/,
+  );
+  const realRow = html.match(
+    /<span class="row-label">실제 pick\/place 준비<\/span><div class="row-value">([\s\S]*?)<\/div>/,
+  );
+  assert.ok(simRow, 'Gazebo 시연 행이 없다');
+  assert.ok(realRow, '실제 준비 행이 없다');
+  assert.ok(simRow[1].includes('완료'));
+  assert.ok(realRow[1].includes('차단'));
+  // 같은 배지로 합쳐지지 않는다.
+  assert.ok(!simRow[1].includes('차단'));
+  assert.ok(!realRow[1].includes('완료'));
+});
+
+test('하드웨어 카드: 고정 상태 다섯 줄을 서버 문장 그대로 보여준다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    simulationE2e: { available: true, completed: true },
+    hardwareReadiness: readiness(),
+  });
+  assert.ok(html.includes('지금 상태 (고정)'));
+  [
+    'simulation_e2e=true',
+    'real_hardware_ready=false',
+    'real_hardware_verified=false',
+    'hardware_evidence=0/18',
+    'hardware_checklist=0/11',
+  ].forEach((line) => assert.ok(html.includes(line), `${line} 없음`));
+  // 근거 수집 수(0/18)가 "검증됨"으로 읽히지 않는다.
+  assert.ok(!html.includes('real_hardware_verified=18'));
+  assert.ok(!html.includes('real_hardware_verified=true'));
+});
+
+test('하드웨어 카드: 근거 수집 수를 검증 수로 읽히게 두지 않는다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    hardwareReadiness: readiness(),
+  });
+  // 행 이름이 '근거 수집'임을 밝힌다.
+  assert.ok(html.includes('근거 수집(입력)'));
+  assert.ok(html.includes('근거 수집(체크리스트)'));
+  // 실기 검증 행은 숫자가 아니라 미검증이다.
+  const verifiedRow = html.match(
+    /<span class="row-label">실기 검증<\/span><div class="row-value">([\s\S]*?)<\/div>/,
+  );
+  assert.ok(verifiedRow, '실기 검증 행이 없다');
+  assert.ok(verifiedRow[1].includes('미검증'));
+  assert.ok(!/\d/.test(verifiedRow[1]), '실기 검증 행에 숫자가 있다');
+});
+
+test('하드웨어 카드: 실제 하드웨어가 연결되지 않았음을 밝힌다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    simulationE2e: { available: true, completed: true },
+    hardwareReadiness: readiness(),
+  });
+  assert.ok(html.includes('실제 하드웨어는 아직 연결되지 않았습니다'));
+  assert.ok(html.includes('승격되지 않습니다'));
+  const connectRow = html.match(
+    /<span class="row-label">실기 연결<\/span><div class="row-value">([\s\S]*?)<\/div>/,
+  );
+  assert.ok(connectRow && connectRow[1].includes('미연결'));
+});
+
+test('하드웨어 카드: 부족한 입력과 수집 방법을 보여준다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    simulationE2e: { available: true, completed: true },
+    hardwareReadiness: readiness(),
+  });
+  assert.ok(html.includes('부족한 입력'));
+  assert.ok(html.includes('장착 yaw 근거'));
+  assert.ok(html.includes('커플링 실측 질량'));
+  assert.ok(html.includes('hardware.input_missing'));
+  // 사람이 바로 수집할 수 있는 문장
+  assert.ok(html.includes('저울 실측값(g)과 측정 사진이 필요합니다'));
+  // 진행 상황
+  assert.ok(html.includes('0/11'));
+});
+
+test('하드웨어 카드: 실기 어댑터 설정 없음을 표시한다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    hardwareReadiness: readiness(),
+  });
+  const row = html.match(
+    /<span class="row-label">실기 어댑터 설정<\/span><div class="row-value">([\s\S]*?)<\/div>/,
+  );
+  assert.ok(row && row[1].includes('없음'));
+});
+
+test('하드웨어 카드: 판정이 없으면 준비를 차단으로 표시한다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    hardwareReadiness: { available: false, detail: '매니페스트가 없다' },
+  });
+  assert.ok(html.includes('판정 없음'));
+  assert.ok(html.includes('차단'));
+  assert.ok(html.includes('매니페스트가 없다'));
+});
+
+test('하드웨어 카드: Gazebo 시연 기록이 없으면 완료로 적지 않는다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    simulationE2e: { available: false },
+    hardwareReadiness: readiness(),
+  });
+  const simRow = html.match(
+    /<span class="row-label">Gazebo pick\/place 시연<\/span><div class="row-value">([\s\S]*?)<\/div>/,
+  );
+  assert.ok(simRow && simRow[1].includes('기록 없음'));
+  assert.ok(!simRow[1].includes('완료'));
+});
+
+test('하드웨어 카드: 근거가 모두 채워지면 근거 확보로 표시한다', () => {
+  const html = renderHardwareCard({
+    ...initialState(),
+    hardwareReadiness: readiness({
+      real_hardware_ready: true,
+      adapter_configured: true,
+      missing_labels: [],
+      collection_guide: [],
+      inputs: { ready: ['a'], pending: [], inputs: [
+        { key: 'a', label: '합성', ready: true, has_value: true,
+          measurement_method: 'scale', needed: '' }] },
+      checklist: { blocking_total: 11, blocking_done: 11, counts: { passed: 11 } },
+    }),
+  });
+  assert.ok(html.includes('근거 확보'));
+  // 준비가 끝나도 **검증·연결은 여전히 미완료**다.
+  const verifiedRow = html.match(
+    /<span class="row-label">실기 검증<\/span><div class="row-value">([\s\S]*?)<\/div>/,
+  );
+  assert.ok(verifiedRow && verifiedRow[1].includes('미검증'));
+});
 
 // ── pick/place 계획 사전 검증 표시 (8-10) ──────────────────────────────
 function planValidation(overrides = {}) {
@@ -1000,15 +1139,4 @@ test('실행 카드: 정지 확인으로 끝난 실행을 실패로 보이지 �
   const html = renderExecutionCard(state);
   assert.ok(html.includes('정지 확인'));
   assert.ok(!html.includes('실행 실패'));
-});
-
-test('G1을 고르면 FR3 시연 확인 카드·결과를 명령 칸에 그리지 않는다(로봇 맥락 분리)', () => {
-  const pending = { token: 't', summary: 'C자재를 컨베이어로', action: 'transfer', evidence: {} };
-  const fr3 = { ...initialState(), simDemo: { ...initialState().simDemo, confirmation: pending } };
-  assert.ok(renderSimCommandArea(fr3).includes('data-action="sim-confirm"'));
-  const g1 = { ...fr3, robotId: 'unitree_g1' };
-  assert.equal(renderSimCommandArea(g1), '');
-  const card = renderCommandCard(g1, 'server');
-  assert.ok(card.includes('G1 이동 명령'));
-  assert.ok(card.includes('컨베이어 한번 찍고 와'));
 });

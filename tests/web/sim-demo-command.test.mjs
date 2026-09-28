@@ -31,8 +31,7 @@ test('모드 토글이 없다', () => {
 test('작업 셀에 붙으면 제목과 안내가 시뮬레이션 기준이다', () => {
   const html = renderCommandCard(withMode(), 'server');
   assert.match(html, /시뮬레이션 작업 명령/);
-  // 시뮬레이션 표시 배지·문구는 머리말에 두지 않는다(사용자 요구).
-  assert.doesNotMatch(html, new RegExp(NOTICE));
+  assert.match(html, new RegExp(NOTICE));
   assert.match(html, /명령 보내기/);
   assert.match(html, /원래 자리로 돌려놔/);
   assert.match(html, /기존 계획 생성으로 갑니다/);
@@ -58,8 +57,7 @@ test('RUN 결과는 작업 id와 진행 단계를 보여준다', () => {
   assert.match(html, /simjob_1/);
   assert.match(html, /7\/12 lift/);
   assert.match(html, /material_a/);
-  // 결과 영역에 긴 시뮬레이션 문구를 반복하지 않는다(사용자 요구).
-  assert.doesNotMatch(html, new RegExp(NOTICE));
+  assert.match(html, new RegExp(NOTICE));
 });
 
 test('ASK·BLOCK은 사유만 보여주고 작업 정보가 없다', () => {

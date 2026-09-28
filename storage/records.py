@@ -91,8 +91,6 @@ class SttInferenceRecord:
     confidence_metric: str
     #: 이 시도가 최종 요청으로 채택됐는가.
     final_adopted: bool
-    #: STT가 낸 원문. 구 레코드는 None이며 transcript가 당시 유일한 전사다.
-    raw_transcript: str | None = None
     #: 모델 최초 로딩 시간(ms). 이미 로딩된 모델로 돌렸으면 None이다.
     model_load_duration_ms: int | None = None
     #: VAD가 음성으로 판정했는가. 측정하지 않았으면 None이다.

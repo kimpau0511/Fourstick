@@ -28,8 +28,7 @@ from server.routes.common import (
 )
 
 PATHS: tuple[str, ...] = (
-    "/v1/decision", "/v1/execute", "/v1/executions/", "/v1/stop",
-    "/v1/stop/release", "/v1/state",
+    "/v1/decision", "/v1/execute", "/v1/executions/", "/v1/stop", "/v1/state",
 )
 
 
@@ -88,15 +87,6 @@ async def handle(
             ))
         return None
 
-    if method == "POST" and path == "/v1/stop/release":
-        # 전체 정지 래치 해제. 정지와 같은 이유로 세션 격리로 막지 않는다.
-        # 해제 자체는 api가 판단한다 — 진행 중인 실행·시뮬레이션 작업이 있으면
-        # 거부하고, 그 사유를 그대로 돌려준다.
-        payload = await ctx.read_body(receive)
-        return json_response(await asyncio.to_thread(
-            api.release_stop, session_id=payload.get("session_id")
-        ))
-
     if method == "POST" and path == "/v1/stop":
         # 전체 정지. 세션 격리로 막지 않는다 — session_id는 있으면 기록만 한다.
         payload = await ctx.read_body(receive)
@@ -107,11 +97,8 @@ async def handle(
         # 죽이지 않는다 — 시연 스크립트가 기존 STOP 절차로 멈춘다.
         jobs = getattr(ctx.runtime, "sim_demo_jobs", None)
         if jobs is not None:
-            goals = getattr(ctx.runtime, "sim_demo_goals", None)
-            goal_stop = goals.request_stop() if goals is not None else None
-            sim_stop = (goal_stop if goal_stop and goal_stop.get("requested")
-                        else jobs.request_stop(reason="global_stop"))
-            result = {**result, "simulation_demo_stop": sim_stop}
+            result = {**result,
+                      "simulation_demo_stop": jobs.request_stop(reason="global_stop")}
         return json_response(result)
 
     return None

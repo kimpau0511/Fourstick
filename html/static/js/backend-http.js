@@ -458,54 +458,14 @@ export class HttpBackend {
     return { ok: Boolean(payload.ok), requested: Boolean(payload.requested) };
   }
 
-  /** 전체 정지 래치를 푼다. **서버가 풀렸다고 답한 경우에만** 풀린 것이다.
-   *
-   *  진행 중인 실행이나 시뮬레이션 작업이 있으면 서버가 거부한다 —
-   *  화면이 그 판단을 대신하지 않는다. */
-  async releaseStop() {
-    const response = await request('POST', '/v1/stop/release',
-      { session_id: this.sessionId });
-    const payload = response.payload || {};
-    return {
-      ok: Boolean(payload.released),
-      released: Boolean(payload.released),
-      detail: payload.detail || '',
-    };
-  }
-
   // ── 시뮬레이션 시연 명령 ─────────────────────────────────────────────
   /** 텍스트·STT final 발화를 **시연 전용** 입구로 보낸다(계획 생성 아님).
    *  source는 'text' 또는 'stt_final'이다 — partial은 보내지 않는다. */
-  async simDemoCommand(utterance, source, stt = {}) {
+  async simDemoCommand(utterance, source) {
     const response = await request('POST', '/v1/sim-demo/command', {
-      // 대화 맥락("그거", 되묻기 답)을 이 브라우저 세션에만 묶는다(인증 아님).
-      mode: 'simulation_demo', utterance, source, session_id: this.sessionId,
-      ...(source === 'stt_final' ? {
-        raw_transcript: stt.rawText, stt_confidence: stt.confidence,
-      } : {}),
+      mode: 'simulation_demo', utterance, source,
     });
     return { status: response.status, ...response.payload };
-  }
-
-  /** 확인 카드의 버튼. `confirm`일 때만 작업이 만들어진다. */
-  async simDemoConfirm(token, action) {
-    const response = await request('POST', '/v1/sim-demo/confirm', { token, action });
-    return { status: response.status, ok: response.ok, ...response.payload };
-  }
-
-  /** Fixed multi-step goal confirmation; the server owns every ordered step. */
-  async simDemoGoalConfirm(goalId, action) {
-    const response = await request('POST',
-      `/v1/sim-demo/goals/${encodeURIComponent(goalId)}/confirm`, { action });
-    return { httpStatus: response.status, ok: response.ok, ...response.payload,
-      decision: response.ok ? (action === 'cancel' ? 'CANCELLED' : 'RUN') : 'BLOCK',
-      goal: response.payload };
-  }
-
-  /** `/v1/sim-demo` 상태 한 번 읽기. 로봇 명령을 보내지 않는다. */
-  async simDemoStatus() {
-    const response = await request('GET', '/v1/sim-demo');
-    return response.ok ? response.payload : null;
   }
 
   async simDemoJob(jobId) {

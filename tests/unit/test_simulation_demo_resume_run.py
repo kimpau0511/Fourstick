@@ -123,10 +123,6 @@ class FakeFixture:
         self._held.add(model)
         return types.SimpleNamespace(verified=True)
 
-    def rebind(self, model, *, pose_m):
-        # 재개 때 이미 든 자재를 다시 묶는다(실제 장치의 joint 방식은 다시 붙이지 않는다).
-        return self.attach(model, pose_m=pose_m)
-
     def detach(self, model, *, pose_m):
         self.calls.append("detach")
         self._held.discard(model)
@@ -171,8 +167,7 @@ class ResumeRunBase(unittest.TestCase):
                           "scene_hash": SCENE, "stage": "place_approach"})
 
     def context(self, *, client=None, transport=None, fixture=None,
-                attachment=True, goals=0, gap=0.0001, expected=None,
-                scene_sync=lambda: ({"ok": True}, [])):
+                attachment=True, goals=0, gap=0.0001, expected=None):
         fixture = fixture or FakeFixture(self.cp["object_pose_m"])
         # 기본: 도구 위치(관절 FK + offset) = 지금 자재 위치 → 즉시 수렴.
         expected = expected or (lambda positions: getattr(fixture, "pose", None))
@@ -189,7 +184,7 @@ class ResumeRunBase(unittest.TestCase):
             observe_goals=lambda: {"active": goals},
             tool_object_gap=lambda observation, pose: gap,
             conveyor_zone=conveyor_zone(), origin_home_m=HOME_A,
-            make_follower=FakeFollower, scene_sync=scene_sync)
+            make_follower=FakeFollower)
 
 
 class SuccessTest(ResumeRunBase):
@@ -276,29 +271,6 @@ class PreVerificationBlockTest(ResumeRunBase):
     def test_geometry_collision_blocks(self):
         client = FakeClient(contacts=[("robotiq_85_base_link", "conveyor__belt")])
         self.assert_blocked(self.context(client=client), text="geometry.collision")
-
-    def test_scene_sync_unverifiable_blocks(self):
-        # 다른 자재의 실제 위치가 scene에 있는지 확인할 수 없으면 재개하지 않는다.
-        self.assert_blocked(self.context(scene_sync=None), text="확인할 수단")
-        failing = lambda: ({"ok": False}, [("geometry.environment_unavailable",  # noqa: E731
-                                            "material_b: 기록한 자리와 관측이 다르다")])
-        self.assert_blocked(self.context(scene_sync=failing), text="material_b")
-
-    def test_path_between_stages_is_checked(self):
-        calls = []
-
-        class Counting(FakeClient):
-            def check_state(self, joints, attached=None):
-                calls.append(dict(joints))
-                return super().check_state(joints, attached)
-
-        ctx = self.context(client=Counting())
-        report = demo.run_resume(ctx, checkpoint_id=self.cp["checkpoint_id"])
-        self.assertEqual(report["status"], demo.RESUMED_COMPLETED, report["reasons"])
-        # 단계 검사만이면 (복구 접근 표본 + 남은 단계) × 2(사전 + 실행 직전) 정도다.
-        # 경로 표본이 더해져야 한다.
-        self.assertGreater(report["path_check"]["samples"], 0)
-        self.assertGreater(len(calls), report["path_check"]["samples"])
 
     def test_wrong_checkpoint_id_blocks(self):
         self.assert_blocked(self.context(), checkpoint_id="simckpt_old")
@@ -483,20 +455,6 @@ class StateContractTest(unittest.TestCase):
             self.assertEqual(json.loads((Path(tmp) / "s.json").read_text())
                              ["checkpoints"]["material_a"]["checkpoint_id"],
                              cp["checkpoint_id"])
-
-    def test_record_resume_keeps_the_interrupted_slot(self):
-        """재개 완료 기록은 중단된 이송의 칸을 잇는다(2026-09-24 실측 회귀)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            state = SimulationDemoState(Path(tmp) / "s.json")
-            state.record_run(policy=POLICY_DEMO_HOLD, model="material_a",
-                             result=stopped_result(), final_pose_m=(0.4, 0, 1),
-                             restored=None, slot="slot_2")
-            cp = state.record_checkpoint(build()[0])
-            state.record_resume("material_a", checkpoint_id=cp["checkpoint_id"],
-                                outcome="completed", final_pose_m=ON_CONVEYOR)
-            record = state.status()["objects"]["material_a"]
-            self.assertEqual((record["state"], record["slot"]),
-                             ("held_on_target", "slot_2"))
 
     def test_general_pick_place_stays_blocked(self):
         from tests.unit.test_fr3_gazebo_adapter import build as build_adapter

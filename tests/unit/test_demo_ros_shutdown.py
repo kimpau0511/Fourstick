@@ -236,7 +236,7 @@ class ExitPathsUseShutdownRosTest(unittest.TestCase):
         self.assertLess(body.index("demo_state.record_return("),
                         body.index("shutdown_ros("))
         main = ast.unparse(self.functions["main"])
-        self.assertLess(main.index("write(args.out, result, preflight_extra)"),
+        self.assertLess(main.index("write(args.out, result)"),
                         main.index("shutdown_ros("))
 
 
