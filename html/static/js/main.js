@@ -14,7 +14,6 @@ import { setResourceLabels } from './catalog.js';
 import { HttpBackend } from './backend-http.js';
 import { SimulationBackend } from './backend-sim.js';
 import { render } from './render.js';
-import { createHumanoidPanel } from './humanoid.js';
 import { createSimDemoCard } from './sim-demo.js';
 import { EXECUTION, createStore, makeEvent } from './state.js';
 import { createSpeaker } from './tts.js';
@@ -770,15 +769,7 @@ async function boot() {
     // 마이크 단추가 잠긴 채 복구되지 않는다**(실측). 서버가 STT를 쓸 수
     // 있다고 답한 사실은 그 실패들과 무관하다.
     store.dispatch({ type: 'stt', stt: { available: sttAvailable } });
-    // G1 카드. 서버에 붙었을 때만 만든다. 로봇 선택이 G1일 때만 보인다.
-    const humanoidRoot = document.getElementById('card-humanoid');
-    if (humanoidRoot && backend.kind === 'server') {
-      humanoidPanel = createHumanoidPanel({
-        root: humanoidRoot, getSessionId: () => backend.sessionId, log,
-      });
-      applyRobotView(store.get().robotId);
-      window.__humanoid = humanoidPanel;             // 검증용(읽기)
-    }
+    // G1 카드는 이 빌드에서 빠졌다(휴머노이드 제어 스택 별도 관리) — humanoidPanel은 null로 남는다.
     // 시뮬레이션 시연 카드. 서버에 붙었을 때만 서버 상태를 읽는다 — 자기 카드만
     // 그리고, 다른 카드의 상태 저장소를 건드리지 않는다.
     const simDemoRoot = document.getElementById('card-sim-demo');
