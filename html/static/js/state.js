@@ -87,7 +87,9 @@ export function initialState() {
     serverConfig: null,
     session: null,
     connection: { state: 'connecting', detail: '' },
-    stt: { recording: false, partial: '', final: '', normalized: '', confidence: null, available: false },
+    stt: { recording: false, partial: '', final: '', normalized: '', confidence: null, available: false,
+      /** 음성 명령 한 건의 단계 추적(마이크 → 음성 구간 → STT 원문 → 해석). `main.js`가 채운다. */
+      trace: null },
     /** 시뮬레이션 명령(자재 이송·복귀·정지·이어서)의 마지막 응답과 그 작업의
      *  최신 상세. 모드 토글은 없다 — 시뮬레이션 작업 셀에서는 기본 동작이고,
      *  그 밖의 발화는 서버가 PASS_THROUGH로 돌려 기존 계획 생성으로 간다.
@@ -109,7 +111,7 @@ export function initialState() {
      *  `supported`는 이 브라우저가 SpeechSynthesis를 갖고 있는지다 — 없으면
      *  토글이 잠기고 화면이 그 사실을 적는다(없는 기능을 켤 수 있는 것처럼
      *  보이게 하지 않는다). 읽는 문장은 `html/static/js/tts.js`가 만든다. */
-    tts: { supported: false, enabled: false },
+    tts: { supported: false, enabled: false, status: null },
     modal: null, // 'execute' | 'cancel' | 'robot' | null
     eventFilter: 'all',
     policyOpen: false,

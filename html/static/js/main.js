@@ -14,6 +14,7 @@ import { setResourceLabels } from './catalog.js';
 import { HttpBackend } from './backend-http.js';
 import { SimulationBackend } from './backend-sim.js';
 import { render } from './render.js';
+import { createHumanoidPanel } from './humanoid.js';
 import { createSimDemoCard } from './sim-demo.js';
 import { EXECUTION, createStore, makeEvent } from './state.js';
 import { createSpeaker } from './tts.js';
@@ -40,7 +41,43 @@ const G1_ID = 'unitree_g1';
 const isG1 = () => store.get().robotId === G1_ID;
 /** 음성 안내. **기본 꺼짐**이고, 못 쓰는 환경이면 모든 호출이 조용히 지나간다.
  *  읽는 문장은 `tts.js`가 열거값에서 만든다 — 여기서 문자열을 만들지 않는다. */
-const speaker = createSpeaker();
+const speaker = createSpeaker({
+  // 재생 단계(요청·시작·끝·오류)를 화면에 올린다. 소리가 안 났으면 오류로 보인다.
+  onStatus: (status) => store.dispatch({ type: 'tts', tts: { status } }),
+});
+
+/** 음성 명령 단계 추적을 고친다(`state.stt.trace`). */
+function traceVoice(fields) {
+  const trace = store.get().stt.trace || {};
+  store.dispatch({ type: 'stt', stt: { trace: { ...trace, ...fields } } });
+}
+
+/** STT 확정 이벤트의 오디오 진단(서버 계산, 오디오 없음) + 브라우저 형식 → 단계 추적 칸. */
+function audioTrace(event) {
+  const d = event.audio_diag;
+  const c = event.client_info || {};
+  const ts = c.track_settings || {};
+  const fmt = c.context_sample_rate
+    ? `${c.context_sample_rate} Hz 처리(마이크 ${ts.sampleRate ?? '?'} Hz · ${ts.channelCount ?? '?'}ch)`
+      + ` · 에코제거 ${ts.echoCancellation} · 잡음억제 ${ts.noiseSuppression} · 자동이득 ${ts.autoGainControl}`
+      + ` · 준비 ${c.ready_ms ?? '?'} ms · 열리기 전 버린 프레임 ${c.frames_dropped_before_open ?? '?'}`
+    : null;
+  if (!d || !d.frames) return { audioFormat: fmt };
+  const level = `발화 ${d.rms_speech_median_dbfs ?? '—'} dBFS · 최대 ${d.peak_dbfs ?? '—'} dBFS`
+    + ` · 잡음 ${d.noise_floor_dbfs ?? '—'} dBFS · SNR ${d.snr_db ?? '—'} dB · 잘림 ${d.clipped_samples}`;
+  const onset = `음성 시작 ${d.vad_onset_s ?? '—'} s(녹음 ${d.audio_s} s)`
+    + ` · 시작 0.2 s 음량 ${d.onset_0_2s_vs_median_db ?? '—'} dB(중앙값 대비)`
+    + (d.speech_at_first_frame ? ' · 녹음 첫 프레임부터 음성' : '');
+  return { audioFormat: fmt, audioLevel: level, audioOnset: onset, audioSuspect: d.suspect || [] };
+}
+
+/** 서버가 발화를 확정했다 — 마이크를 놓는다. 화면만 끄고 마이크를 열어 두면
+ *  닫힌 세션에 오디오가 계속 흘러 stream_aborted가 난다(실측). */
+function releaseMic() {
+  if (backend && typeof backend.releaseVoice === 'function') {
+    backend.releaseVoice().catch(() => {});
+  }
+}
 
 function log(level, message) {
   store.dispatch({ type: 'event', event: makeEvent(level, message, nowTime()) });
@@ -147,6 +184,8 @@ async function handleFinalTranscript(text, confidence, rawText = text) {
   }
   // final만 시뮬레이션 명령으로 보낸다(partial은 표시만 한다).
   if (await sendSimDemoCommand(text, 'stt_final', { rawText, confidence })) return;
+  traceVoice({ interpretation: '시연 작업 명령이 아님', outcome:
+    '기존 계획 생성으로 보냄 — 안전 판단 뒤 실행 시작을 눌러야 실행됩니다', outcomeLevel: 'info' });
   // 정지 발화는 **계획 생성을 거치지 않는다.** 즉시 전체 정지로 보낸다.
   if (isStopUtterance(text)) {
     log('warning', `음성 정지 발화: "${text}" → 전체 정지`);
@@ -174,6 +213,13 @@ async function sendSimDemoCommand(utterance, source, stt = {}) {
     result = await backend.simDemoCommand(text, source, stt);
   } catch (error) {
     store.dispatch({ type: 'sim-demo-busy', busy: false });
+    if (source === 'stt_final') {
+      // 음성 명령은 해석을 확인하지 못했으면 다른 경로로 넘기지 않는다.
+      log('error', `음성 명령을 해석하지 못했습니다(${error.message}) — 실행하지 않았습니다. 다시 말해 주세요.`);
+      traceVoice({ interpretation: `해석 요청 실패: ${error.message}`,
+                   outcome: '실행하지 않음 — 다시 말해 주세요', outcomeLevel: 'error' });
+      return true;
+    }
     log('warning', `시뮬레이션 명령을 확인하지 못했습니다(${error.message}) — 계획 생성으로 갑니다.`);
     return false;
   }
@@ -189,8 +235,11 @@ async function sendSimDemoCommand(utterance, source, stt = {}) {
   if (result.decision === 'ENVIRONMENT') refreshSimDemo();
   log(level, `시뮬레이션 명령(${source}) 판단 ${result.decision}`
     + `${result.reason ? ` — ${result.reason}` : ''}`);
-  if (source === 'stt_final') log('info',
-    `명령 진단: STT="${result.raw_transcript || stt.rawText || text}"; 정규화="${result.normalized_transcript || text}"; 해석=${result.decision}/${result.intent || '없음'}/${result.material || '없음'}`);
+  if (source === 'stt_final') {
+    log('info',
+      `명령 진단: STT="${result.raw_transcript || stt.rawText || text}"; 정규화="${result.normalized_transcript || text}"; 해석=${result.decision}/${result.intent || '없음'}/${result.material || '없음'}`);
+    traceVoice(voiceOutcome(result));
+  }
   if (result.decision === 'CONFIRM') {
     const pending = result.confirmation || {};
     // **여기서 작업이 만들어지지 않는다.** 확인 카드가 뜨고, 사용자가 누르면
@@ -216,6 +265,26 @@ async function sendSimDemoCommand(utterance, source, stt = {}) {
   }
   if (result.job) pollSimDemoJob(result.job.job_id);
   return true;
+}
+
+/** 서버 판단 → 단계 추적의 ④ 해석 · ⑤ 결과. 서버 값만 옮긴다. */
+function voiceOutcome(result) {
+  const pending = result.confirmation || {};
+  const material = materialKorean(result.material) || result.material || '';
+  const interpretation = pending.summary
+    || [result.intent, material, result.slot_label].filter(Boolean).join(' · ')
+    || '작업을 정하지 못함';
+  const outcomes = {
+    CONFIRM: ['확인 카드 표시 — 확인을 눌러야 실행됩니다', 'info'],
+    CONFIRM_GOAL: ['확인 카드 표시 — 확인을 눌러야 실행됩니다', 'info'],
+    STOP: ['정지 요청을 보냄(확인 없이 즉시)', 'info'],
+    ASK: [`되묻기 — 실행하지 않음. ${result.reason || ''}`, 'warning'],
+    BLOCK: [`차단 — 실행하지 않음. ${result.reason || ''}`, 'error'],
+    RUN: ['실행 시작', 'info'],
+  };
+  const [outcome, outcomeLevel] = outcomes[result.decision]
+    || [`${result.decision}${result.reason ? ` — ${result.reason}` : ''}`, 'info'];
+  return { interpretation, outcome, outcomeLevel, corrections: result.stt_corrections || [] };
 }
 
 /** 자재 모델 id → 작업 셀이 선언한 한글 이름. 없으면 빈 문자열이다.
@@ -517,11 +586,17 @@ async function toggleVoice() {
     store.dispatch({ type: 'stt', stt: { recording: false, partial: '' } });
     return;
   }
-  store.dispatch({ type: 'stt', stt: { recording: true, partial: '', final: '', normalized: '', confidence: null } });
+  store.dispatch({ type: 'stt', stt: { recording: true, partial: '', final: '', normalized: '', confidence: null,
+    trace: { vad: '마이크 준비 중 — 아직 말하지 마세요' } } });
   const result = await backend.startVoice((event) => {
     if (event.kind === 'partial') {
       store.dispatch({ type: 'stt', stt: { partial: event.text || '' } });
     } else if (event.kind === 'final') {
+      releaseMic();
+      store.dispatch({ type: 'stt', stt: { trace: {
+        vad: '말소리 감지 → 전사', vadOk: true, raw: event.raw_text || event.text || '',
+        normalized: event.text || '', confidence: event.confidence ?? null,
+        interpretation: '해석 중…', ...audioTrace(event) } } });
       store.dispatch({
         type: 'stt',
         stt: {
@@ -538,17 +613,33 @@ async function toggleVoice() {
       handleFinalTranscript(event.text || '', event.confidence ?? null,
         event.raw_text || event.text || '');
     } else if (event.kind === 'clarify') {
-      store.dispatch({ type: 'stt', stt: { recording: false, partial: '' } });
+      releaseMic();
+      store.dispatch({ type: 'stt', stt: { recording: false, partial: '', trace: {
+        vad: '말소리 감지 → 전사', vadOk: true, raw: event.raw_text || event.text || '',
+        normalized: event.text || '', confidence: event.confidence ?? null,
+        interpretation: '해석하지 않음(전사 신뢰도가 기준 미만)',
+        outcome: '되묻기 — 실행하지 않음. 다시 말해 주세요', outcomeLevel: 'warning', ...audioTrace(event) } } });
       log('warning', `되묻기: ${event.detail || '신뢰도가 낮습니다.'}`);
       speaker.speak({ kind: 'sim-decision', decision: 'ASK', heard: event.raw_text || event.text });
     } else if (event.kind === 'error') {
-      store.dispatch({ type: 'stt', stt: { recording: false } });
-      log('error', `STT 오류: ${event.reason_code || ''} ${event.detail || ''}`);
+      releaseMic();
+      const noSpeech = event.reason_code === 'stt.no_speech';
+      store.dispatch({ type: 'stt', stt: { recording: false, trace: noSpeech
+        ? { vad: `말소리를 감지하지 못했습니다 — ${event.detail || ''} 마이크 입력 장치·음량을 확인하세요`,
+            vadOk: false, outcome: '실행하지 않음 — 다시 말해 주세요', outcomeLevel: 'warning', ...audioTrace(event) }
+        : { vad: '—', outcome: `STT 오류 ${event.reason_code || ''} ${event.detail || ''} — 실행하지 않음`,
+            outcomeLevel: 'error' } } });
+      log(noSpeech ? 'warning' : 'error', `STT ${noSpeech ? '말소리 없음' : '오류'}: ${event.reason_code || ''} ${event.detail || ''}`);
+      if (noSpeech) speaker.speak({ kind: 'sim-decision', decision: 'ASK' });
     }
-  });
+  }, () => traceVoice({ vad: '듣는 중 — 지금 말하세요(말을 마치면 잠시 뒤 확정)' }));
   if (!result.ok) {
-    store.dispatch({ type: 'stt', stt: { recording: false, detail: result.detail } });
+    store.dispatch({ type: 'stt', stt: { recording: false, detail: result.detail,
+      trace: { vad: `마이크를 시작하지 못했습니다: ${result.detail || ''}`, vadOk: false } } });
     log('warning', `음성 입력을 쓸 수 없습니다: ${result.detail || ''}`);
+  } else if (!store.get().stt.recording) {
+    // 마이크가 켜지는 사이에 끄기를 눌렀다 — 막 열린 마이크를 바로 닫는다.
+    await backend.stopVoice();
   }
 }
 
@@ -574,10 +665,26 @@ const ACTIONS = {
   'sim-confirm': () => answerSimDemoConfirm('confirm'),
   'sim-cancel': () => answerSimDemoConfirm('cancel'),
   'sim-stop': stopSimDemo,
+  'tts-heard': () => {
+    speaker.confirmHeard(true);
+    log('info', `TTS 실제 청취: 들림(사용자 확인) — "${speaker.status.text || ''}"`);
+  },
+  'tts-not-heard': () => {
+    speaker.confirmHeard(false);
+    const st = speaker.status;
+    log('warning', `TTS 실제 청취: 안 들림(사용자 확인) — 브라우저 상태 ${st.phase}${st.error ? ` · ${st.error}` : ''}`
+      + ` · 음성 ${st.voice || '없음'} · 재생 ${st.elapsed_ms ?? '?'} ms`);
+  },
+  'tts-test': () => {
+    // 사용자가 누른 자리에서 재생한다(브라우저 재생 허가). 결과는 TTS 상태 줄에 뜬다.
+    if (!speaker.test()) log('warning', `음성 시험을 재생하지 못했습니다: ${speaker.status.error || '지원하지 않는 브라우저'}`);
+  },
   'toggle-tts': () => {
     const on = speaker.toggle();
     store.dispatch({ type: 'tts', tts: { enabled: on } });
     log('info', `음성 안내를 ${on ? '켰습니다' : '껐습니다'}.`);
+    // 켜는 순간(사용자 조작 안)에 시험 문장을 읽어 재생 허가를 얻고, 들리는지 바로 확인한다.
+    if (on) speaker.test();
   },
   'dismiss-stop': () => store.dispatch({ type: 'stop-dismissed' }),
   'release-stop': releaseStop,
@@ -769,7 +876,15 @@ async function boot() {
     // 마이크 단추가 잠긴 채 복구되지 않는다**(실측). 서버가 STT를 쓸 수
     // 있다고 답한 사실은 그 실패들과 무관하다.
     store.dispatch({ type: 'stt', stt: { available: sttAvailable } });
-    // G1 카드는 이 빌드에서 빠졌다(휴머노이드 제어 스택 별도 관리) — humanoidPanel은 null로 남는다.
+    // G1 카드. 서버에 붙었을 때만 만든다. 로봇 선택이 G1일 때만 보인다.
+    const humanoidRoot = document.getElementById('card-humanoid');
+    if (humanoidRoot && backend.kind === 'server') {
+      humanoidPanel = createHumanoidPanel({
+        root: humanoidRoot, getSessionId: () => backend.sessionId, log,
+      });
+      applyRobotView(store.get().robotId);
+      window.__humanoid = humanoidPanel;             // 검증용(읽기)
+    }
     // 시뮬레이션 시연 카드. 서버에 붙었을 때만 서버 상태를 읽는다 — 자기 카드만
     // 그리고, 다른 카드의 상태 저장소를 건드리지 않는다.
     const simDemoRoot = document.getElementById('card-sim-demo');

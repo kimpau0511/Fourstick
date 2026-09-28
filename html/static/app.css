@@ -934,3 +934,9 @@ html, body {
   color: var(--on-primary);
   font-size: 13px;
 }
+
+/* 음성 명령 단계 추적 · TTS 재생 상태 (기능 확인용) */
+.voice-trace { margin-top: 6px; }
+.voice-trace .row-value { text-align: left; }
+.voice-trace .row-value.warning, .tts-status .warning { color: var(--warning, #b7791f); }
+.voice-trace .row-value.danger, .tts-status .danger { color: var(--danger, #c53030); }

@@ -514,14 +514,20 @@ export class HttpBackend {
   }
 
   // ── STT ─────────────────────────────────────────────────────────────
-  async startVoice(onTranscript) {
+  async startVoice(onTranscript, onReady = null) {
+    const clickedAt = performance.now();
+    // 이전 스트림이 남아 있으면 먼저 닫는다(마이크 두 개가 동시에 흐르지 않게).
+    if (this.stt && (this.stt.socket || this.stt.stream)) await this.releaseVoice();
     const audio = (this.config && this.config.audio) || {};
     if (!audio.sample_rate_hz) {
       return { ok: false, detail: '서버가 오디오 계약(sample rate)을 주지 않았다' };
     }
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 비교 시험용(기본은 그대로): 주소에 ?stt_raw=1 이면 브라우저 에코 제거·잡음 억제·자동 이득을 끈다.
+      const raw = new URLSearchParams(location.search).get('stt_raw') === '1';
+      stream = await navigator.mediaDevices.getUserMedia({ audio: raw
+        ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : true });
     } catch (error) {
       return { ok: false, detail: `마이크를 쓸 수 없다: ${error.message}` };
     }
@@ -540,6 +546,25 @@ export class HttpBackend {
       `${scheme}//${location.host}/v1/stt?session_id=${encodeURIComponent(this.sessionId)}`,
     );
     socket.binaryType = 'arraybuffer';
+    // 진단: 마이크를 켠 뒤 소켓이 열리기 전 프레임은 보내지 못하고 버린다(몇 개인지 센다).
+    let dropped = 0;
+    let settings = {};
+    try {
+      const t = stream.getAudioTracks()[0];
+      const raw = (t && t.getSettings && t.getSettings()) || {};
+      settings = Object.fromEntries(['sampleRate', 'channelCount', 'sampleSize', 'echoCancellation',
+        'noiseSuppression', 'autoGainControl', 'latency'].map((k) => [k, raw[k] ?? null]));
+    } catch { /* 설정을 못 읽어도 음성 입력은 계속 */ }
+    socket.onopen = () => {
+      const info = {
+        type: 'client_info', user_agent: navigator.userAgent, context_sample_rate: context.sampleRate,
+        base_latency_s: context.baseLatency ?? null, track_settings: settings,
+        ready_ms: Math.round(performance.now() - clickedAt), frames_dropped_before_open: dropped,
+        worklet_frame_samples: 512,
+      };
+      try { socket.send(JSON.stringify(info)); } catch { /* 닫힘 */ }
+      if (typeof onReady === 'function') onReady(info);
+    };
     socket.onmessage = (message) => {
       let event = null;
       try {
@@ -552,6 +577,7 @@ export class HttpBackend {
     const node = new AudioWorkletNode(context, 'pcm-frame-processor');
     node.port.onmessage = (message) => {
       if (socket.readyState === WebSocket.OPEN) socket.send(message.data);
+      else dropped += 1;
     };
     context.createMediaStreamSource(stream).connect(node);
     this.stt = { socket, context, node, stream };
@@ -567,6 +593,23 @@ export class HttpBackend {
     }
     if (stream) stream.getTracks().forEach((track) => track.stop());
     if (context) await context.close();
+    this.stt = { socket: null, context: null, node: null, stream: null };
+    return { ok: true };
+  }
+
+  /** 서버가 발화를 확정(final·되묻기·오류)해 스트림이 끝난 뒤 **마이크를 놓는다.**
+   *  flush 없이 닫는다 — 이미 닫힌 세션에 오디오를 더 보내면 서버가
+   *  stream_aborted로 거절한다(실측: 확정 뒤에도 마이크가 계속 흘렀다). */
+  async releaseVoice() {
+    const { socket, context, node, stream } = this.stt || {};
+    if (node && node.port) node.port.onmessage = null;
+    if (stream) stream.getTracks().forEach((track) => track.stop());
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      try { socket.send(JSON.stringify({ type: 'close' })); } catch { /* 이미 닫힘 */ }
+    }
+    if (context && context.state !== 'closed') {
+      try { await context.close(); } catch { /* 이미 닫힘 */ }
+    }
     this.stt = { socket: null, context: null, node: null, stream: null };
     return { ok: true };
   }

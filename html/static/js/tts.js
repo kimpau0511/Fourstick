@@ -15,8 +15,9 @@
  *
  * 기본은 **꺼짐**이다. 사용자가 켜면 브라우저 저장소에 남는다(그 브라우저에만).
  *
- * 쓸 수 없는 환경(SpeechSynthesis 미지원, 저장소 차단, speak 실패)은 **조용히**
- * 지나간다. 음성은 부가 기능이고, 여기서 난 오류가 명령·작업 기능을 막지 않는다.
+ * 쓸 수 없는 환경(SpeechSynthesis 미지원, 저장소 차단, speak 실패)이 명령·작업
+ * 기능을 막지 않는다. 다만 **실패를 숨기지 않는다** — 재생 단계와 오류를 `status`로
+ * 알리고 화면이 보인다(소리가 안 났는데 성공으로 두지 않는다).
  *
  * DOM을 모른다. `speechFor()`는 순수 함수라 브라우저 없이 node로 시험한다
  * (`tests/web/tts.test.mjs`).
@@ -144,6 +145,9 @@ export function speechFor(event) {
     case 'stop-result':
       return STOP_RESULTS[event.result] || STOP_RESULTS.unconfirmed;
 
+    case 'tts-test':
+      return '음성 안내 시험입니다. 이 문장이 들리면 음성 안내가 동작합니다.';
+
     default:
       return null;
   }
@@ -168,10 +172,36 @@ function writeStored(storage, on) {
 }
 
 // ── 말하기 ────────────────────────────────────────────────────────────
+/** 브라우저가 재생을 시작했다고 알려 오기를 기다리는 시간(ms). 이 안에
+ *  `onstart`가 오지 않으면 **소리가 나지 않은 것으로** 적는다(성공으로 두지 않는다). */
+export const START_TIMEOUT_MS = 4000;
+
+/** 이전 음성을 끊은 뒤 새 문장을 넣기까지 쉬는 시간(ms).
+ *  Chrome은 `cancel()` 바로 뒤의 `speak()`를 떨어뜨리는 일이 있다. */
+export const AFTER_CANCEL_MS = 120;
+
+/** 문장 길이로 어림한 재생 시간(ms). 끝 알림이 이보다 훨씬 빨리 오면 소리 없이 끝난 것일 수 있다. */
+export function expectedMs(text, rate = 1.05) {
+  const chars = String(text || '').replace(/\s+/g, '').length;
+  return Math.round((chars * 150) / rate);
+}
+
+/** 목록에서 한국어 음성을 고른다. 없으면 null — 브라우저 기본 음성에 맡긴다. */
+export function pickKoreanVoice(voices) {
+  const list = Array.isArray(voices) ? voices : [];
+  const ko = list.filter((v) => /^ko([-_]|$)/i.test(String((v && v.lang) || '')));
+  return ko.find((v) => v.localService) || ko[0] || null;
+}
+
 /** 음성 안내기.
  *
- * `synth`·`storage`·`Utterance`를 주입할 수 있어 브라우저 없이 시험한다.
+ * `synth`·`storage`·`Utterance`·타이머를 주입할 수 있어 브라우저 없이 시험한다.
  * 어느 하나라도 없으면 `supported=false`이고, 모든 호출이 아무 일도 하지 않는다.
+ *
+ * **재생 상태를 따로 적는다**(`status`, `onStatus`). 문장 생성 → 음성 엔진(목록·
+ * 한국어 음성) → 재생 호출 → 시작(`onstart`) → 끝(`onend`) / 오류(`onerror`,
+ * 시작 제한시간)를 구분한다. `onend`는 브라우저가 "재생을 마쳤다"고 알린 것일 뿐
+ * **귀에 들렸다는 증거가 아니다**(출력 장치·음량은 브라우저가 모른다).
  */
 export function createSpeaker({
   synth = typeof globalThis !== 'undefined' ? globalThis.speechSynthesis : null,
@@ -179,19 +209,66 @@ export function createSpeaker({
   Utterance = typeof globalThis !== 'undefined' ? globalThis.SpeechSynthesisUtterance : null,
   lang = 'ko-KR',
   rate = 1.05,
+  setTimer = typeof globalThis !== 'undefined' && globalThis.setTimeout
+    ? globalThis.setTimeout.bind(globalThis) : null,
+  clearTimer = typeof globalThis !== 'undefined' && globalThis.clearTimeout
+    ? globalThis.clearTimeout.bind(globalThis) : null,
+  onStatus = null,
+  now = () => Date.now(),
 } = {}) {
   const supported = Boolean(synth && typeof synth.speak === 'function' && Utterance);
   // 저장소를 못 써도 켜고 끌 수는 있어야 한다. 값만 못 남긴다.
   let enabled = storage ? readStored(storage) : false;
-  /** 마지막으로 읽은 문장. 테스트와 디버깅이 본다. */
+  /** 마지막으로 재생을 요청한 문장. 테스트와 디버깅이 본다. */
   let lastSpoken = null;
+  /** 재생 중인 발화. **참조를 쥐고 있어야 한다** — 놓치면 Chrome이 발화를 수거해
+   *  `onend`가 오지 않는다. */
+  let current = null;
+  let serial = 0;
+  let voice = null;
+  let voiceCount = 0;
+  let status = { phase: supported ? 'idle' : 'unsupported', text: null, error: null,
+                 voice: null, voices: 0, at: Date.now() };
+
+  function report(fields) {
+    status = { ...status, ...fields, voice: voice ? `${voice.name} (${voice.lang})` : null,
+               voices: voiceCount, at: Date.now() };
+    if (typeof onStatus === 'function') {
+      try { onStatus(status); } catch { /* 화면 갱신 실패가 음성을 막지 않는다 */ }
+    }
+  }
+
+  function loadVoices() {
+    if (!supported || typeof synth.getVoices !== 'function') return;
+    try {
+      const voices = synth.getVoices() || [];
+      voiceCount = voices.length;
+      voice = pickKoreanVoice(voices);
+    } catch {
+      voiceCount = 0;
+      voice = null;
+    }
+  }
+  loadVoices();
+  if (supported) {
+    // 목록은 늦게 온다(Chrome). 오면 다시 고른다.
+    try {
+      if (typeof synth.addEventListener === 'function') {
+        synth.addEventListener('voiceschanged', () => { loadVoices(); report({}); });
+      } else if ('onvoiceschanged' in synth) {
+        synth.onvoiceschanged = () => { loadVoices(); report({}); };
+      }
+    } catch { /* 목록 알림을 못 받아도 기본 음성으로 읽는다 */ }
+  }
 
   function cancel() {
     if (!supported) return;
+    serial += 1;              // 기다리던 재생 예약도 무효로 한다
+    current = null;
     try {
       synth.cancel();
     } catch {
-      // 취소 실패는 조용히 지나간다.
+      // 취소 실패는 기능을 막지 않는다.
     }
   }
 
@@ -201,39 +278,152 @@ export function createSpeaker({
     enabled = next;
     if (storage) writeStored(storage, enabled);
     // 끌 때는 읽던 문장을 바로 끊는다.
-    if (!enabled) cancel();
+    if (!enabled) {
+      cancel();
+      report({ phase: 'off', error: null });
+    }
     return enabled;
   }
 
-  /** 사건 하나를 읽는다. 돌려주는 값은 실제로 읽은 문장(없으면 null).
+  function play(text, id) {
+    if (id !== serial) return;          // 그 사이 새 문장이나 취소가 왔다
+    if (!voice) loadVoices();
+    let utterance;
+    try {
+      utterance = new Utterance(text);
+      utterance.lang = voice ? voice.lang : lang;
+      if (voice) utterance.voice = voice;
+      utterance.rate = rate;
+    } catch (error) {
+      report({ phase: 'error', text, error: `발화 생성 실패: ${error && error.message}` });
+      return;
+    }
+    let started = false;
+    let timer = null;
+    let startedAt = null;
+    const expect = expectedMs(text, rate);
+    const mine = () => id === serial && current === utterance;
+    utterance.onstart = () => {
+      started = true;
+      startedAt = now();
+      if (timer !== null && clearTimer) clearTimer(timer);
+      if (!mine()) return;
+      report({ phase: 'speaking', text, error: null, expected_ms: expect, elapsed_ms: null, heard: null });
+      // 끝 알림이 오지 않는 엔진(일부 안드로이드)도 있다 — 예상 시간의 3배 + 5 s 뒤에도 안 오면 적는다.
+      if (setTimer) {
+        timer = setTimer(() => {
+          if (!mine()) return;
+          report({ phase: 'error', text,
+                   error: `끝 알림이 오지 않았습니다(${Math.round((expect * 3 + 5000) / 1000)} s) — 엔진 speaking=${Boolean(synth.speaking)}` });
+        }, expect * 3 + 5000);
+      }
+    };
+    utterance.onend = () => {
+      if (timer !== null && clearTimer) clearTimer(timer);
+      if (!mine()) return;
+      current = null;
+      const elapsed = startedAt === null ? null : now() - startedAt;
+      // 시작 알림 없이 끝났으면 실제 재생을 확인하지 못한 것이다. 너무 빨리 끝나도 소리 없이 끝났을 수 있다.
+      if (!started) {
+        report({ phase: 'error', text, error: '재생 시작 알림 없이 끝났습니다', elapsed_ms: elapsed });
+      } else if (elapsed !== null && elapsed < expect * 0.3) {
+        report({ phase: 'error', text, elapsed_ms: elapsed, expected_ms: expect,
+                 error: `재생이 너무 빨리 끝났습니다(${elapsed} ms, 예상 약 ${expect} ms) — 소리 없이 끝났을 수 있습니다` });
+      } else {
+        report({ phase: 'ended', text, error: null, elapsed_ms: elapsed, expected_ms: expect });
+      }
+    };
+    utterance.onerror = (event) => {
+      if (timer !== null && clearTimer) clearTimer(timer);
+      const code = (event && event.error) || 'unknown';
+      // 우리가 끊은 것(interrupted/canceled)은 오류가 아니다.
+      if (code === 'interrupted' || code === 'canceled') return;
+      if (!mine()) return;
+      current = null;
+      const hint = code === 'not-allowed'
+        ? ' — 브라우저가 사용자 조작 전 재생을 막았습니다. 화면을 한 번 누른 뒤 음성 시험을 눌러 주세요.'
+        : code === 'language-unavailable' || code === 'voice-unavailable'
+          ? ' — 이 브라우저에 한국어 음성이 없습니다.' : '';
+      report({ phase: 'error', text, error: `음성 엔진 오류: ${code}${hint}` });
+    };
+    current = utterance;
+    try {
+      if (synth.paused && typeof synth.resume === 'function') synth.resume();
+      synth.speak(utterance);
+    } catch (error) {
+      current = null;
+      report({ phase: 'error', text, error: `재생 호출 실패: ${error && error.message}` });
+      return;
+    }
+    report({ phase: 'requested', text, error: null });
+    if (setTimer) {
+      timer = setTimer(() => {
+        if (started || !mine()) return;
+        current = null;
+        report({ phase: 'error', text,
+                 error: `${START_TIMEOUT_MS / 1000}초 안에 재생이 시작되지 않았습니다`
+                   + (voiceCount === 0 ? ' — 브라우저 음성 목록이 비어 있습니다' : '') });
+      }, START_TIMEOUT_MS);
+    }
+  }
+
+  function say(text) {
+    const busy = Boolean(synth.speaking || synth.pending);
+    cancel();
+    const id = serial;
+    lastSpoken = text;
+    report({ phase: 'queued', text, error: null, heard: null, elapsed_ms: null, expected_ms: null });
+    if (busy && setTimer) {
+      setTimer(() => play(text, id), AFTER_CANCEL_MS);
+      return text;
+    }
+    play(text, id);
+    // 호출 자체가 실패했으면 요청한 문장도 없다.
+    return status.phase === 'error' ? null : text;
+  }
+
+  /** 사건 하나를 읽는다. 돌려주는 값은 재생을 **요청한** 문장(없으면 null).
+   *  요청이 곧 재생 성공은 아니다 — 결과는 `status`로 따로 온다.
    *
    * 읽기 전에 **이전 음성을 끊는다** — 안내는 항상 "지금 상태" 하나여야 한다.
    */
   function speak(event) {
-    if (!supported || !enabled) return null;
     const text = speechFor(event);
     if (!text) return null;
-    cancel();
-    try {
-      const utterance = new Utterance(text);
-      utterance.lang = lang;
-      utterance.rate = rate;
-      synth.speak(utterance);
-      lastSpoken = text;
-      return text;
-    } catch {
-      // 합성 실패는 기능을 막지 않는다. 조용히 지나간다.
+    if (!supported) {
+      report({ phase: 'unsupported', text, error: '이 브라우저는 음성 합성을 지원하지 않습니다' });
       return null;
     }
+    if (!enabled) {
+      // 꺼져 있으면 읽지 않는다. 화면에는 읽었을 문장을 남긴다.
+      report({ phase: 'off', text, error: null });
+      return null;
+    }
+    return say(text);
+  }
+
+  /** 사용자가 귀로 확인한 결과. **이것만이 실제 청취 확인이다** — 브라우저 알림은 소리를 보장하지 않는다. */
+  function confirmHeard(heard) {
+    report({ heard: Boolean(heard), heard_at: now() });
+    return status;
+  }
+
+  /** 음성 시험. **사용자가 누른 단추에서만** 부른다(브라우저 재생 허가를 얻는 자리). */
+  function test() {
+    if (!supported) return null;
+    return say(speechFor({ kind: 'tts-test' }));
   }
 
   return {
     get supported() { return supported; },
     get enabled() { return enabled; },
     get lastSpoken() { return lastSpoken; },
+    get status() { return status; },
     setEnabled,
     toggle: () => setEnabled(!enabled),
     speak,
+    test,
+    confirmHeard,
     cancel,
   };
 }

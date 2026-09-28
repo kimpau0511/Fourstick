@@ -672,12 +672,12 @@ export function renderCommandCard(state, backendKind) {
     && Boolean(state.serverWorkcell && state.serverWorkcell.registered);
   const g1 = state.robotId === 'unitree_g1';
   const title = g1 ? 'G1 이동 명령 (시뮬레이션)' : simulated ? '시뮬레이션 작업 명령' : '작업 명령';
-  const { recording, partial, final, normalized, available } = state.stt;
-  const transcript = partial || final
+  const { partial, final } = state.stt;
+  const traceHtml = renderVoiceTrace(state.stt.trace);
+  const transcript = partial || final || traceHtml
     ? `<div class="transcript">${
         partial ? `<p class="transcript-partial">${esc(partial)}</p>` : ''
-      }${final ? `<p class="label-caps">STT 원문</p><p class="transcript-final">${esc(final)}</p>` : ''}
-      ${final && normalized ? `<p class="label-caps">정규화 결과</p><p>${esc(normalized)}</p>` : ''}</div>`
+      }${traceHtml}</div>`
     : '';
   const simHint =
     backendKind === 'simulation'
@@ -708,6 +708,7 @@ export function renderCommandCard(state, backendKind) {
           계획 생성은 로봇을 실행하지 않습니다. 안전 판단이 PASS일 때
           <strong>실행 시작</strong>을 눌러야 실행됩니다.
           TTS 음성은 판단·확인·작업 시작·완료·정지 결과만 짧게 읽습니다.</p>
+        ${renderTtsStatus(state.tts)}
         ${simHint}
       </div>
     </div>`;
@@ -738,6 +739,57 @@ export function renderCommandActions(state) {
     ${renderTtsToggle(state)}`;
 }
 
+/** 음성 명령 한 건의 단계 추적. **어디서 틀렸는지** 사용자가 보게 한다:
+ *  음성 구간을 못 잡았는지(VAD) · 잘못 들었는지(STT 원문) · 들은 뒤 잘못
+ *  해석했는지(해석). 값은 서버 응답에서만 온다. */
+export function renderVoiceTrace(trace) {
+  if (!trace) return '';
+  const row = (label, value, cls = '') => `<div class="row"><span class="row-label">${esc(label)}</span>`
+    + `<span class="row-value ${cls}">${value}</span></div>`;
+  const conf = trace.confidence == null ? '' : ` · 신뢰도 ${Number(trace.confidence).toFixed(2)}`;
+  const rows = [];
+  if (trace.audioFormat) rows.push(row('⓪ 브라우저 오디오', esc(trace.audioFormat)));
+  rows.push(row('① 음성 구간', esc(trace.vad || '—'), trace.vadOk === false ? 'danger' : ''));
+  if (trace.audioLevel) rows.push(row('  마이크 음량', esc(trace.audioLevel)));
+  if (trace.audioOnset) rows.push(row('  음성 시작', esc(trace.audioOnset)));
+  (trace.audioSuspect || []).forEach((w) => rows.push(row('  ⚠ 의심', esc(w), 'warning')));
+  if (trace.raw != null) rows.push(row('② STT 원문(들은 말)', `"${esc(trace.raw)}"${esc(conf)}`));
+  if (trace.normalized != null && trace.normalized !== trace.raw) {
+    rows.push(row('③ 표기 정리', `"${esc(trace.normalized)}"`));
+  }
+  (trace.corrections || []).forEach((c) => rows.push(row('⚠ 고쳐 들음',
+    `"${esc(c.heard)}" → "${esc(c.fixed)}" — 원문과 다르니 확인 카드에서 꼭 확인하세요`, 'warning')));
+  if (trace.interpretation) rows.push(row('④ 해석', esc(trace.interpretation)));
+  if (trace.outcome) rows.push(row('⑤ 결과', esc(trace.outcome),
+    trace.outcomeLevel === 'warning' ? 'warning' : trace.outcomeLevel === 'error' ? 'danger' : ''));
+  return `<div class="voice-trace"><p class="label-caps">음성 명령 단계</p>${rows.join('')}</div>`;
+}
+
+const TTS_PHASES = {
+  idle: '대기', off: '꺼짐 — 소리를 내지 않았습니다', queued: '재생 준비',
+  requested: '재생 요청됨 — 브라우저 시작 알림 대기', speaking: '브라우저가 재생 시작을 알림(끝 알림 대기)',
+  ended: '브라우저가 재생 끝을 알림(소리가 났다는 증거 아님 — 귀로 확인)', error: '소리를 내지 못했습니다',
+  unsupported: '이 브라우저는 음성 합성을 지원하지 않습니다',
+};
+
+/** TTS 재생 상태. 안내 문장은 **소리와 관계없이** 화면에 남긴다. */
+export function renderTtsStatus(tts) {
+  const st = tts && tts.status;
+  if (!st) return '';
+  const cls = st.phase === 'error' ? 'danger' : st.phase === 'off' ? 'warning' : '';
+  const engine = st.voice ? `음성 ${esc(st.voice)}` : `한국어 음성 없음(목록 ${st.voices || 0}개) — 브라우저 기본 음성`;
+  return `<div class="tts-status"><p class="hint"><span class="hint-mark">♪</span>
+      TTS: <span class="${cls}">${esc(TTS_PHASES[st.phase] || st.phase)}</span> · ${engine}
+      ${st.elapsed_ms != null ? `<br>브라우저 보고 재생 시간 ${st.elapsed_ms} ms(문장 길이로 어림 ${st.expected_ms} ms)` : ''}
+      ${st.error ? `<br><span class="danger">${esc(st.error)}</span>` : ''}
+      ${st.text ? `<br>안내 문장: "${esc(st.text)}"` : ''}
+      <br>실제 청취: ${st.heard === true ? '<strong>사용자 확인 — 들림</strong>'
+        : st.heard === false ? '<span class="danger">사용자 확인 — 안 들림</span>' : '확인 안 됨(귀로 듣고 눌러 주세요)'}
+      ${['speaking', 'ended', 'error'].includes(st.phase) ? `
+      <button class="btn ghost sm" type="button" data-action="tts-heard">들렸음</button>
+      <button class="btn ghost sm" type="button" data-action="tts-not-heard">안 들렸음</button>` : ''}</p></div>`;
+}
+
 /** TTS 켬/끔 단추. 상태는 `state.tts`에서만 온다 — 화면이 값을 만들지 않는다. */
 export function renderTtsToggle(state) {
   const tts = state.tts || {};
@@ -751,7 +803,9 @@ export function renderTtsToggle(state) {
       title="${esc(tts.enabled
         ? '작업 결과를 짧게 읽습니다. 누르면 끕니다.'
         : '켜면 작업 결과를 짧게 읽습니다. 진행 로그와 모델 원문은 읽지 않습니다.')}">
-      ${tts.enabled ? '♪ TTS 음성 on' : '○ TTS 음성 off'}</button>`;
+      ${tts.enabled ? '♪ TTS 음성 on' : '○ TTS 음성 off'}</button>
+    <button class="btn ghost sm" type="button" data-action="tts-test"
+      title="시험 문장을 읽습니다. 들리는지 귀로 확인하세요.">음성 시험</button>`;
 }
 
 /** 머리말의 로봇 선택 — 목업 위 줄의 "로봇 선택". */
