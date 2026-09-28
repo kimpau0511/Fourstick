@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/prd_sync_check.mjs\"",
+            "timeout": 10,
+            "statusMessage": "기획서↔PRD 동기화 확인"
+          }
+        ]
+      }
+    ]
+  }
+}
