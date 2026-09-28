@@ -19,6 +19,19 @@ Gazebo의 `set_pose`는 pose만 바꾼다 — 동적 물체는 다음 순간 중
 미끄러지는 일은 시뮬레이터에서 일어나지 않는다 — 그것이 이 장치가 실기 파지
 근거가 될 수 없는 이유다.
 
+## 2026-09-26: 관절로 붙이기(기본, `FORSTICK2_FIXTURE_MODE=joint`)
+
+위 방식(정적 교체 + `set_pose` 추종)은 실측으로 두 문제가 있었다.
+① 붙이고 뗄 때 모델을 **지우고 다시 만들어** Gazebo 장면에서 자재가 0.4~0.5 s 사라졌다
+(엔티티 id가 바뀐다). ② 운반 중 `set_pose` 추종이 팔을 늦게 따라가 손목 좌표계에서
+최대 102 mm 벗어났다(`reports/workcell/grasp_follow_before_*.json`).
+
+그래서 기본은 Gazebo `DetachableJoint` 시스템으로 **그리퍼 링크와 자재 링크를 고정
+관절로 잇는다.** 자재는 동적 모델 그대로이고 물리가 함께 움직인다(순간 이동 없음).
+시스템은 처음 붙일 때 로봇 모델에 런타임으로 넣는다(`entity/system/add` — 넣는 순간
+붙는다). 그 뒤로는 자재별 attach/detach 토픽으로 붙이고 뗀다. 상태는 시스템이 알리는
+`attached`/`detached`로 확인한다. 이전 방식은 `FORSTICK2_FIXTURE_MODE=static`으로 남긴다.
+
 ## 요청 성공을 결과로 쓰지 않는다
 
 `create`/`remove`/`set_pose` 응답은 믿지 않는다(실측: 요청이 성공했는데 응답이
@@ -40,6 +53,47 @@ FIXTURE_KIND = "simulation_fixture"
 
 #: pose 확인 허용치(m). set_pose 직후 되읽은 값과의 차이 상한.
 POSE_VERIFY_TOLERANCE_M = 0.005
+#: 붙이는 방식. joint(기본) = DetachableJoint 고정 관절 · static = 정적 교체 + set_pose 추종.
+FIXTURE_MODES = ("joint", "static")
+#: 관절로 붙일 때의 로봇 모델·그리퍼 링크(Gazebo가 고정 관절을 합친 뒤 남는 손목 링크 —
+#: 그리퍼 베이스가 여기에 합쳐져 있다). 자재 모델의 링크 이름은 `body`다(SDF 선언).
+from robots.fr3_gazebo.view_source import ROBOT_MODEL as JOINT_PARENT_MODEL  # noqa: E402
+
+JOINT_PARENT_LINK = "wrist3_Link"
+JOINT_CHILD_LINK = "body"
+#: 붙임 상태 알림을 기다리는 시간(s).
+JOINT_STATE_TIMEOUT_SEC = 2.0
+
+
+def joint_record_path():
+    """시스템 알림으로 **확인된** 붙임 상태 기록(프로세스 사이 — 재개·복원 확인용)."""
+    import os
+    from pathlib import Path
+
+    base = Path(os.environ.get("FORSTICK2_WORKCELL_LOG_DIR", "/tmp/forstick2_workcell"))
+    return base / "fixture_joints.json"
+
+
+def read_joint_record() -> dict:
+    import json
+
+    try:
+        return json.loads(joint_record_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_joint_record(model: str, state: str, detail: str) -> None:
+    import json
+    import os
+
+    data = read_joint_record()
+    data[model] = {"state": state, "at": time.time(), "confirmed_by": detail}
+    path = joint_record_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 class FixtureError(Exception):
@@ -166,7 +220,16 @@ class GazeboObjectFixture:
         self.events: list[FixtureEvent] = []
         self._node = None
         self._poses: dict[str, tuple[float, float, float]] = {}
+        self._orientations: dict[str, tuple[float, float, float, float]] = {}
+        self._want_orientation = False
         self._held: set[str] = set()
+        import os as _os
+
+        mode = _os.environ.get("FORSTICK2_FIXTURE_MODE", "joint")
+        self.mode = mode if mode in FIXTURE_MODES else "joint"
+        #: 자재 → (마지막 붙임 상태 "attached"/"detached", 받은 시각). 시스템 알림에서만.
+        self._joint_state: dict[str, tuple[str, float]] = {}
+        self._joint_subscribed: set[str] = set()
 
     # ── 연결 ────────────────────────────────────────────────────────────
     def _ensure(self) -> None:
@@ -182,7 +245,16 @@ class GazeboObjectFixture:
 
         def on_pose(msg) -> None:
             for pose in msg.pose:
+                if pose.name == JOINT_PARENT_MODEL:
+                    # 시스템 추가 서비스는 엔티티를 **id**로 찾는다(이름만 주면 거절된다).
+                    self._parent_entity_id = pose.id
                 if pose.name in self.objects:
+                    # 방향은 **요청할 때만** 받는다(`pose7_of`). 실행 중 콜백 일을 늘리지
+                    # 않는다. 방향을 먼저 넣는다 — 새 위치를 본 읽기는 같은 메시지의 방향을 본다.
+                    if self._want_orientation:
+                        self._orientations[pose.name] = (
+                            pose.orientation.x, pose.orientation.y,
+                            pose.orientation.z, pose.orientation.w)
                     self._poses[pose.name] = (pose.position.x, pose.position.y,
                                               pose.position.z)
 
@@ -207,6 +279,27 @@ class GazeboObjectFixture:
                 return self._poses[model]
             time.sleep(0.05)
         return self._poses.get(model)
+
+    def pose7_of(self, model: str, *, timeout_sec: float = 3.0,
+                 fresh: bool = False) -> tuple[float, ...] | None:
+        """관측 위치 + 방향(x, y, z, qx, qy, qz, qw). 방향을 못 받았으면 None이다.
+
+        방향은 이 호출 동안만 받는다 — 새 위치와 같은 메시지의 방향이다.
+        """
+        self._ensure()
+        self._want_orientation = True
+        try:
+            self._orientations.pop(model, None)
+            position = self.pose_of(model, timeout_sec=timeout_sec, fresh=True)
+            deadline = time.monotonic() + timeout_sec
+            while model not in self._orientations and time.monotonic() < deadline:
+                time.sleep(0.02)
+            orientation = self._orientations.get(model)
+        finally:
+            self._want_orientation = False
+        if position is None or orientation is None:
+            return None
+        return tuple(position) + tuple(orientation)
 
     def _wait_for_pose(self, model: str, target: Sequence[float],
                        *, timeout_sec: float,
@@ -291,10 +384,160 @@ class GazeboObjectFixture:
         self.events.append(event)
         return event
 
+    # ── 관절로 붙이기(DetachableJoint) ───────────────────────────────────
+    @staticmethod
+    def joint_topics(model: str) -> dict[str, str]:
+        base = f"/forstick2/fixture/{model}"
+        return {"attach": f"{base}/attach", "detach": f"{base}/detach",
+                "state": f"{base}/state"}
+
+    def _subscribe_joint_state(self, model: str) -> None:
+        self._ensure()
+        if model in self._joint_subscribed:
+            return
+        from gz.msgs.stringmsg_pb2 import StringMsg
+
+        def on_state(msg) -> None:
+            self._joint_state[model] = (str(msg.data), time.time())
+
+        self._node.subscribe(StringMsg, self.joint_topics(model)["state"], on_state)
+        self._joint_subscribed.add(model)
+
+    def joint_system_loaded(self, model: str) -> bool:
+        """그 자재의 붙임 시스템이 로봇 모델에 있는가(상태 토픽이 알려져 있는가)."""
+        self._ensure()
+        try:
+            return self.joint_topics(model)["state"] in set(self._node.topic_list())
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _add_joint_system(self, model: str) -> None:
+        """로봇 모델에 DetachableJoint 시스템을 넣는다 — **넣는 순간 붙는다.**"""
+        from gz.msgs.boolean_pb2 import Boolean
+        from gz.msgs.entity_plugin_v_pb2 import EntityPlugin_V
+        from gz.msgs.entity_pb2 import Entity
+
+        topics = self.joint_topics(model)
+        deadline = time.monotonic() + 3.0
+        while getattr(self, "_parent_entity_id", None) is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if getattr(self, "_parent_entity_id", None) is None:
+            raise FixtureError(ReasonCode.EXEC_SIM_FIXTURE_FAILED,
+                               f"{JOINT_PARENT_MODEL}의 엔티티 id를 관측하지 못했다")
+        request = EntityPlugin_V()
+        request.entity.id = int(self._parent_entity_id)
+        request.entity.name = JOINT_PARENT_MODEL
+        request.entity.type = Entity.MODEL
+        plugin = request.plugins.add()
+        plugin.name = "gz::sim::systems::DetachableJoint"
+        plugin.filename = "gz-sim-detachable-joint-system"
+        plugin.innerxml = (
+            f"<parent_link>{JOINT_PARENT_LINK}</parent_link>"
+            f"<child_model>{model}</child_model><child_link>{JOINT_CHILD_LINK}</child_link>"
+            f"<attach_topic>{topics['attach']}</attach_topic>"
+            f"<detach_topic>{topics['detach']}</detach_topic>"
+            f"<output_topic>{topics['state']}</output_topic>")
+        self._node.request(f"/world/{self.world}/entity/system/add", request,
+                           EntityPlugin_V, Boolean, 3000)
+
+    def _publish_empty(self, topic: str) -> None:
+        from gz.msgs.empty_pb2 import Empty
+
+        if not hasattr(self, "_publishers"):
+            self._publishers = {}
+        publisher = self._publishers.get(topic)
+        if publisher is None:
+            publisher = self._node.advertise(topic, Empty)
+            self._publishers[topic] = publisher
+        # 구독자가 붙을 시간을 준다(새 publisher는 발견까지 수십 ms가 걸린다).
+        deadline = time.monotonic() + 1.0
+        while not publisher.has_connections() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        publisher.publish(Empty())
+
+    def _wait_joint_state(self, model: str, want: str, since: float,
+                          timeout_sec: float = JOINT_STATE_TIMEOUT_SEC) -> bool:
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            state = self._joint_state.get(model)
+            if state and state[0] == want and state[1] >= since:
+                return True
+            time.sleep(0.02)
+        return False
+
+    def _joint_attach(self, model: str) -> tuple[bool, str]:
+        """관절로 붙인다. 시스템의 `attached` 알림으로 확인한다.
+
+        시스템이 이미 있는데 알림이 오지 않으면 **이미 붙어 있다고 믿고 있는** 낡은 상태일
+        수 있다(다른 실행기가 떼지 못하고 끝났을 때). 그러면 한 번 떼고 다시 붙인다.
+        """
+        self._subscribe_joint_state(model)
+        started = time.time()
+        ok, detail = self._joint_attach_inner(model, started)
+        _write_joint_record(model, "attached" if ok else "unknown", detail)
+        return ok, detail
+
+    def _joint_attach_inner(self, model: str, started: float) -> tuple[bool, str]:
+        if not self.joint_system_loaded(model):
+            self._add_joint_system(model)
+            if self._wait_joint_state(model, "attached", started):
+                return True, "붙임 시스템을 넣었다(넣는 순간 붙음)"
+            # 알림 토픽 발견이 늦어 첫 알림을 놓쳤을 수 있다 — 떼었다 다시 붙여 확인한다.
+        self._publish_empty(self.joint_topics(model)["attach"])
+        if self._wait_joint_state(model, "attached", started):
+            return True, "attach 토픽으로 붙였다"
+        again = time.time()
+        self._publish_empty(self.joint_topics(model)["detach"])
+        self._wait_joint_state(model, "detached", again)
+        again = time.time()
+        self._publish_empty(self.joint_topics(model)["attach"])
+        if self._wait_joint_state(model, "attached", again):
+            return True, "낡은 붙임 상태를 떼고 다시 붙였다"
+        return False, "붙임 시스템이 attached를 알리지 않았다"
+
+    def _joint_detach(self, model: str) -> tuple[bool, str]:
+        self._subscribe_joint_state(model)
+        if not self.joint_system_loaded(model):
+            return True, "붙임 시스템이 없다(붙어 있지 않다)"
+        started = time.time()
+        self._publish_empty(self.joint_topics(model)["detach"])
+        if self._wait_joint_state(model, "detached", started):
+            _write_joint_record(model, "detached", "detach 토픽 → detached 알림")
+            return True, "detach 토픽으로 뗐다"
+        _write_joint_record(model, "unknown", "detach 뒤 알림 없음")
+        return False, "붙임 시스템이 detached를 알리지 않았다(이미 떨어져 있었을 수 있다)"
+
+    def release_joint_if_any(self, model: str) -> None:
+        """복원·배치 전에 관절이 남아 있으면 뗀다(지운 모델을 가리키는 관절을 남기지 않는다)."""
+        if self.mode == "joint" and self.joint_system_loaded(model):
+            self._joint_detach(model)
+            self._held.discard(model)
+
     # ── 붙이고 떼기 ─────────────────────────────────────────────────────
     def attach(self, model: str, *, pose_m: Sequence[float]) -> FixtureEvent:
-        """물체를 정적으로 바꿔 도구에 붙인다. **실제 파지가 아니다.**"""
+        """물체를 도구에 붙인다. **실제 파지가 아니다.**
+
+        joint: 지금 자리 그대로 그리퍼 링크에 고정 관절로 잇는다(모델을 바꾸지 않는다).
+        static: 정적 모델로 바꿔 `set_pose`로 따라가게 한다(이전 방식).
+        """
         item = self._declaration(model)
+        if self.mode == "joint":
+            ok, detail = self._joint_attach(model)
+            time.sleep(0.2)
+            observed = self.pose_of(model, timeout_sec=2.0, fresh=True)
+            moved = (None if observed is None else _distance(observed, pose_m))
+            # 붙이는 동안 자재가 밀리지 않았는가(손가락 안에 그대로 있는가).
+            ok = ok and moved is not None and moved <= POSE_VERIFY_TOLERANCE_M * 2
+            event = FixtureEvent(kind="attach", model=model, at=time.time(),
+                                 pose_m=observed, verified=ok,
+                                 detail=detail if ok else f"{detail} · 이동 {moved}")
+            event.extra = {"mode": "joint", "parent_link": JOINT_PARENT_LINK}
+            self.events.append(event)
+            if not ok:
+                raise FixtureError(ReasonCode.EXEC_SIM_FIXTURE_FAILED,
+                                   f"{model}을 붙이지 못했다 — {event.detail}")
+            self._held.add(model)
+            return event
         event = self._replace(model, static_sdf(item), pose_m, kind="attach")
         if not event.verified:
             raise FixtureError(
@@ -304,12 +547,39 @@ class GazeboObjectFixture:
         return event
 
     def follow(self, model: str, pose_m: Sequence[float]) -> None:
-        """붙어 있는 물체를 도구 위치로 옮긴다. 기록은 남기지 않는다(고빈도)."""
+        """붙어 있는 물체를 도구 위치로 옮긴다. 기록은 남기지 않는다(고빈도).
+
+        joint 방식에서는 **아무것도 하지 않는다** — 물리가 관절로 함께 움직인다.
+        """
         if model not in self._held:
             raise FixtureError(
                 ReasonCode.EXEC_SIM_FIXTURE_FAILED,
                 f"{model}은 붙어 있지 않다 — 따라가게 할 수 없다")
+        if self.mode == "joint":
+            return
         self._set_pose(model, pose_m)
+
+    def rebind(self, model: str, *, pose_m: Sequence[float]) -> FixtureEvent:
+        """재개할 때 이미 든 자재를 이 실행기에 다시 묶는다.
+
+        joint: 관절은 Gazebo에 남아 있다 — 시스템 상태를 확인하고 이 프로세스의 붙임
+        목록에만 넣는다(다시 붙이지 않는다). static: 이전과 같이 다시 붙인다.
+        """
+        if self.mode != "joint":
+            return self.attach(model, pose_m=pose_m)
+        loaded = self.joint_system_loaded(model)
+        observed = self.pose_of(model, timeout_sec=2.0, fresh=True)
+        ok = loaded and observed is not None and _distance(observed, pose_m) <= 0.01
+        event = FixtureEvent(kind="rebind", model=model, at=time.time(), pose_m=observed,
+                             verified=ok,
+                             detail="" if ok else f"붙임 시스템 {loaded} · 관측 {observed}")
+        event.extra = {"mode": "joint"}
+        self.events.append(event)
+        if not ok:
+            raise FixtureError(ReasonCode.EXEC_SIM_FIXTURE_FAILED,
+                               f"{model}을 다시 묶지 못했다 — {event.detail}")
+        self._held.add(model)
+        return event
 
     def detach(self, model: str, *, pose_m: Sequence[float]) -> FixtureEvent:
         """물체를 동적으로 되돌린다. 이 뒤에는 **실제로 떨어져 안착한다.**
@@ -327,8 +597,19 @@ class GazeboObjectFixture:
             return (horizontal <= POSE_VERIFY_TOLERANCE_M
                     and observed[2] <= target_z + POSE_VERIFY_TOLERANCE_M)
 
-        event = self._replace(model, dynamic_sdf(item), pose_m, kind="detach",
-                              accept=accept)
+        if self.mode == "joint":
+            ok, detail = self._joint_detach(model)
+            passed, observed = self._wait_for_pose(model, pose_m, timeout_sec=4.0,
+                                                   accept=accept)
+            event = FixtureEvent(kind="detach", model=model, at=time.time(),
+                                 pose_m=observed, verified=ok and passed,
+                                 detail="" if ok and passed else
+                                 f"{detail} · 관측 {observed}")
+            event.extra = {"mode": "joint"}
+            self.events.append(event)
+        else:
+            event = self._replace(model, dynamic_sdf(item), pose_m, kind="detach",
+                                  accept=accept)
         if event.pose_m is not None:
             event.extra = {
                 "released_at_z_m": round(target_z, 6),
@@ -374,6 +655,7 @@ class GazeboObjectFixture:
             return (horizontal <= 0.05
                     and observed[2] <= target_z + POSE_VERIFY_TOLERANCE_M)
 
+        self.release_joint_if_any(model)
         event = self._replace(model, dynamic_sdf(item), pose_m, kind="place",
                               accept=accept)
         self._held.discard(model)
@@ -382,6 +664,7 @@ class GazeboObjectFixture:
     def restore(self, model: str) -> FixtureEvent:
         """물체를 **선언된 원래 자리**의 동적 물체로 되돌린다(시연 정리)."""
         item = self._declaration(model)
+        self.release_joint_if_any(model)
         event = self._replace(model, dynamic_sdf(item), item.home_pose_m,
                               kind="restore")
         self._held.discard(model)
@@ -400,7 +683,8 @@ class GazeboObjectFixture:
         if self._node is None:
             return
         for topic in (f"/world/{self.world}/pose/info",
-                      f"/world/{self.world}/dynamic_pose/info"):
+                      f"/world/{self.world}/dynamic_pose/info",
+                      *(self.joint_topics(m)["state"] for m in self._joint_subscribed)):
             try:
                 self._node.unsubscribe(topic)
             except Exception:  # noqa: BLE001 — 끊지 못해도 진행한다

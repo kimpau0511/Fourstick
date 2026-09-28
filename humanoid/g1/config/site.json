@@ -1,0 +1,41 @@
+{
+  "schema": "forstick2.humanoid_site/1",
+  "is_simulated": true,
+  "world": "forstick2_humanoid_nav",
+  "note": "휴머노이드 전용 환경. FR3 작업 셀의 컨베이어와 무관한 별도 모델이다.",
+  "conveyor": {
+    "center_m": [
+      3.0,
+      0.0,
+      0.4
+    ],
+    "size_m": [
+      0.5,
+      2.0,
+      0.8
+    ],
+    "front_face_x_m": 2.75
+  },
+  "safe_points": {
+    "conveyor_front": {
+      "xy_m": [
+        2.15,
+        0.0
+      ],
+      "yaw_rad": 0.0,
+      "why": "골반 중심이 컨베이어 앞면(x 2.75)에서 0.60 m 앞, 컨베이어를 마주본다",
+      "label_ko": "컨베이어 앞 안전 지점"
+    }
+  },
+  "keep_out": {
+    "min_pelvis_to_front_face_m": 0.35,
+    "why": "발끝이 골반보다 약 0.15 m 앞으로 나온다 — 0.2 m 여유"
+  },
+  "arrival": {
+    "position_tol_m": 0.1,
+    "yaw_tol_rad": 0.15,
+    "settle_s": 1.0,
+    "why": "관측이 settle_s(시뮬레이션 시간) 동안 계속 허용 안에 있어야 도착"
+  },
+  "gz_partition": "forstick2_humanoid_nav"
+}

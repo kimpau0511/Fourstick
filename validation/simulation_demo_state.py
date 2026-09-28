@@ -105,6 +105,8 @@ SCHEMA = "forstick2.simulation_demo_state/1"
 HELD_ON_TARGET = "held_on_target"
 STOPPED_UNRESTORED = "stopped_unrestored"
 FAULT_UNRESTORED = "fault_unrestored"
+#: 자기 원래 팔레트가 아닌 **다른 팔레트**에 놓여 있다(관측으로 확인된 이송 결과).
+ON_PALLET = "on_pallet"
 #: 원래 슬롯 복귀를 시도했지만 확인되지 않았다(기록은 남는다).
 RETURN_STOPPED = "return_stopped"
 RETURN_FAILED = "return_failed"
@@ -126,6 +128,7 @@ ORIGIN_TOLERANCE_M = 0.02
 RECONCILE_AT_ORIGIN = "at_origin"        # 자재가 원래 슬롯에 있다 — 기록이 낡았다
 RECONCILE_ON_CONVEYOR = "on_conveyor"    # 기록대로 컨베이어 측정 위치에 있다
 RECONCILE_ELSEWHERE = "elsewhere"        # 둘 다 아니다 — 사람이 봐야 한다
+RECONCILE_ON_PALLET = "on_pallet"        # 기록대로 다른 팔레트 자리에 있다
 RECONCILE_UNOBSERVED = "unobserved"      # pose를 관측하지 못했다
 #: 기록을 지워도 되는 판정. 나머지는 **그대로 둔다** — 관측이 말해 주지 않은
 #: 것을 정리로 바꾸지 않는다.
@@ -207,12 +210,19 @@ class SimulationDemoState:
     # ── 쓰기 ─────────────────────────────────────────────────────────────
     def record_run(self, *, policy: str, model: str, result: Mapping[str, Any],
                    final_pose_m: Sequence[float] | None, restored: bool | None,
-                   ) -> dict | None:
+                   slot: str | None = None) -> dict | None:
         """시연 한 번의 결과를 반영한다. `e2e_reset`이면 **아무것도 쓰지 않는다.**
 
         `result`는 `SimulationTransferResult.to_dict()` 형태다.
         `restored`: 끝난 뒤 되돌렸고 확인됐으면 True, 되돌리지 않았으면 None,
         되돌렸지만 확인하지 못했으면 False.
+        `slot`: 배정받은 컨베이어 슬롯(`slot_1`…). 슬롯을 쓰지 않는 호출은
+        None이고, 그때 기록은 옛 단일 배치와 같게 읽힌다
+        (`validation/conveyor_slots.py`의 `record_slot`).
+
+        **슬롯은 성공했을 때만 점유로 남는 것이 아니다.** 정지·실패로 자재가
+        컨베이어 쪽에 남았으면 그 자리도 막아 둔다 — 사람이 복구하기 전에 다른
+        자재를 같은 자리에 주면 겹친다.
         """
         if policy not in POLICIES:
             raise ValueError(f"알 수 없는 셀 정책: {policy}")
@@ -237,6 +247,8 @@ class SimulationDemoState:
             "recorded_at": now,
             "reset_command": reset_command(model),
         }
+        if slot:
+            entry_base["slot"] = str(slot)
         if completed:
             objects[model] = {**entry_base, "state": HELD_ON_TARGET}
         elif status == _STATUS_STOPPED or stop_requested:
@@ -256,6 +268,7 @@ class SimulationDemoState:
             "status": status, "stop_requested": stop_requested,
             "reason_codes": list(result.get("reason_codes") or ()),
             "hold_recorded": completed, "restored": restored,
+            "slot": (str(slot) if slot else None),
             "recorded_at": now,
         }
         self._write(data)
@@ -407,8 +420,28 @@ class SimulationDemoState:
             "recorded_at": now, "reset_command": reset_command(model),
             "resumed_from_checkpoint": checkpoint_id,
         }
-        if outcome == "completed":
-            objects[model] = {**entry, "state": HELD_ON_TARGET}
+        # 중단된 이송이 배정받은 칸을 이어받는다. 빠뜨리면 기록이 기본 칸(1번)을
+        # 가리켜 관측과 어긋난다(실측 2026-09-24: slot_2에 놓였는데 slot_1 기록).
+        previous = objects.get(model) or {}
+        previous_slot = previous.get("slot")
+        if previous_slot:
+            entry["slot"] = str(previous_slot)
+        bound = previous.get("destination") or {}
+        if bound:
+            entry["destination"] = dict(bound)     # 다시 멈춰도 목적지를 잃지 않는다
+        if previous.get("pallet"):
+            entry["pallet"] = str(previous["pallet"])
+            entry.pop("slot", None)
+        if outcome == "completed" and bound.get("kind") == "pallet":
+            # 다른 팔레트로 가던 이송의 재개. 자기 원래 팔레트면 기록을 지운다.
+            if bound.get("id") == bound.get("own_origin"):
+                objects.pop(model, None)
+            else:
+                done = {k: v for k, v in entry.items() if k != "destination"}
+                objects[model] = {**done, "state": ON_PALLET, "pallet": bound.get("id")}
+        elif outcome == "completed":
+            done = {k: v for k, v in entry.items() if k != "destination"}
+            objects[model] = {**done, "state": HELD_ON_TARGET}
         elif outcome == "stopped":
             objects[model] = {**entry, "state": STOPPED_UNRESTORED,
                               "reasons": list(reasons)}
@@ -487,6 +520,142 @@ class SimulationDemoState:
         data["last_run"] = {"model": model, "mode": "return_held_to_origin",
                             "returned_to_origin": returned,
                             "hold_recorded": False, "recorded_at": now,
+                            "reason_codes": list(reason_codes)}
+        self._write(data)
+        return attempt
+
+    def record_transfer(self, model: str, *, source: str, destination: str,
+                        destination_kind: str, destination_center_m: Sequence[float],
+                        own_origin: str, completed: bool, stop_requested: bool,
+                        attached: bool, final_pose_m: Sequence[float] | None,
+                        reason_codes: Sequence[str] = (), detail: str = "",
+                        base: Mapping[str, Any] | None = None) -> dict:
+        """공통 transfer(팔레트가 끼는 경로) 결과. **관측으로** 도착을 확인했을 때만
+        기록을 도착지로 옮긴다.
+
+        도착 = 자기 원래 팔레트 → 기록 삭제 · 컨베이어 칸 → held_on_target(slot) ·
+        다른 팔레트 → on_pallet(pallet). STOP이면 도착지를 기록에 묶는다
+        (`destination`) — 재개가 목적지를 바꾸지 않는다.
+        """
+        data = self._read_for_update()
+        objects = dict(data.get("objects") or {})
+        gap = (None if final_pose_m is None
+               else math.dist([float(v) for v in final_pose_m],
+                              [float(v) for v in destination_center_m]))
+        arrived = bool(completed and not stop_requested and gap is not None
+                       and gap <= ORIGIN_TOLERANCE_M)
+        now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        attempt = {"at": now, "source": source, "destination": destination,
+                   "destination_kind": destination_kind, "completed": bool(completed),
+                   "stop_requested": bool(stop_requested), "attached": bool(attached),
+                   "final_pose_m": (None if final_pose_m is None
+                                    else [round(float(v), 6) for v in final_pose_m]),
+                   "destination_center_m": [round(float(v), 6) for v in destination_center_m],
+                   "gap_m": None if gap is None else round(gap, 6),
+                   "tolerance_m": ORIGIN_TOLERANCE_M, "arrived": arrived,
+                   "reason_codes": list(reason_codes), "detail": detail[:300]}
+        # 이번 이송의 식별(scenario·target_id 등)이 이전 구간 값을 덮는다 — 팔레트 →
+        # 팔레트 → 칸처럼 이어 옮기면 예전 target_id가 남아 복귀가 엉뚱한 자리를
+        # 컨베이어로 읽었다(실측 2026-09-25).
+        row = {**dict(objects.get(model) or {}), **dict(base or {})}
+        for key in ("slot", "pallet", "destination", "reasons"):
+            row.pop(key, None)
+        row.update(recorded_at=now, moved_from=source, transfer_attempt=attempt)
+        dest_ref = {"kind": destination_kind, "id": destination, "own_origin": own_origin}
+        if arrived:
+            if destination == own_origin:
+                objects.pop(model, None)
+                self._drop_checkpoint(data, model)
+                row = None
+            elif destination_kind == "conveyor_slot":
+                row.update(state=HELD_ON_TARGET, slot=destination,
+                           pose_m=attempt["final_pose_m"])
+            else:
+                row.update(state=ON_PALLET, pallet=destination,
+                           pose_m=attempt["final_pose_m"])
+        elif stop_requested:
+            row.update(state=STOPPED_UNRESTORED, destination=dest_ref,
+                       pose_m=attempt["final_pose_m"], reasons=list(reason_codes))
+            if destination_kind == "conveyor_slot":
+                row["slot"] = destination
+            else:
+                row["pallet"] = destination
+        elif not attached:
+            row = objects.get(model)          # 집지 않았다 — 기록 그대로
+        else:
+            row.update(state=FAULT_UNRESTORED, destination=dest_ref,
+                       pose_m=attempt["final_pose_m"], reasons=list(reason_codes))
+            row["pallet" if destination_kind == "pallet" else "slot"] = destination
+        if row is not None:
+            objects[model] = row
+        data["objects"] = objects
+        data["policy"] = POLICY_DEMO_HOLD
+        data["last_run"] = {"model": model, "mode": "transfer_route", "arrived": arrived,
+                            "source": source, "destination": destination,
+                            "hold_recorded": arrived and destination != own_origin,
+                            "recorded_at": now, "reason_codes": list(reason_codes)}
+        self._write(data)
+        return attempt
+
+    def record_slot_move(self, model: str, *, from_slot: str, to_slot: str,
+                         to_center_m: Sequence[float], completed: bool,
+                         stop_requested: bool, attached: bool,
+                         final_pose_m: Sequence[float] | None,
+                         reason_codes: Sequence[str] = (), detail: str = "") -> dict:
+        """컨베이어 칸 → 다른 칸 직접 이송 결과. **관측으로** 도착 칸을 확인했을 때만
+        기록을 도착 칸으로 옮긴다.
+
+        - 성공: held_on_target, slot=도착 칸
+        - STOP: stopped_unrestored, slot=**도착 칸**(체크포인트·재개가 같은 칸에
+          놓도록 목적지를 묶는다), moved_from_slot=출발 칸
+        - 집기 전에 실패했고 자재가 출발 칸에 그대로면 기록을 바꾸지 않는다
+        - 그 밖의 실패: fault_unrestored(사람이 복구)
+        """
+        data = self._read_for_update()
+        objects = dict(data.get("objects") or {})
+        if model not in objects:
+            raise ValueError(f"칸 이동 기록 대상이 아니다: {model}")
+        gap = (None if final_pose_m is None
+               else math.dist([float(v) for v in final_pose_m],
+                              [float(v) for v in to_center_m]))
+        arrived = bool(completed and not stop_requested and gap is not None
+                       and gap <= ORIGIN_TOLERANCE_M)
+        now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        attempt = {
+            "at": now, "from_slot": from_slot, "to_slot": to_slot,
+            "completed": bool(completed), "stop_requested": bool(stop_requested),
+            "attached": bool(attached),
+            "final_pose_m": (None if final_pose_m is None
+                             else [round(float(v), 6) for v in final_pose_m]),
+            "to_center_m": [round(float(v), 6) for v in to_center_m],
+            "gap_m": None if gap is None else round(gap, 6),
+            "tolerance_m": ORIGIN_TOLERANCE_M,
+            "reason_codes": list(reason_codes), "detail": detail[:300],
+            "arrived": arrived,
+        }
+        row = dict(objects[model])
+        if arrived:
+            row.update(state=HELD_ON_TARGET, slot=str(to_slot),
+                       pose_m=attempt["final_pose_m"], recorded_at=now,
+                       moved_from_slot=str(from_slot))
+            row.pop("reasons", None)
+        elif stop_requested:
+            row.update(state=STOPPED_UNRESTORED, slot=str(to_slot),
+                       moved_from_slot=str(from_slot), pose_m=attempt["final_pose_m"],
+                       reasons=list(reason_codes), recorded_at=now)
+        elif not attached:
+            pass   # 집지 않았다 — 자재는 출발 칸 그대로다(관측은 attempt에 남는다)
+        else:
+            row.update(state=FAULT_UNRESTORED, slot=str(from_slot),
+                       moved_from_slot=str(from_slot), pose_m=attempt["final_pose_m"],
+                       reasons=list(reason_codes), recorded_at=now)
+        row["slot_move_attempt"] = attempt
+        objects[model] = row
+        data["objects"] = objects
+        data["policy"] = POLICY_DEMO_HOLD
+        data["last_run"] = {"model": model, "mode": "slot_move", "arrived": arrived,
+                            "from_slot": from_slot, "to_slot": to_slot,
+                            "hold_recorded": arrived, "recorded_at": now,
                             "reason_codes": list(reason_codes)}
         self._write(data)
         return attempt
@@ -702,6 +871,12 @@ def build_return_stages(bindings, *, object_id: str, origin_id: str,
     origin_approach = bindings.approach_pose.get(origin_id)
     # 측정된 놓기 자세가 있으면 그것을 쓴다. 없으면 팔레트 파지 자세다.
     origin_place = origin_place or bindings.grasp_pose.get(object_id)
+    if origin_place is not None and origin_place == conveyor_grasp:
+        # 원래 슬롯에 놓는 단계가 컨베이어를 집는 자세가 되면 자재를 컨베이어로
+        # 가져간다. 호출자가 grasp_pose를 슬롯 파지로 바꾼 뒤 대신 쓴 경우다.
+        return (), [(ReasonCode.GEOMETRY_GRASP_POSE_UNAVAILABLE,
+                     f"원래 슬롯 접근 자세가 컨베이어 파지 자세({conveyor_grasp})로"
+                     " 잡혔다 — 원래 팔레트의 놓기·파지 자세가 필요하다")]
     needed = {
         "home_start": home,
         "pick_approach": conveyor_approach,
@@ -788,6 +963,7 @@ def reconcile_findings(*, records: Mapping[str, Any],
                        observed: Mapping[str, Sequence[float] | None],
                        origins: Mapping[str, Sequence[float]],
                        conveyor_centers: Mapping[str, Sequence[float] | None],
+                       pallet_centers: Mapping[str, Sequence[float] | None] | None = None,
                        ) -> list[dict]:
     """기록이 있는 자재마다 **지금 어디 있는지**를 관측으로 판정한다.
 
@@ -823,10 +999,20 @@ def reconcile_findings(*, records: Mapping[str, Any],
         row["origin_gap_m"] = None if origin_gap is None else round(origin_gap, 6)
         row["conveyor_gap_m"] = (None if conveyor_gap is None
                                  else round(conveyor_gap, 6))
+        pallet_center = (pallet_centers or {}).get(model)
+        pallet_gap = (None if pallet_center is None or record.get("state") != ON_PALLET
+                      else math.dist([float(v) for v in pose],
+                                     [float(v) for v in pallet_center]))
+        if pallet_gap is not None:
+            row["pallet_gap_m"] = round(pallet_gap, 6)
         if origin_gap is not None and origin_gap <= ORIGIN_TOLERANCE_M:
             out.append({**row, "verdict": RECONCILE_AT_ORIGIN,
                         "detail": f"원래 슬롯 중심에서 {origin_gap:.4f} m"
                                   f" (허용 {ORIGIN_TOLERANCE_M} m) — 기록이 낡았다"})
+        elif pallet_gap is not None and pallet_gap <= ORIGIN_TOLERANCE_M:
+            out.append({**row, "verdict": RECONCILE_ON_PALLET,
+                        "detail": f"기록한 팔레트({record.get('pallet')}) 자리에서"
+                                  f" {pallet_gap:.4f} m — 기록대로다"})
         elif conveyor_gap is not None and conveyor_gap <= ORIGIN_TOLERANCE_M:
             out.append({**row, "verdict": RECONCILE_ON_CONVEYOR,
                         "detail": f"컨베이어 측정 위치에서 {conveyor_gap:.4f} m"
@@ -945,6 +1131,7 @@ def build_stop_checkpoint(
     conveyor_zone: Mapping[str, Any] | None, origin_home_m: Sequence[float],
     scene_hash_at_stop: str | None, scene_hash_now: str | None,
     convergence: Mapping[str, Any] | None = None,
+    source_slot: str | None = None, destination_slot: str | None = None,
 ) -> tuple[dict | None, list[str]]:
     """확인된 STOP 뒤의 현재 상태. 조건이 하나라도 빠지면 (None, 사유들).
 
@@ -1003,6 +1190,8 @@ def build_stop_checkpoint(
         "run_id": run_id, "mode": mode, "model": model, "object_id": object_id,
         "source_id": source_id, "destination_id": destination_id,
         "origin_slot_id": origin_slot_id,
+        # 계획의 컨베이어 칸. 재개는 이 칸에만 놓는다(목적지를 체크포인트에 묶는다).
+        "source_slot": source_slot, "destination_slot": destination_slot,
         "previous_stage": completed_stages[-1] if completed_stages else None,
         "stopped_stage": stopped_stage,
         # 정지된 단계는 끝나지 않았다 — 남은 단계에 포함한다.

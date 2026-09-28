@@ -144,16 +144,23 @@ def aperture_joint(width_m: float) -> tuple[float | None, dict]:
 
 def classify(validity, *, object_id: str, pad_links: tuple[str, ...],
              world_instance_id: str | None = None,
-             support_ids: tuple[str, ...] = ()) -> dict:
+             support_ids: tuple[str, ...] = (),
+             absent_ids: tuple[str, ...] = ()) -> dict:
     """MoveIt 판정을 접촉 대상별로 나눈다.
 
     허용 규칙은 **검증 계층과 같은 구현**을 쓴다
     (`validation.pick_place_plan.classify_contacts`) — 두 곳에 두면 갈라진다.
     """
     objects = [object_id] + ([world_instance_id] if world_instance_id else [])
+    # 측정 전제 "그 자리는 비어 있다"(`absent_ids`)는 **측정에서만** 쓴다: 그 자리의
+    # 원래 자재 사본과의 접촉 쌍을 빼고 분류한다(scene에서 그 상자를 뺀 것과 같다).
+    # 실행 때는 scene을 실제 위치로 동기화하므로 이 전제를 쓰지 않는다.
+    def gone(name: str) -> bool:
+        return any(name == a or name.startswith(f"{a}__") for a in absent_ids)
+    pairs = [list(pair) for pair in validity.contacts
+             if not (gone(str(pair[0])) or gone(str(pair[1])))]
     allowed, forbidden = classify_contacts(
-        [list(pair) for pair in validity.contacts],
-        object_ids=objects, pad_links=pad_links, support_ids=support_ids)
+        pairs, object_ids=objects, pad_links=pad_links, support_ids=support_ids)
     return {
         "valid": bool(validity.valid),
         "out_of_bounds": list(validity.out_of_bounds),
@@ -620,6 +627,272 @@ def derive_pallet_place(out_path: Path, report_path: Path,
     return 0 if len(poses) == len(materials) else 1
 
 
+PALLET_MATRIX_REPORT = ROOT / "reports/workcell/pallet_matrix_sweep.json"
+
+
+def derive_pallet_matrix(out_path: Path, report_path: Path) -> int:
+    """다른 팔레트 이송용 자세 — (자재 X, 팔레트 P) 파지와 (X, P, 든 물체 출처) 놓기.
+
+    A. 위치 파지: 팔레트 P에서 집는 자세는 **P의 원래 자재로 측정된 파지 자세**다
+       (같은 선언 크기일 때만). X를 든 상태로 다시 검사해 `pallet_grasp_poses`에 둔다.
+    B. 놓기: 기존 `--pallet-place`와 같은 훑기(가장 낮은 유효 높이 · 해제 안착 ·
+       접근/이탈 검사)를 **든 물체 출처별로** 한다. 결과는 `pallet_place_poses`에
+       `held_object_source`와 함께 둔다 — 다른 파지로 든 자재에 쓰지 않는다.
+
+    planning scene은 정적이다(자재가 늘 원래 자리). 도착 팔레트 P의 원래 자재 사본은
+    "그 자리가 비어 있어야 놓는다"는 전제로 부재(`absent_ids`)로 둔다. 실행 때도 같은
+    규칙이며, 실행기는 기록·관측으로 부재를 확인한 자재만 넘긴다.
+    """
+    data = json.loads(WORKCELL.read_text(encoding="utf-8"))
+    derived = json.loads(POSES.read_text(encoding="utf-8"))
+    grasp = json.loads(out_path.read_text(encoding="utf-8"))
+    spec = data["grasp"]
+    frames = data["frames"]
+    pad_links = tuple(spec["pad_links"])
+    tcp_link = spec["tcp_link"]
+    step = float(spec["sweep_step_m"])
+    tool_down = data["tcp_targets"]["tool_down_rpy_rad"]
+    grasp_joint = grasp.get("gripper", {}).get("grasp_joint_rad")
+    if grasp.get("gripper", {}).get("status") != "measured" or grasp_joint is None:
+        raise SystemExit("측정된 파지 개구가 없다 — 값을 만들지 않고 멈춘다")
+    verified = {name: pose["joint_rad"] for name, pose in derived["poses"].items()
+                if pose.get("status") == "verified"}
+
+    materials: dict[str, dict] = {}
+    for row in data["resource_map"]:
+        item = data["models"].get(row["gazebo_model"]) or {}
+        if item.get("kind") != "material":
+            continue
+        support_frame = support_of(frames, row["frame"])
+        origin = next(r["resource_id"] for r in data["resource_map"]
+                      if r["frame"] == support_frame)
+        materials[row["gazebo_model"]] = {
+            "rid": row["resource_id"], "origin": origin, "frame": row["frame"],
+            "size": [float(v) for v in item["size_m"]]}
+    own_of = {m["origin"]: model for model, m in materials.items()}
+    pallets = sorted(own_of)
+
+    def attached_obj(spec_row: dict, *, source: str) -> AttachedObject:
+        return AttachedObject(object_id=spec_row["object_id"], link=spec_row["link"],
+                              size_m=tuple(spec_row["size_m"]),
+                              offset_m=tuple(spec_row["offset_m"]),
+                              touch_links=tuple(spec_row["touch_links"]), source=source)
+
+    joints, _links, mimics, limits = load_urdf()
+    gripper_limits = {"robotiq_85_left_knuckle_joint": {"lower": 0.0, "upper": 0.8}}
+    client, node = build_client({**limits, **gripper_limits})
+    before = client.snapshot()
+    report = {"schema": "forstick2.workcell_pallet_matrix/1",
+              "derived_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+              "is_simulated": True, "real_hardware_verified": False,
+              "method": "moveit_contact_sweep_plus_numerical_ik",
+              "scene": {"content_hash": before.content_hash},
+              "grasps": {}, "places": {}}
+
+    # ── A. 위치 파지 ────────────────────────────────────────────────
+    grasps: dict[str, dict] = {}
+    holds: dict[str, list[tuple[str, dict]]] = {m: [] for m in materials}
+    for model in materials:
+        conveyor = (grasp.get("conveyor_grasp_poses") or {}).get(f"{model}_conveyor_grasp") or {}
+        if conveyor.get("status") == "verified" and conveyor.get("attached_object"):
+            holds[model].append((f"conveyor_grasp_poses.{model}_conveyor_grasp",
+                                 dict(conveyor["attached_object"])))
+        own_grasp = (grasp.get("poses") or {}).get(f"{model}_grasp") or {}
+        if own_grasp.get("status") == "verified" and own_grasp.get("attached_object"):
+            holds[model].append((f"poses.{model}_grasp", dict(own_grasp["attached_object"])))
+    for pallet in pallets:
+        own = own_of[pallet]
+        base = (grasp.get("poses") or {}).get(f"{own}_grasp") or {}
+        approach_name = f"{_model_of(data, pallet)}_approach"
+        for model, info in materials.items():
+            if model == own:
+                continue
+            name = f"{model}_grasp_at_{pallet}"
+            row: dict = {"object": model, "pallet": pallet, "measured_with": f"poses.{own}_grasp"}
+            report["grasps"][name] = row
+            if base.get("status") != "verified" or not base.get("attached_object"):
+                row.update(status="blocked", detail="그 팔레트의 측정된 파지 자세가 없다")
+                continue
+            if info["size"] != materials[own]["size"]:
+                row.update(status="blocked", detail="선언 크기가 달라 같은 파지로 볼 수 없다")
+                continue
+            held_spec = {**base["attached_object"], "object_id": f"{model}__held",
+                         "world_instance_id": model, "size_m": info["size"]}
+            held = attached_obj(held_spec, source=f"pallet_grasp_poses.{name}")
+            checks = {}
+            for label, arm, supports in (
+                    ("grasp_held", base["joint_rad"], (_model_of(data, pallet),)),
+                    ("approach_held", verified.get(approach_name), ())):
+                if arm is None:
+                    checks[label] = {"clean": False, "collisions": [], "detail": "자세 없음"}
+                    continue
+                state = client.check_state(_joints_with(arm, grasp_joint, mimics, spec),
+                                           attached=[held])
+                present = tuple(n for n in {a for pair in state.contacts for a in pair}
+                                if any(n == s_ or n.startswith(f"{s_}__") for s_ in supports))
+                checks[label] = classify(state, object_id=held.object_id,
+                                         pad_links=pad_links, world_instance_id=model,
+                                         support_ids=present, absent_ids=(own,))
+            row["held_state_checks"] = checks
+            if not all(c["clean"] for c in checks.values()):
+                row.update(status="blocked", detail="든 채 검사가 통과하지 않았다")
+                continue
+            row["status"] = "verified"
+            grasps[name] = {
+                "status": "verified", "kind": "grasp",
+                "object_resource_id": info["rid"], "support_resource_id": pallet,
+                "target_frame": materials[own]["frame"],
+                "joint_rad": dict(base["joint_rad"]),
+                "gripper_open_joint_rad": GRIPPER_OPEN_RAD,
+                "gripper_grasp_joint_rad": grasp_joint,
+                "attached_object": held_spec,
+                "measured_with": f"poses.{own}_grasp",
+                "geometry_equivalence": {"object_size_m": info["size"],
+                                         "measured_object_size_m": materials[own]["size"]},
+                "held_state_checks": {k: {"clean": v["clean"], "collisions": v["collisions"]}
+                                      for k, v in checks.items()},
+                "measurement_method": "moveit_contact_check(location grasp, same declared size)",
+                "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+                "scene_content_hash": before.content_hash, "verified": True,
+                "captured_at": time.strftime("%Y-%m-%d"),
+                "note": "그 팔레트 자리의 측정 파지 자세다(같은 선언 크기). 물체를 실제로"
+                        " 쥐었는지는 판정하지 않는다",
+            }
+            holds[model].append((f"pallet_grasp_poses.{name}", held_spec))
+
+    # ── B. 놓기 훑기(든 물체 출처별) ────────────────────────────────
+    places: dict[str, dict] = {}
+    for model, info in materials.items():
+        for pallet in pallets:
+            own = own_of[pallet]
+            absent = (own,) if own != model else ()
+            approach_name = f"{_model_of(data, pallet)}_approach"
+            slot_center = resolve_frame(frames, materials[own]["frame"])
+            size = info["size"]
+            tray_top = float(slot_center[2] - size[2] / 2)
+            for key, held_spec in holds[model]:
+                picked_here = (key == f"poses.{model}_grasp" and pallet == info["origin"]) or \
+                    key.endswith(f"_grasp_at_{pallet}")
+                if picked_here:
+                    continue            # 집은 자리에 다시 놓는 경로는 없다
+                if key.startswith("conveyor_grasp_poses.") and pallet == info["origin"]:
+                    continue            # 이미 --pallet-place로 측정됨
+                name = f"{model}_place_at_{pallet}__{key.split('.', 1)[1]}"
+                held = attached_obj(held_spec, source=key)
+                if approach_name not in verified:
+                    report["places"][name] = {"status": "blocked", "detail": "접근 자세 없음"}
+                    continue
+
+                def ask(arm, gripper, *, holding):
+                    state = client.check_state(_joints_with(arm, gripper, mimics, spec),
+                                               attached=[held] if holding else [])
+                    return classify(state, object_id=held.object_id if holding else model,
+                                    pad_links=pad_links if holding else (),
+                                    world_instance_id=model if holding else None,
+                                    absent_ids=absent)
+
+                rows = []
+                count = int(round((size[2] / 2 + 0.06) / step)) + 1
+                for index in range(count):
+                    dz = round(-size[2] / 2 + index * step, 6)
+                    target = slot_center + np.array([0.0, 0.0, dz])
+                    arm, distance, angle = solve_ik(
+                        joints, mimics, limits, target, tool_down,
+                        dict(verified[approach_name]))
+                    out = {"dz_m": dz, "tcp_world_z_m": round(float(target[2]), 6),
+                           "position_error_m": round(distance, 6),
+                           "orientation_error_rad": round(angle, 6),
+                           "reachable": bool(distance <= IK_POSITION_TOLERANCE_M
+                                             and angle <= IK_ORIENTATION_TOLERANCE_RAD),
+                           "usable": False}
+                    if out["reachable"]:
+                        rotation, tcp_world = link_transforms(
+                            joints, _joints_with(arm, 0.0, mimics, spec))[tcp_link]
+                        center = tcp_world + rotation @ np.asarray(held.offset_m)
+                        xy_gap = float(np.linalg.norm(center[:2] - slot_center[:2]))
+                        drop = float(center[2] - size[2] / 2 - tray_top)
+                        out["place_held"] = ask(arm, grasp_joint, holding=True)
+                        out["release_open"] = ask(arm, GRIPPER_OPEN_RAD, holding=False)
+                        out["release"] = {"object_center_m": [round(float(v), 6) for v in center],
+                                          "xy_gap_m": round(xy_gap, 6),
+                                          "drop_to_tray_m": round(drop, 6),
+                                          "settles_in_slot": bool(xy_gap <= SLOT_TOLERANCE_M
+                                                                  and drop > 0.0)}
+                        out["usable"] = bool(out["place_held"]["clean"]
+                                             and out["release_open"]["clean"]
+                                             and out["release"]["settles_in_slot"])
+                        out["joint_rad"] = {k: round(v, 6) for k, v in arm.items()}
+                    rows.append(out)
+                usable = [r for r in rows if r["usable"]]
+                entry = {"object": model, "pallet": pallet, "held_object_source": key,
+                         "absent_ids": list(absent),
+                         "usable_dz_m": [r["dz_m"] for r in usable],
+                         "steps": [{k: v for k, v in r.items() if k != "joint_rad"}
+                                   for r in rows]}
+                report["places"][name] = entry
+                if not usable:
+                    entry["status"] = "blocked"
+                    continue
+                best = usable[0]
+                path_checks = {
+                    "approach_held": ask(verified[approach_name], grasp_joint, holding=True),
+                    "retreat_open": ask(verified[approach_name], GRIPPER_OPEN_RAD,
+                                        holding=False)}
+                entry["path_checks"] = path_checks
+                if not all(c["clean"] for c in path_checks.values()):
+                    entry["status"] = "blocked"
+                    continue
+                entry["status"] = "verified"
+                entry["selected_dz_m"] = best["dz_m"]
+                places[name] = {
+                    "status": "verified", "kind": "place",
+                    "object_resource_id": info["rid"], "support_resource_id": pallet,
+                    "target_frame": materials[own]["frame"],
+                    "slot_center_m": [round(float(v), 6) for v in slot_center],
+                    "target_offset_m": [0.0, 0.0, best["dz_m"]],
+                    "joint_rad": best["joint_rad"],
+                    "gripper_grasp_joint_rad": grasp_joint,
+                    "gripper_open_joint_rad": GRIPPER_OPEN_RAD,
+                    "release": best["release"],
+                    "usable_dz_range_m": [usable[0]["dz_m"], usable[-1]["dz_m"]],
+                    "usable_step_count": len(usable), "sweep_step_m": step,
+                    "approach_pose": approach_name,
+                    "held_object_source": key,
+                    "absent_ids": list(absent),
+                    "path_checks": {k: {"clean": v["clean"], "collisions": v["collisions"]}
+                                    for k, v in path_checks.items()},
+                    "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+                    "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+                    "sweep_report": str(report_path.relative_to(ROOT)),
+                    "scene_content_hash": before.content_hash, "verified": True,
+                    "captured_at": time.strftime("%Y-%m-%d"),
+                    "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)",
+                }
+
+    after = client.snapshot()
+    stable = after.content_hash == before.content_hash
+    report["scene"]["stable_during_measurement"] = stable
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                           encoding="utf-8")
+    client_close(node)
+    for name, row in sorted(report["grasps"].items()):
+        print(f"  파지 {name}: {row['status']} {row.get('detail', '')}")
+    for name, row in sorted(report["places"].items()):
+        print(f"  놓기 {name}: {row['status']} · 유효 dz {row.get('usable_dz_m')}"
+              f" · 선택 {row.get('selected_dz_m')}")
+    if not stable:
+        print("측정 중 planning scene이 바뀌었다 — 설정에 쓰지 않는다")
+        return 1
+    grasp["pallet_grasp_poses"] = {**(grasp.get("pallet_grasp_poses") or {}), **grasps}
+    grasp["pallet_place_poses"] = {**(grasp.get("pallet_place_poses") or {}), **places}
+    grasp["pallet_matrix_derived_at"] = report["derived_at"]
+    out_path.write_text(json.dumps(grasp, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+    print(f"위치 파지 {len(grasps)}개 · 놓기 {len(places)}개 등록 → {out_path}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=str(OUT))
@@ -629,6 +902,8 @@ def main() -> int:
     parser.add_argument("--pallet-place", action="store_true",
                         help="든 자재를 원래 팔레트 슬롯에 놓는 높이를 측정해"
                              " pallet_place_poses에 등록한다")
+    parser.add_argument("--pallet-matrix", action="store_true",
+                        help="다른 팔레트 이송용 위치 파지·든 물체 출처별 놓기 자세를 측정한다")
     parser.add_argument("--materials", nargs="+", default=None,
                         help="--pallet-place 대상 자재 자원 id(명시 필수)")
     args = parser.parse_args()
@@ -639,6 +914,8 @@ def main() -> int:
                                    list(args.materials))
     if args.conveyor:
         return derive_conveyor(Path(args.out), CONVEYOR_REPORT)
+    if args.pallet_matrix:
+        return derive_pallet_matrix(Path(args.out), PALLET_MATRIX_REPORT)
 
     data = json.loads(WORKCELL.read_text(encoding="utf-8"))
     derived = json.loads(POSES.read_text(encoding="utf-8"))

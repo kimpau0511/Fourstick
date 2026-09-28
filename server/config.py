@@ -65,6 +65,15 @@ class ServerConfig:
     #: `FORSTICK2_SIM_DEMO_WEB=0`으로 끌 수 있다.
     #: 일반 `/v1/plan`·`/v1/execute`의 pick/place 차단과는 무관하다.
     enable_sim_demo_web: bool = True
+    #: 모호한 자재 작업 발화를 Qwen 분류기로 보낼지. 끄면 규칙 해석만 쓴다.
+    #: 분류기는 계획 생성과 **같은 LLM 설정**(`llm_config_name`)을 쓴다.
+    enable_sim_demo_intent: bool = True
+    #: 분류기 결과를 받아들이는 최소 confidence. 이 값 아래는 실행 후보가 아니다.
+    #: **측정으로 정한 값이 아니다** — 보수적 기본값이고, 평가로 근거가 생기기
+    #: 전까지 코드에서 자동으로 조정하지 않는다.
+    sim_demo_intent_min_confidence: float = 0.7
+    #: 확인 카드 만료(초). 사용자 요구값이다.
+    sim_demo_confirm_ttl_sec: float = 60.0
 
     @staticmethod
     def from_env() -> "ServerConfig":
@@ -103,4 +112,11 @@ class ServerConfig:
                 os.environ.get("FORSTICK2_CLIENT_GRACE_SEC", "5")
             ),
             enable_sim_demo_web=flag("FORSTICK2_SIM_DEMO_WEB", True),
+            enable_sim_demo_intent=flag("FORSTICK2_SIM_DEMO_INTENT", True),
+            sim_demo_intent_min_confidence=float(
+                os.environ.get("FORSTICK2_SIM_DEMO_INTENT_MIN_CONFIDENCE", "0.7")
+            ),
+            sim_demo_confirm_ttl_sec=float(
+                os.environ.get("FORSTICK2_SIM_DEMO_CONFIRM_TTL_SEC", "60")
+            ),
         )

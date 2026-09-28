@@ -26,7 +26,8 @@ from moveit_msgs.msg import (
     PlanningSceneComponents,
     RobotState,
 )
-from moveit_msgs.srv import GetPlanningScene, GetStateValidity
+from moveit_msgs.msg import PlanningScene
+from moveit_msgs.srv import ApplyPlanningScene, GetPlanningScene, GetStateValidity
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
@@ -140,6 +141,55 @@ class RosPlanningSceneClient:
             ttl_sec=self._ttl,
             source=self._source,
         )
+
+    def world_object_poses(self) -> dict[str, tuple[str, tuple[float, ...]]]:
+        """world 물체 id → (frame, (x, y, z, qx, qy, qz, qw)). 되읽기 확인에 쓴다."""
+        request = GetPlanningScene.Request()
+        request.components.components = (PlanningSceneComponents.WORLD_OBJECT_NAMES
+                                          | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY)
+        response = self._call(self._scene, request)
+        out: dict[str, tuple[str, tuple[float, ...]]] = {}
+        for obj in response.scene.world.collision_objects:
+            pose = obj.pose
+            out[obj.id] = (obj.header.frame_id, (
+                pose.position.x, pose.position.y, pose.position.z,
+                pose.orientation.x, pose.orientation.y, pose.orientation.z,
+                pose.orientation.w))
+        return out
+
+    def move_world_objects(self, moves: Mapping[str, tuple[str, Sequence[float]]]) -> bool:
+        """이미 있는 world 물체를 옮긴다(`CollisionObject.MOVE`). 모양은 바꾸지 않는다.
+
+        `moves`: id → (frame, (x, y, z, qx, qy, qz, qw)). 성공 여부는 서비스 응답일
+        뿐이다 — 호출자가 **되읽어서** 확인한다.
+        """
+        if not moves:
+            return True
+        if not hasattr(self, "_apply"):
+            self._apply = self._node.create_client(ApplyPlanningScene,
+                                                   "/apply_planning_scene")
+        deadline = time.monotonic() + self._timeout
+        while not self._apply.service_is_ready():
+            if time.monotonic() > deadline:
+                raise TimeoutError("/apply_planning_scene 서비스가 없다")
+            rclpy.spin_once(self._node, timeout_sec=0.2)
+        scene = PlanningScene()
+        scene.is_diff = True
+        for object_id, (frame, values) in moves.items():
+            obj = CollisionObject()
+            obj.header.frame_id = frame
+            obj.id = object_id
+            obj.operation = CollisionObject.MOVE
+            pose = Pose()
+            (pose.position.x, pose.position.y, pose.position.z,
+             pose.orientation.x, pose.orientation.y, pose.orientation.z,
+             pose.orientation.w) = (float(v) for v in values)
+            obj.pose = pose
+            scene.world.collision_objects.append(obj)
+        request = ApplyPlanningScene.Request()
+        request.scene = scene
+        response = self._call(self._apply, request)
+        return bool(response is not None and response.success)
 
     def _attached_message(self, item: AttachedObject) -> AttachedCollisionObject:
         """선언된 치수 그대로 붙는 물체 메시지를 만든다. 치수를 만들지 않는다."""

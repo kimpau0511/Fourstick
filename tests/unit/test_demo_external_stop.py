@@ -193,7 +193,8 @@ class LoopWiringTest(unittest.TestCase):
         import ast
 
         tree = ast.parse(DEMO_PATH.read_text(encoding="utf-8"))
-        for name in ("main", "return_held_to_origin"):
+        # 복귀·칸 이동은 공통 실행부 `_run_held_route`에서 움직인다.
+        for name in ("main", "_run_held_route"):
             function = next(n for n in tree.body
                             if isinstance(n, ast.FunctionDef) and n.name == name)
             sends = [c for c in ast.walk(function) if isinstance(c, ast.Call)
@@ -203,6 +204,15 @@ class LoopWiringTest(unittest.TestCase):
                 self.assertTrue(sends)
                 for call in sends:
                     self.assertIn("should_stop", {k.arg for k in call.keywords})
+        for name in ("return_held_to_origin", "move_between_slots"):
+            function = next(n for n in tree.body
+                            if isinstance(n, ast.FunctionDef) and n.name == name)
+            with self.subTest(uses_shared_runner=name):
+                direct = [c for c in ast.walk(function) if isinstance(c, ast.Call)
+                          and isinstance(c.func, ast.Attribute)
+                          and c.func.attr in ("send_arm", "send_gripper")]
+                self.assertEqual(direct, [])
+                self.assertIn("_run_held_route(", ast.unparse(function))
 
 
 if __name__ == "__main__":

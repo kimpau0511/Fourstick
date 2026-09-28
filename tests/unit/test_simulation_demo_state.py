@@ -309,7 +309,14 @@ class RobotsRouteCarriesDemoStateTest(unittest.TestCase):
         self.assertTrue(demo["state_hold_active"])
         self.assertEqual(demo["display_label"], DISPLAY_LABEL)
         self.assertIs(demo["is_simulated"], True)
-        self.assertIs(demo["real_hardware_ready"], False)
+        # 실기 상태는 **공개 응답에서 빠진다.** 시뮬레이션 축은 그대로다.
+        self.assertNotIn("real_hardware_ready", demo)
+        self.assertNotIn("real_hardware_verified", demo)
+        self.assertNotIn("hardware_readiness", body)
+        # 내부 기록은 그 값을 그대로 갖고 있다 — 감춘 것이지 지운 것이 아니다.
+        internal = SimulationDemoState(self.state_path).status()
+        self.assertIs(internal["real_hardware_ready"], False)
+        self.assertIs(internal["real_hardware_verified"], False)
         # E2E 요약은 별도 키로 그대로 있다.
         self.assertIn("simulation_e2e", body)
 

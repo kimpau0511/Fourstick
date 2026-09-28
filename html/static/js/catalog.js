@@ -2,8 +2,12 @@
  *
  * **로봇 수치를 이 파일에서 만들지 않는다.** FR3-WMS 값은 저장소의 Profile
  * (`config/profiles/*.json`)과 8단계 검증 결과에서 확인된 것만 적고, 확인되지
- * 않은 항목은 "미확보"로 남긴다. 나머지 로봇은 **미구현**으로 표시하고 선택할
- * 수 없게 둔다 — 검증되지 않은 값을 화면에 만들어 넣지 않기 위해서다.
+ * 않은 항목은 "미확보"로 남긴다.
+ *
+ * **검증된 구성 하나만 둔다.** 예전에는 Adapter·Profile이 없는 로봇 세 개를
+ * "미구현"으로 나열했는데, 고를 수 없는 항목이 목록의 대부분을 차지했다.
+ * 확장 후보는 코드가 아니라 계획 문서에서 관리한다 — 화면은 지금 붙어 있는
+ * 구성만 보여준다.
  */
 
 export const ROBOTS = [
@@ -12,7 +16,7 @@ export const ROBOTS = [
     name: 'FAIRINO FR3-WMS + 2F-85',
     model: 'FR3-WMS + GRP-CPL-062 + 2F-85',
     dof: 6,
-    icon: '🦾',
+    icon: '◈',
     implemented: true,
     summary: 'FAIRINO FR3-WMS + 2F-85 · Gazebo workcell simulation',
     payload: '미확보',
@@ -27,7 +31,6 @@ export const ROBOTS = [
     badges: [
       { color: 'success', icon: '✓', label: 'MoveIt2 검증 완료' },
       { color: 'warning', icon: '⬡', label: '시뮬레이션 전용' },
-      { color: 'danger', icon: '!', label: '실하드웨어 미검증' },
     ],
     notes:
       '작업 셀(받침대·작업대·팔레트 3개·자재 3개·컨베이어)에서 home/move/stop을'
@@ -38,71 +41,40 @@ export const ROBOTS = [
       { label: '접근 자세', value: '팔레트 3개 · 컨베이어 — 충돌 없음 확인' },
       { label: '그리퍼 제어', value: 'open / 30 mm / close 관측 개구 일치' },
       { label: 'arm·gripper STOP', value: '관측 정지 확인' },
-      { label: '실기 하드웨어', value: '미검증' },
       { label: 'pick/place', value: '비활성 — 관문 9조건 미충족' },
     ],
   },
-  {
-    id: 'doosan_m1013',
-    name: 'Doosan M1013',
-    model: 'M1013',
-    dof: 6,
-    icon: '🏭',
-    implemented: false,
-    summary: '미구현 — Adapter·Profile 없음',
-    payload: '미확보',
-    reach: '미확보',
-    adapter: '미구현',
-    profile: '미확보',
-    environment: '미정',
-    skills: [],
-    disabledSkills: [],
-    disabledReason: '',
-    badges: [{ color: 'muted', icon: '◉', label: '미구현' }],
-    notes: '9단계 확장 후보. 공식 자료를 확보한 뒤 Profile을 만든다.',
-    verification: [],
-  },
-  {
-    id: 'kinova_gen3',
-    name: 'Kinova Gen3',
-    model: 'Gen3',
-    dof: 7,
-    icon: '✨',
-    implemented: false,
-    summary: '미구현 — Adapter·Profile 없음',
-    payload: '미확보',
-    reach: '미확보',
-    adapter: '미구현',
-    profile: '미확보',
-    environment: '미정',
-    skills: [],
-    disabledSkills: [],
-    disabledReason: '',
-    badges: [{ color: 'muted', icon: '◉', label: '미구현' }],
-    notes: '9단계 확장 후보. 공식 자료를 확보한 뒤 Profile을 만든다.',
-    verification: [],
-  },
-  {
-    id: 'ur5e',
-    name: 'UR5e',
-    model: 'e-Series UR5',
-    dof: 6,
-    icon: '⚙️',
-    implemented: false,
-    summary: '미구현 — 9단계 회귀 대상',
-    payload: '미확보',
-    reach: '미확보',
-    adapter: '미구현',
-    profile: '미확보',
-    environment: '미정',
-    skills: [],
-    disabledSkills: [],
-    disabledReason: '',
-    badges: [{ color: 'muted', icon: '◉', label: '미구현' }],
-    notes: '9단계 회귀 검증 대상. 같은 2F-85 Profile을 재사용할 예정이다.',
-    verification: [],
-  },
 ];
+
+// G1은 별도 제어기·별도 Gazebo 파티션이다. 선택하면 명령이 `/v1/humanoid/*`로만 간다
+// (FR3 계획 생성·시연 경로와 대화 맥락을 섞지 않는다).
+ROBOTS.push({
+  id: 'unitree_g1',
+  name: 'Unitree G1 (다리 12관절)',
+  model: 'G1 12DoF legs · unitree_rl_gym 사전학습 정책',
+  dof: 12,
+  icon: '⬢',
+  implemented: true,
+  summary: 'Unitree G1 · Gazebo 보행 시뮬레이션 · 다리 12관절 제어, 팔·허리 고정',
+  payload: '해당 없음(팔 작업 범위 밖)',
+  reach: '해당 없음',
+  adapter: 'G1 GAZEBO (별도 제어기)',
+  profile: 'unitree_g1_12dof · 시뮬레이션',
+  environment: 'Simulator / Gazebo 휴머노이드 세계',
+  skills: ['컨베이어 앞 이동', '찍고 오기', '출발 위치 복귀', 'stop'],
+  disabledSkills: ['장애물 회피', '임의 목적지', '팔 작업'],
+  disabledReason: '이번 범위 밖 — 선언된 지점과 검증된 왕복만 쓴다',
+  badges: [
+    { color: 'success', icon: '✓', label: 'Gazebo 왕복·STOP 검증' },
+    { color: 'warning', icon: '⬡', label: '시뮬레이션 전용 · 실시간 미확보' },
+  ],
+  notes: '다리 12관절만 제어한다(팔·허리 고정). 도착·복귀는 Gazebo 관측으로 판단한다.',
+  verification: [
+    { label: '보행', value: '서기·걷기·회전·정지 5/5 (Gazebo 관측)' },
+    { label: '왕복', value: '컨베이어 앞 왕복 5/5 · 이동 중 STOP 5/5' },
+    { label: '실시간', value: 'RTF 약 0.82 — 실시간 아님' },
+  ],
+});
 
 export function robotById(id) {
   return ROBOTS.find((r) => r.id === id) || ROBOTS[0];
@@ -232,7 +204,8 @@ export const EVENT_LEVELS = {
  * 그대로 쓰고, 붙어 있으면 실제 world·파티션·스킬을 보여준다.
  */
 export function withWorkcell(robot, workcell) {
-  if (!workcell || !workcell.registered) return robot;
+  // 서버 작업 셀 값은 FR3 것이다 — 다른 로봇에 덮어쓰지 않는다.
+  if (!workcell || !workcell.registered || robot.id !== 'fairino_fr3') return robot;
   const skills = workcell.supported_skills || robot.skills;
   return {
     ...robot,

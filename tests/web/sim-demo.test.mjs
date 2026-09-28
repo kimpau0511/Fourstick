@@ -67,7 +67,8 @@ test('안내된 동작만 열리고 시뮬레이터 전용 안내가 있다', ()
   const open = list.filter((b) => !b.disabled).map((b) => `${b.material}:${b.action}`);
   // 정합 버튼은 자재를 고르지 않는 셀 전체 동작이다(관측만 한다).
   assert.deepEqual(open.sort(), ['material_a:transfer', 'material_b:restore',
-    'material_b:resume', 'material_b:resume_preflight', 'null:reconcile'].sort());
+    'material_b:resume', 'material_b:resume_preflight', 'null:reconcile',
+    'null:return-all-goal'].sort());
   assert.match(html, /is_simulated=true/);
   assert.match(html, /일반 명령의 집기·놓기는 계속 차단/);
   assert.match(html, /STOP 체크포인트/);
@@ -82,6 +83,22 @@ test('작업이 돌면 모든 동작이 잠기고 시연 정지가 나온다', (
   assert.ok(list.some((b) => b.action === 'stop' && !b.disabled));
   assert.ok(list.filter((b) => b.action !== 'stop').every((b) => b.disabled));
   assert.match(html, /실행 중/);
+});
+
+test('활성 목표가 있으면 STOP만 열리고 나머지 동작은 잠긴다', () => {
+  const goal = {
+    goal_id: 'simgoal_1', status: 'running', current_step: 1,
+    progress: { completed: 0, total: 2, percent: 0 },
+    plan: [
+      { step: 1, material_label: 'A자재', from_label: '컨베이어 1번',
+        to_label: '원래 자리', status: 'running' },
+      { step: 2, material_label: 'B자재', from_label: '컨베이어 2번',
+        to_label: '원래 자리', status: 'pending' },
+    ],
+  };
+  const list = buttons(card(status({ goal })));
+  assert.ok(list.some((b) => b.action === 'stop' && !b.disabled));
+  assert.ok(list.filter((b) => b.action !== 'stop').every((b) => b.disabled));
 });
 
 function harness({ confirm = true } = {}) {
@@ -111,7 +128,7 @@ test('이송은 확인 뒤에만 요청을 보낸다', async () => {
   const posted = yes.calls.find((c) => c.method === 'POST');
   assert.deepEqual(posted.body, { action: 'transfer', material: 'material_a' });
   assert.match(yes.confirms[0], /시뮬레이터/);
-  assert.match(yes.confirms[0], /실제 로봇이 아닙니다/);
+  assert.match(yes.confirms[0], /Gazebo 시뮬레이터에서 로봇이 움직입니다/);
 
   const no = harness({ confirm: false });
   await no.api.refresh();
@@ -182,4 +199,75 @@ test('정합 요청은 전용 경로로 간다', async () => {
   await cardApi.reconcile();
   const posted = calls.find((c) => c.method === 'POST');
   assert.equal(posted.path, '/v1/sim-demo/reconcile');
+});
+
+test('전체 복귀는 계획을 요청하고 보여준 뒤 그 계획을 확인한다', async () => {
+  const calls = [];
+  const confirms = [];
+  const plan = {
+    goal_id: 'simgoal_plan', goal: 'return_all_to_origin', status: 'planned',
+    summary: '컨베이어의 자재 2개를 순서대로 원래 자리로 돌려놓습니다.',
+    progress: { completed: 0, total: 2, percent: 0 },
+    plan: [
+      { step: 1, material_label: 'A자재', from_label: '컨베이어 1번',
+        to_label: '원래 자리', status: 'pending' },
+      { step: 2, material_label: 'B자재', from_label: '컨베이어 2번',
+        to_label: '원래 자리', status: 'pending' },
+    ],
+  };
+  let currentGoal = null;
+  const fetchImpl = async (method, path, body) => {
+    calls.push({ method, path, body });
+    if (method === 'POST' && path === '/v1/sim-demo/goals') {
+      currentGoal = plan;
+      return { ok: true, status: 201, payload: plan };
+    }
+    if (method === 'POST' && path === '/v1/sim-demo/goals/simgoal_plan/confirm') {
+      currentGoal = { ...plan, status: 'running', confirmation_required: false };
+      return { ok: true, status: 202, payload: currentGoal };
+    }
+    if (method === 'GET' && path === '/v1/sim-demo') {
+      return { ok: true, status: 200, payload: status({ goal: currentGoal }) };
+    }
+    return { ok: false, status: 404, payload: {} };
+  };
+  const root = { innerHTML: '', addEventListener() {}, contains: () => true };
+  globalThis.setTimeout = () => 0;
+  globalThis.clearTimeout = () => {};
+  const api = createSimDemoCard({ root, fetchImpl,
+    confirmImpl: (text) => { confirms.push(text); return true; } });
+
+  await api.refresh();
+  await api.startReturnAllGoal();
+
+  assert.deepEqual(calls.find((c) => c.path === '/v1/sim-demo/goals').body,
+    { goal: 'return_all_to_origin' });
+  assert.deepEqual(calls.find((c) => c.path.endsWith('/confirm')).body,
+    { action: 'confirm' });
+  assert.match(confirms[0], /1\. A자재: 컨베이어 1번 → 원래 자리/);
+  assert.match(confirms[0], /2\. B자재: 컨베이어 2번 → 원래 자리/);
+});
+
+test('목표 계획과 순서가 보이고 목표 STOP을 요청할 수 있다', async () => {
+  const goal = {
+    goal_id: 'simgoal_progress', status: 'running', current_step: 2,
+    progress: { completed: 1, total: 2, percent: 50 },
+    plan: [
+      { step: 1, material_label: 'A자재', from_label: '컨베이어 1번',
+        to_label: '원래 자리', status: 'completed' },
+      { step: 2, material_label: 'B자재', from_label: '컨베이어 2번',
+        to_label: '원래 자리', status: 'running' },
+    ],
+  };
+  const html = card(status({ goal }));
+  assert.ok(html.indexOf('1. A자재') < html.indexOf('2. B자재'));
+  assert.match(html, /1 \/ 2 \(50%\) · running/);
+  assert.match(html, /현재 단계[\s\S]*?2/);
+  assert.match(html, /data-sim-action="stop"[^>]*>■ 목표 STOP/);
+
+  const h = harness();
+  await h.api.refresh();
+  h.api.state.status = status({ goal });
+  await h.api.stop();
+  assert.ok(h.calls.some((c) => c.method === 'POST' && c.path === '/v1/sim-demo/stop'));
 });

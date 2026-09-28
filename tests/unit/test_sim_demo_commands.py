@@ -72,13 +72,30 @@ class ParseTest(unittest.TestCase):
         parsed = self.parse("에이 자재를 컨베이어로 옮겨 줘")
         self.assertEqual(parsed["material"], "material_a")
 
-    def test_slot_utterances_ask(self):
-        for text in ("A 자재를 컨베이어 2번 슬롯에 놔줘",
-                     "A 자재를 컨베이어 3번 자리에 올려줘"):
+    def test_slot_utterances_name_a_declared_destination(self):
+        """컨베이어 자리를 말하면 **그 자리**가 도착이다.
+
+        예전에는 "컨베이어는 단일 배치 위치"라며 ASK로 끝냈다. 지금은 검증된
+        자리가 셋이라 발화가 자리를 고를 수 있다. 그 자리가 이 셀에 실제로
+        있는지는 `decide`의 자리 검증이 본다 — 해석은 말한 대로 옮길 뿐이다.
+        """
+        for text, expected in (("A 자재를 컨베이어 2번 슬롯에 놔줘", "slot_2"),
+                               ("A 자재를 컨베이어 3번 자리에 올려줘", "slot_3"),
+                               ("A자재를 슬롯1에 올려줘", "slot_1")):
             with self.subTest(text=text):
                 parsed = self.parse(text)
-                self.assertEqual(parsed["decision"], ASK)
-                self.assertIn("단일 배치 위치", parsed["reason"])
+                self.assertEqual(parsed["decision"], RUN)
+                self.assertEqual(parsed["intent"], "transfer")
+                self.assertEqual(parsed["destination"], expected)
+
+    def test_a_plain_conveyor_utterance_leaves_the_slot_to_the_server(self):
+        parsed = self.parse("A 자재를 컨베이어로 옮겨줘")
+        self.assertEqual(parsed["destination"], "loc_conveyor")
+
+    def test_the_spoken_pallet_becomes_the_source(self):
+        parsed = self.parse("A자재를 1번 팔레트에서 컨베이어로 옮겨줘")
+        self.assertEqual(parsed["source"], "loc_pallet_1")
+        self.assertEqual(parsed["destination"], "loc_conveyor")
 
     def test_ambiguous_material_utterances_ask_without_fallback(self):
         """자재를 가리키는데 불완전하면 계획 생성으로 넘기지 않는다."""
@@ -151,9 +168,14 @@ class CommandEndpointTest(JobsBase):
         status, text = self.send("A 자재를 컨베이어로 옮겨줘", source="text")
         self.assertEqual(status, 202)
         self.assertEqual(text["decision"], RUN)
+        # job_spec에 슬롯 자리가 생겼다. 이 시험은 슬롯 설정 없이 돌므로
+        # None이다 — 기존 단일 배치와 같은 동작이다.
         self.assertEqual(text["job_spec"], {"action": "transfer",
                                             "material": "material_a",
-                                            "checkpoint_id": None})
+                                            "checkpoint_id": None,
+                                            "slot": None,
+                                            "source": None,
+                                            "destination": "loc_conveyor"})
         self.assert_simulated(text)
         first_argv = self.popen.calls[0]["argv"]
         # 작업이 끝난 뒤 같은 발화를 STT final로 보내면 같은 spec이 나온다.
@@ -184,7 +206,8 @@ class CommandEndpointTest(JobsBase):
         self.assertEqual((status, ok["decision"]), (202, RUN))
         self.assertEqual(ok["job_spec"], {"action": "return",
                                           "material": "material_b",
-                                          "checkpoint_id": None})
+                                          "checkpoint_id": None, "slot": None,
+                                          "source": None, "destination": None})
         self.assertIn("--return-held-to-origin", self.popen.calls[0]["argv"])
         self.assertIn("pallet_2", self.popen.calls[0]["argv"])
 
@@ -216,7 +239,7 @@ class CommandEndpointTest(JobsBase):
         self.assertEqual((status, ok["decision"]), (202, RUN))
         self.assertEqual(ok["job_spec"], {"action": "resume",
                                           "material": "material_a",
-                                          "checkpoint_id": checkpoint["checkpoint_id"]})
+                                          "checkpoint_id": checkpoint["checkpoint_id"], "slot": None})
         argv = self.popen.calls[0]["argv"]
         self.assertEqual(argv[argv.index("--resume-checkpoint") + 1],
                          checkpoint["checkpoint_id"])
@@ -274,13 +297,20 @@ class CommandEndpointTest(JobsBase):
         self.assertIn("시뮬레이션이 아니다", payload["reason"])
         self.assertEqual(self.popen.calls, [])
 
-    def test_ambiguous_and_slot_utterances_make_no_job(self):
-        for text in ("자재를 컨베이어로 옮겨줘", "A 자재를 컨베이어 2번 슬롯에 놔줘",
-                     "A자재랑 B자재 옮겨줘"):
+    def test_ambiguous_utterances_make_no_job(self):
+        for text in ("자재를 컨베이어로 옮겨줘", "A자재랑 B자재 옮겨줘"):
             with self.subTest(text=text):
                 status, payload = self.send(text)
                 self.assertEqual((status, payload["decision"]), (200, ASK))
                 self.assertTrue(payload["reason"])
+        self.assertEqual(self.popen.calls, [])
+
+    def test_a_slot_this_cell_does_not_have_makes_no_job(self):
+        """이 셀은 검증된 컨베이어 자리가 없다 — 없는 자리는 만들어 주지 않는다."""
+        status, payload = self.send("A 자재를 컨베이어 2번 슬롯에 놔줘")
+        self.assertEqual((status, payload["decision"]), (409, BLOCK))
+        self.assertIn("없는 도착 위치", payload["reason"])
+        self.assertIsNone(payload["job"])
         self.assertEqual(self.popen.calls, [])
 
     def test_transfer_blocked_when_cell_is_not_clean(self):

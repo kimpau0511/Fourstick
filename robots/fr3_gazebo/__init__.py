@@ -9,6 +9,29 @@ from typing import Callable
 #: 공통 코드가 이 진입점만 알면 된다. 제조사·로봇 이름은 **설정에만** 있고
 #: 공통 코드(server/·core/·validation/…)에는 나타나지 않는다(계획.md 27장).
 ADAPTER_ENTRY_POINT = "build_workcell_adapter"
+#: 공통 `transfer` 스킬 계약(`core/transfer_skill.py`)의 이 로봇 구현.
+TRANSFER_CAPABILITY_ENTRY_POINT = "build_transfer_capability"
+#: 3D 작업 셀 화면(읽기 전용)의 이 로봇 몫(URDF·메시·관절 이름).
+VIEW_SOURCE_ENTRY_POINT = "build_view_source"
+
+
+def build_view_source() -> dict:
+    """3D 화면용 URDF 경로 · 메시 해석 · 관절 이름. 공통 코드는 이름을 모른다."""
+    from robots.fr3_gazebo.view_source import build_view_source as build
+
+    return build()
+
+
+def build_transfer_capability(*, workcell=None, grasp=None, poses=None, clearance=None):
+    """이 작업 셀의 transfer Capability. 주지 않은 설정은 셀 설정 파일에서 읽는다
+    (측정된 경로 여유 `fr3_2f85_workcell_path_clearance.json` 포함)."""
+    from robots.fr3_gazebo.transfer_capability import Fr3TransferCapability
+
+    files = Fr3TransferCapability.from_files()
+    return Fr3TransferCapability(workcell=workcell or files._workcell,
+                                 grasp=grasp or files._grasp,
+                                 poses=poses or {"poses": files._derived},
+                                 clearance=clearance or {"routes": files._clearance})
 
 
 def build_workcell_adapter(

@@ -3,6 +3,10 @@
  * 흐름: 명령 입력 → 계획 생성 → 안전 판단(PASS/BLOCK/ASK) → PASS에서 사용자가
  * 실행 시작 → 실행 상태 표시 → 개별 실행 취소 또는 전체 정지.
  *
+ * 시뮬레이션 자재 명령은 다른 길이다. 규칙이 명확하면 기존대로 바로 작업이 되고,
+ * 모호한 자재 작업 발화는 서버의 Qwen 분류기를 지나 **확인 카드**로 온다.
+ * 확인 카드의 버튼을 누른 뒤에만 `/v1/sim-demo/confirm`이 작업을 만든다.
+ *
  * **자동 실행 경로가 없다.** 실행은 사용자가 버튼을 누른 뒤에만 시작된다.
  */
 
@@ -10,8 +14,10 @@ import { setResourceLabels } from './catalog.js';
 import { HttpBackend } from './backend-http.js';
 import { SimulationBackend } from './backend-sim.js';
 import { render } from './render.js';
+import { createHumanoidPanel } from './humanoid.js';
 import { createSimDemoCard } from './sim-demo.js';
 import { EXECUTION, createStore, makeEvent } from './state.js';
+import { createSpeaker } from './tts.js';
 
 const params = new URLSearchParams(location.search);
 
@@ -27,6 +33,15 @@ function nowTime() {
 const store = createStore();
 let backend = null;
 let tickTimer = null;
+/** 시연 카드(자재 수동 조작 + 상태 폴링). 서버에 붙었을 때만 만들어진다. */
+let simDemoCard = null;
+/** G1 휴머노이드 카드. 로봇 선택이 G1일 때만 보이고, 명령은 `/v1/humanoid/*`로만 간다. */
+let humanoidPanel = null;
+const G1_ID = 'unitree_g1';
+const isG1 = () => store.get().robotId === G1_ID;
+/** 음성 안내. **기본 꺼짐**이고, 못 쓰는 환경이면 모든 호출이 조용히 지나간다.
+ *  읽는 문장은 `tts.js`가 열거값에서 만든다 — 여기서 문자열을 만들지 않는다. */
+const speaker = createSpeaker();
 
 function log(level, message) {
   store.dispatch({ type: 'event', event: makeEvent(level, message, nowTime()) });
@@ -80,6 +95,7 @@ function handleBackendEvent(event) {
       break;
     case 'stop-result':
       store.dispatch({ type: 'stop-result', record: event.record });
+      speaker.speak({ kind: 'stop-result', result: event.record.result });
       log(
         'error',
         `전체 정지 ${event.record.result === 'confirmed' ? '확인됨' : '미확인'}`
@@ -117,15 +133,21 @@ function isStopUtterance(text) {
 /** final transcript 하나당 계획 생성을 **정확히 한 번**만 요청한다. */
 let lastHandledFinal = null;
 
-async function handleFinalTranscript(text, confidence) {
+async function handleFinalTranscript(text, confidence, rawText = text) {
   const key = `${text}|${confidence ?? ''}`;
   if (lastHandledFinal === key) {
     log('warning', '같은 최종 전사가 다시 도착했습니다 — 계획 생성을 다시 하지 않습니다.');
     return;
   }
   lastHandledFinal = key;
+  // G1을 골랐으면 G1 경로로만 보낸다(FR3 시연·계획 생성으로 흘리지 않는다).
+  if (isG1()) {
+    if (humanoidPanel) await humanoidPanel.command(text, 'stt_final');
+    else log('warning', 'G1 카드가 준비되지 않았습니다 — 명령을 보내지 않았습니다.');
+    return;
+  }
   // final만 시뮬레이션 명령으로 보낸다(partial은 표시만 한다).
-  if (await sendSimDemoCommand(text, 'stt_final')) return;
+  if (await sendSimDemoCommand(text, 'stt_final', { rawText, confidence })) return;
   // 정지 발화는 **계획 생성을 거치지 않는다.** 즉시 전체 정지로 보낸다.
   if (isStopUtterance(text)) {
     log('warning', `음성 정지 발화: "${text}" → 전체 정지`);
@@ -137,15 +159,20 @@ async function handleFinalTranscript(text, confidence) {
 
 /** 시뮬레이션 명령. 텍스트와 STT final이 **같은 입구**를 쓴다.
  *
+ * CONFIRM이면 입력 방식과 관계없이 확인 카드가 뜬다. 사용자가 누를 때만
+ * 서버의 재검증·슬롯·기하 검사 뒤에 작업이 만들어진다.
+ *
  * 돌려주는 값: 여기서 처리했으면 true. `PASS_THROUGH`(시뮬레이션 명령이 아님)나
  * 이 셀에서 쓸 수 없으면 false — 호출한 쪽이 기존 계획 생성으로 간다. */
-async function sendSimDemoCommand(utterance, source) {
+async function sendSimDemoCommand(utterance, source, stt = {}) {
   const text = (utterance || '').trim();
   if (!text) return false;
+  // 새 명령이다 — 읽던 안내를 즉시 끊는다.
+  speaker.cancel();
   store.dispatch({ type: 'sim-demo-busy', busy: true });
   let result;
   try {
-    result = await backend.simDemoCommand(text, source);
+    result = await backend.simDemoCommand(text, source, stt);
   } catch (error) {
     store.dispatch({ type: 'sim-demo-busy', busy: false });
     log('warning', `시뮬레이션 명령을 확인하지 못했습니다(${error.message}) — 계획 생성으로 갑니다.`);
@@ -153,15 +180,110 @@ async function sendSimDemoCommand(utterance, source) {
   }
   // 시뮬레이션 명령이 아니거나 이 셀에서 쓸 수 없다 → 기존 계획 생성이 맡는다.
   if (result.decision === 'PASS_THROUGH' || result.status === 403 || result.status === 404) {
-    store.dispatch({ type: 'sim-demo-busy', busy: false });
+    store.dispatch({ type: 'sim-demo-passed-through' });
     return false;
   }
   store.dispatch({ type: 'sim-demo-result', result });
-  const level = result.decision === 'RUN' || result.decision === 'STOP' ? 'info' : 'warning';
+  const level = result.decision === 'RUN' || result.decision === 'STOP'
+    || result.decision === 'CONFIRM' || result.decision === 'CONFIRM_GOAL'
+    || result.decision === 'ENVIRONMENT' || result.decision === 'NOOP' ? 'info' : 'warning';
+  if (result.decision === 'ENVIRONMENT') refreshSimDemo();
   log(level, `시뮬레이션 명령(${source}) 판단 ${result.decision}`
-    + `${result.reason ? ` — ${result.reason}` : ''} · Gazebo 시뮬레이션 · 실제 로봇 아님`);
+    + `${result.reason ? ` — ${result.reason}` : ''}`);
+  if (source === 'stt_final') log('info',
+    `명령 진단: STT="${result.raw_transcript || stt.rawText || text}"; 정규화="${result.normalized_transcript || text}"; 해석=${result.decision}/${result.intent || '없음'}/${result.material || '없음'}`);
+  if (result.decision === 'CONFIRM') {
+    const pending = result.confirmation || {};
+    // **여기서 작업이 만들어지지 않는다.** 확인 카드가 뜨고, 사용자가 누르면
+    // 그때 /v1/sim-demo/confirm이 작업을 만든다.
+    log('info', `해석 확인 대기: ${pending.summary || ''} — 확인을 눌러야 실행됩니다.`);
+    // 읽는 말은 서버가 정한 **동작·자재**에서만 만든다(모델 원문이 아니다).
+    speaker.speak({
+      kind: 'confirm-pending',
+      action: pending.action,
+      material: (pending.evidence || {}).material_korean,
+      slot: pending.slot || (pending.evidence || {}).slot,
+    });
+  } else if (result.decision === 'STOP') {
+    speaker.speak({ kind: 'stop-requested', scope: 'sim' });
+  } else if (result.decision === 'ASK' || result.decision === 'BLOCK') {
+    speaker.speak({ kind: 'sim-decision', decision: result.decision,
+                    heard: source === 'stt_final' ? result.raw_transcript : null });
+  } else if (result.decision === 'RUN' && result.job) {
+    // 규칙이 바로 알아들은 명령 — 확인 없이 작업이 시작된 경우다.
+    speaker.speak({ kind: 'job-started', action: result.job.action,
+                    material: materialKorean(result.job.material),
+                    slot: result.job.slot || result.slot });
+  }
   if (result.job) pollSimDemoJob(result.job.job_id);
   return true;
+}
+
+/** 자재 모델 id → 작업 셀이 선언한 한글 이름. 없으면 빈 문자열이다.
+ *  **화면·소리가 이름을 만들어 내지 않는다** — 서버 상태에 있는 것만 쓴다. */
+function materialKorean(model) {
+  const status = store.get().simDemo.status;
+  const row = ((status && status.materials) || []).find((m) => m.model === model);
+  return (row && row.korean) || '';
+}
+
+/** 확인 카드의 버튼. `confirm`일 때만 작업 또는 고정 목표가 시작된다. */
+async function answerSimDemoConfirm(action) {
+  const pending = store.get().simDemo.confirmation;
+  if (!pending) return;
+  store.dispatch({ type: 'sim-demo-busy', busy: true });
+  let result;
+  try {
+    result = pending.kind === 'goal'
+      ? await backend.simDemoGoalConfirm(pending.goal_id, action)
+      : await backend.simDemoConfirm(pending.token, action);
+  } catch (error) {
+    store.dispatch({ type: 'sim-demo-confirm-cleared' });
+    log('error', `확인 요청 중 오류: ${error.message}`);
+    return;
+  }
+  store.dispatch({ type: 'sim-demo-confirm-cleared' });
+  store.dispatch({ type: 'sim-demo-result', result: { ...result, confirmation: null } });
+  if (action === 'cancel') {
+    log('warning', pending.kind === 'goal'
+      ? `${pending.goal === 'arrange' ? '목표 배치' : '전체 복귀 목표'}를 취소했습니다 — 자재를 움직이지 않았습니다.`
+      : '해석 확인을 취소했습니다 — 작업을 만들지 않았습니다.');
+    speaker.speak({ kind: 'confirm-cancelled' });
+    return;
+  }
+  if (pending.kind === 'goal' && result.status === 'running') {
+    log('execution', `확인됨 — ${result.goal === 'arrange' ? '목표 배치' : '전체 복귀 목표'} 시작: ${result.goal_id}`);
+    refreshSimDemo();
+    return;
+  }
+  if (result.decision === 'RUN' && result.job) {
+    log('execution', `확인됨 — 시뮬레이션 작업 생성: ${result.job.job_id}`);
+    // 새 작업이다 — 읽던 안내를 끊고 시작만 알린다.
+    speaker.speak({ kind: 'job-started', action: result.job.action,
+                    material: materialKorean(result.job.material),
+                    slot: result.job.slot || result.slot });
+    pollSimDemoJob(result.job.job_id);
+    refreshSimDemo();
+    return;
+  }
+  log('error', `확인이 거부되었습니다 — ${result.reason || ''}`
+    + ` (작업 없음${result.confirm_rejection ? `, ${result.confirm_rejection}` : ''})`);
+  speaker.speak({ kind: 'sim-decision', decision: 'BLOCK' });
+}
+
+/** 시연 상태를 한 번 더 읽는다(자재 기록·체크포인트·실행 중 작업). */
+function refreshSimDemo() {
+  if (simDemoCard) simDemoCard.refresh();
+}
+
+/** 시연 정지. 헤더의 전체 정지와 다른 동작이다 — 시연 작업에만 보낸다. */
+async function stopSimDemo() {
+  if (!simDemoCard) return;
+  // 정지다 — 읽던 안내를 먼저 끊는다.
+  speaker.cancel();
+  await simDemoCard.stop();
+  log('warning', '시연 정지를 요청했습니다 — 시뮬레이터가 정지를 확인하면 체크포인트가 남습니다.');
+  speaker.speak({ kind: 'stop-requested', scope: 'sim' });
 }
 
 /** 작업이 끝날 때까지 진행 단계를 읽는다. 로봇 명령을 보내지 않는다. */
@@ -175,11 +297,22 @@ async function pollSimDemoJob(jobId) {
   }
   const status = (job.report && job.report.status) || `종료 코드 ${job.exit_code}`;
   log('info', `시연 작업 완료: ${status}`);
+  // 완료·실패·정지·resume 결과가 모두 여기로 온다. 읽는 말은 화면 배지와
+  // 같은 표(`sim-demo.js`의 RESULT_LABELS)에서 나온다.
+  speaker.speak({ kind: 'job-finished', status: (job.report || {}).status,
+                  action: job.action, slot: job.slot });
 }
 
 async function generatePlan() {
   // 시뮬레이션 작업 셀에서는 자재 이송·복귀·정지·이어서가 **기본 동작**이다.
   // 시뮬레이션 명령이 아니면(PASS_THROUGH) 아래 기존 계획 생성으로 이어간다.
+  if (isG1()) {
+    const text = store.get().command.trim();
+    if (!text) return;
+    if (humanoidPanel) await humanoidPanel.command(text, 'text');
+    else log('warning', 'G1 카드가 준비되지 않았습니다 — 명령을 보내지 않았습니다.');
+    return;
+  }
   if (await sendSimDemoCommand(store.get().command, 'text')) return;
   // **정지 발화는 계획 생성을 거치지 않는다.** 텍스트도 음성과 같은 규칙이다
   // (정지 계획은 안전 정책의 종료 스킬 요구와 충돌해 차단된다 — 실측).
@@ -210,6 +343,7 @@ async function generatePlan() {
         },
       });
       log('error', `계획을 만들지 못했습니다: ${result.reasonCode || ''} ${result.detail || ''}`);
+      speaker.speak({ kind: 'plan-verdict', verdict: 'BLOCK' });
       return;
     }
     store.dispatch({
@@ -227,6 +361,8 @@ async function generatePlan() {
     } else {
       log('warning', `정보 부족 — ${(result.validation.reasonCodes || []).join(', ')}`);
     }
+    // PASS는 읽지 않는다 — 사용자가 실행 버튼을 누르는 자리다.
+    speaker.speak({ kind: 'plan-verdict', verdict });
   } catch (error) {
     store.dispatch({
       type: 'plan-failed',
@@ -310,14 +446,69 @@ async function cancelExecution() {
   }
 }
 
+/** 로봇 선택에 맞춰 카드를 바꾼다. G1이면 G1 카드(3D 포함)를, FR3이면 FR3 작업 셀 화면을 보인다.
+ *  두 로봇의 확인 카드·대화 맥락은 서로 다른 경로·저장소에 있다 — 여기서 옮기지 않는다. */
+function applyRobotView(robotId) {
+  const g1 = robotId === G1_ID;
+  const sim3d = document.getElementById('card-sim3d');
+  const scene = document.getElementById('card-scene');
+  if (humanoidPanel) humanoidPanel.show(g1);
+  if (sim3d) sim3d.hidden = g1;
+  if (g1) {
+    if (scene) scene.hidden = true;
+  } else if (window.__simView) {
+    window.__simView.setView(localStorageView());
+  } else if (scene) {
+    scene.hidden = false;
+  }
+}
+
+function localStorageView() {
+  try { return localStorage.getItem('forstick2.simView') || '3d'; } catch { return '3d'; }
+}
+
 async function stopAll() {
+  // 정지가 가장 먼저다 — 읽던 안내를 즉시 끊는다.
+  speaker.cancel();
   store.dispatch({ type: 'stop-requested' });
   log('error', '■ 전체 정지 요청 전송됨 — scope: global');
+  speaker.speak({ kind: 'stop-requested', scope: 'global' });
+  // 전체 정지는 G1에도 간다(확인 없이). G1은 목표만 취소하고 균형 제어는 유지한다.
+  if (humanoidPanel) humanoidPanel.stop('전체 정지').catch(() => {});
   try {
     await backend.stopAll();
   } catch (error) {
     log('error', `전체 정지 요청 중 오류: ${error.message}`);
   }
+}
+
+/** 전체 정지 래치를 푼다.
+ *
+ * 래치는 지금까지 **새 계획이 수락될 때만** 풀렸다(`/v1/plan`). 시뮬레이션 작업
+ * 화면은 계획을 만들지 않아서, 정지를 걸면 화면에서 풀 길이 없었다(실측).
+ *
+ * 화면이 스스로 풀지 않는다 — 서버가 `released: true`로 답했을 때만 상태를
+ * 바꾼다. 진행 중인 실행이나 시뮬레이션 작업이 있으면 서버가 거부하고, 그
+ * 사유를 그대로 적는다.
+ */
+async function releaseStop() {
+  if (!backend || typeof backend.releaseStop !== 'function') {
+    log('warning', '이 백엔드는 정지 해제를 제공하지 않습니다.');
+    return;
+  }
+  let result;
+  try {
+    result = await backend.releaseStop();
+  } catch (error) {
+    log('error', `정지 해제 요청 중 오류: ${error.message}`);
+    return;
+  }
+  if (!result.released) {
+    log('warning', `정지 해제가 거부되었습니다 — ${result.detail || ''}`);
+    return;
+  }
+  store.dispatch({ type: 'stop-released' });
+  log('info', `정지 해제됨 — ${result.detail || ''}`);
 }
 
 async function toggleVoice() {
@@ -327,7 +518,7 @@ async function toggleVoice() {
     store.dispatch({ type: 'stt', stt: { recording: false, partial: '' } });
     return;
   }
-  store.dispatch({ type: 'stt', stt: { recording: true, partial: '', final: '', confidence: null } });
+  store.dispatch({ type: 'stt', stt: { recording: true, partial: '', final: '', normalized: '', confidence: null } });
   const result = await backend.startVoice((event) => {
     if (event.kind === 'partial') {
       store.dispatch({ type: 'stt', stt: { partial: event.text || '' } });
@@ -337,17 +528,20 @@ async function toggleVoice() {
         stt: {
           recording: false,
           partial: '',
-          final: event.text || '',
+          final: event.raw_text || event.text || '',
+          normalized: event.text || '',
           confidence: event.confidence ?? null,
         },
       });
       store.dispatch({ type: 'command', command: event.text || '' });
-      log('info', `음성 전사 완료: "${event.text || ''}"`);
+      log('info', `STT 원문: "${event.raw_text || event.text || ''}" → 정규화: "${event.text || ''}" (confidence ${event.confidence ?? '없음'})`);
       // **final만 계획 생성으로 보낸다.** partial은 표시만 한다.
-      handleFinalTranscript(event.text || '', event.confidence ?? null);
+      handleFinalTranscript(event.text || '', event.confidence ?? null,
+        event.raw_text || event.text || '');
     } else if (event.kind === 'clarify') {
       store.dispatch({ type: 'stt', stt: { recording: false, partial: '' } });
       log('warning', `되묻기: ${event.detail || '신뢰도가 낮습니다.'}`);
+      speaker.speak({ kind: 'sim-decision', decision: 'ASK', heard: event.raw_text || event.text });
     } else if (event.kind === 'error') {
       store.dispatch({ type: 'stt', stt: { recording: false } });
       log('error', `STT 오류: ${event.reason_code || ''} ${event.detail || ''}`);
@@ -378,7 +572,16 @@ const ACTIONS = {
     await cancelExecution();
   },
   'stop-all': stopAll,
+  'sim-confirm': () => answerSimDemoConfirm('confirm'),
+  'sim-cancel': () => answerSimDemoConfirm('cancel'),
+  'sim-stop': stopSimDemo,
+  'toggle-tts': () => {
+    const on = speaker.toggle();
+    store.dispatch({ type: 'tts', tts: { enabled: on } });
+    log('info', `음성 안내를 ${on ? '켰습니다' : '껐습니다'}.`);
+  },
   'dismiss-stop': () => store.dispatch({ type: 'stop-dismissed' }),
+  'release-stop': releaseStop,
   'goto-workspace': () => store.dispatch({ type: 'view', view: 'workspace' }),
   'back-to-plan': () => store.dispatch({ type: 'view', view: 'plan' }),
 };
@@ -399,6 +602,7 @@ document.addEventListener('click', (clickEvent) => {
     const robotId = target.dataset.robot;
     store.dispatch({ type: 'robot', robotId });
     store.dispatch({ type: 'modal', modal: null });
+    applyRobotView(robotId);
     log('info', `로봇 선택: ${robotId}`);
     return;
   }
@@ -418,10 +622,22 @@ document.addEventListener('keydown', (keyEvent) => {
   if (keyEvent.key === 'Escape' && store.get().modal) {
     store.dispatch({ type: 'modal', modal: null });
   }
-  // Ctrl+Enter로 계획 생성(목업의 버튼과 같은 동작이다).
-  if (keyEvent.key === 'Enter' && (keyEvent.ctrlKey || keyEvent.metaKey)) {
+  if (keyEvent.key !== 'Enter') return;
+  // Ctrl+Enter는 어디서나 명령을 보낸다(목업의 버튼과 같은 동작이다).
+  if (keyEvent.ctrlKey || keyEvent.metaKey) {
     generatePlan();
+    return;
   }
+  // 명령칸에서는 **그냥 Enter로도 보낸다.** 예전에는 Ctrl+Enter나 단추만
+  // 받아서, 치고 Enter를 누르면 줄만 바뀌고 "입력 중"에 머물렀다(실측).
+  // 줄바꿈은 Shift+Enter다.
+  const target = keyEvent.target;
+  if (!target || target.id !== 'command-input' || keyEvent.shiftKey) return;
+  // **한글 조합 중의 Enter는 글자를 확정하는 입력이다.** 그것으로 보내면
+  // 마지막 글자가 잘린 채 나간다. 조합이 끝난 Enter만 받는다.
+  if (keyEvent.isComposing || keyEvent.keyCode === 229) return;
+  keyEvent.preventDefault();
+  generatePlan();
 });
 
 // ── 작업 셀 장면 스트림 ───────────────────────────────────────────────
@@ -522,6 +738,12 @@ function connectSceneStream() {
 
 // ── 시작 ──────────────────────────────────────────────────────────────
 async function boot() {
+  // 음성 안내의 **저장된 켬/끔**을 화면에 올린다. 기본은 꺼짐이고, 브라우저가
+  // SpeechSynthesis를 갖고 있지 않으면 토글이 잠긴 채로 그려진다.
+  store.dispatch({
+    type: 'tts',
+    tts: { supported: speaker.supported, enabled: speaker.enabled },
+  });
   draw();
   try {
     backend = await pickBackend();
@@ -542,12 +764,48 @@ async function boot() {
     const catalogs = (config && config.catalogs) || {};
     setResourceLabels([...(catalogs.locations || []), ...(catalogs.objects || [])]);
     store.dispatch({ type: 'connection', state: 'ok', detail: backend.label });
+    // 마이크 사용 여부는 **연결 결과가 정해지는 이 자리에서** 화면에 싣는다.
+    // 아래 단계(시연 카드·장면 영상·장면 스트림) 중 하나가 실패해 catch로
+    // 빠지면, 여기서 싣지 않은 값은 초기값 false로 남고 **새로고침 전까지
+    // 마이크 단추가 잠긴 채 복구되지 않는다**(실측). 서버가 STT를 쓸 수
+    // 있다고 답한 사실은 그 실패들과 무관하다.
+    store.dispatch({ type: 'stt', stt: { available: sttAvailable } });
+    // G1 카드. 서버에 붙었을 때만 만든다. 로봇 선택이 G1일 때만 보인다.
+    const humanoidRoot = document.getElementById('card-humanoid');
+    if (humanoidRoot && backend.kind === 'server') {
+      humanoidPanel = createHumanoidPanel({
+        root: humanoidRoot, getSessionId: () => backend.sessionId, log,
+      });
+      applyRobotView(store.get().robotId);
+      window.__humanoid = humanoidPanel;             // 검증용(읽기)
+    }
     // 시뮬레이션 시연 카드. 서버에 붙었을 때만 서버 상태를 읽는다 — 자기 카드만
     // 그리고, 다른 카드의 상태 저장소를 건드리지 않는다.
     const simDemoRoot = document.getElementById('card-sim-demo');
     if (simDemoRoot) {
-      if (backend.kind === 'server') createSimDemoCard({ root: simDemoRoot }).refresh();
-      else simDemoRoot.hidden = true;
+      if (backend.kind === 'server') {
+        simDemoCard = createSimDemoCard({
+          root: simDemoRoot,
+          // 읽은 상태를 목업 칸(가제보 화면 아래 자재 띠 · 안전 판단 및 실행)에도
+          // 그대로 싣는다. 카드가 상태를 **고치지 않는다.**
+          onStatus: ({ status, job }) => {
+            store.dispatch({ type: 'sim-demo-status', status, job });
+            const pending = status && status.pending_confirmation;
+            const current = store.get().simDemo.confirmation;
+            const pendingId = pending && (pending.token || pending.goal_id);
+            const currentId = current && (current.token || current.goal_id);
+            // 새로고침·다른 탭 복원: 서버가 들고 있는 확인 대기를 화면에 세운다.
+            if (pending && (!current || currentId !== pendingId)) {
+              store.dispatch({ type: 'sim-demo-confirmation', confirmation: pending });
+            } else if (!pending && current) {
+              store.dispatch({ type: 'sim-demo-confirm-cleared' });
+            }
+          },
+        });
+        simDemoCard.refresh();
+      } else {
+        simDemoRoot.hidden = true;
+      }
     }
     // 작업 셀 장면 영상을 쓸 수 있는지 확인한다. 추측하지 않는다.
     try {
@@ -565,7 +823,6 @@ async function boot() {
     }
     // 장면 스트림을 붙인다(서버가 프레임을 밀어 보낸다).
     connectSceneStream();
-    store.dispatch({ type: 'stt', stt: { available: sttAvailable } });
     log('info', `시스템이 초기화되었습니다. (${backend.label})`);
     if (backend.kind === 'simulation') {
       log('warning', '시뮬레이션 모드입니다. 로봇은 움직이지 않습니다.');
@@ -603,4 +860,10 @@ if (estop) estop.addEventListener('click', stopAll);
 boot();
 
 // 테스트·디버깅용 접근 통로. 화면 코드가 여기 값을 읽지 않는다.
-window.forstick = { store, get backend() { return backend; }, EXECUTION };
+window.forstick = { store, get backend() { return backend; }, EXECUTION, speaker };
+
+// 작업 셀 3D 화면(읽기 전용 관측). 따로 불러온다 — 실패해도 기존 화면은 그대로이고
+// sim-view.js가 없으면 Gazebo 영상 카드만 보인다.
+import('./sim-view.js').catch((error) => {
+  console.warn('3D 작업 셀 화면을 불러오지 못했다:', error);
+});
