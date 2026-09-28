@@ -30,7 +30,7 @@ GZ_ENGINE_GUI="${FORSTICK2_GZ_RENDER_ENGINE_GUI:-ogre}"
 source /opt/ros/lyrical/setup.bash
 # **메시 탐색 경로를 GUI에도 준다.** 빼먹으면 GUI가 package:// 메시를 풀지
 # 못하고 렌더 루프에서 멈춘다(실측: 어떤 서비스에도 응답하지 않고 CPU 356%).
-FR3_REPO="${FORSTICK2_FR3_REPO:-/home/asd/external/frcobot_ros2}"
+FR3_REPO="${FORSTICK2_FR3_REPO:-$ROOT/third_party/frcobot_ros2}"
 OVERLAY="/tmp/forstick2_gazebo/overlay"
 export AMENT_PREFIX_PATH="$OVERLAY:${AMENT_PREFIX_PATH:-}"
 export GZ_SIM_RESOURCE_PATH="${GZ_SIM_RESOURCE_PATH:-}:$FR3_REPO:$OVERLAY/share"

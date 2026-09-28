@@ -152,8 +152,10 @@ WORKCELL = ROOT / "config/workcell/fr3_2f85_workcell.json"
 POSES = ROOT / "config/workcell/fr3_2f85_workcell_poses.json"
 GRASP = ROOT / "config/workcell/fr3_2f85_workcell_grasp.json"
 MOUNTING = ROOT / "config/profiles/fr3wms_to_robotiq_2f85_mounting.json"
-URDF = Path("/tmp/forstick2_gazebo/workcell/fr3wms_with_2f85.moveit.urdf")
-LOG_DIR = Path("/tmp/forstick2_workcell")
+from core.paths import workcell_log_dir  # noqa: E402
+from robots.fr3_gazebo.paths import gz_partition, workcell_moveit_urdf  # noqa: E402
+URDF = workcell_moveit_urdf()
+LOG_DIR = workcell_log_dir()
 LATCH = LOG_DIR / "sim_stop_latch.json"
 OUT = ROOT / "reports/workcell/pick_place_sim_e2e.json"
 #: 실행별 stdout/stderr **원본** 로그. 화면 필터와 별개로 전부 남긴다.
@@ -823,7 +825,7 @@ def main() -> int:
         objects = declarations_from_config(data["models"], data["frames"],
                                             source=str(WORKCELL))
         fixture = GazeboObjectFixture(
-            world_name=data["world_name"], gz_partition=data["gz_partition"],
+            world_name=data["world_name"], gz_partition=gz_partition(data),
             objects=objects)
         model = args.object if args.object in objects else None
         if model is None:
@@ -2421,7 +2423,7 @@ def clear_latch_after_restore_live(*, data: dict, model: str, fixture, objects,
             return client.snapshot().content_hash if scene_ready else None
 
         def static_of(name):
-            return observe_attachment(data["world_name"], data["gz_partition"],
+            return observe_attachment(data["world_name"], gz_partition(data),
                                       name)["static"]
 
         return clear_latch_after_restore(
@@ -2494,7 +2496,7 @@ def reconcile_state(args, data: dict) -> int:
     objects = declarations_from_config(data["models"], data["frames"],
                                        source=str(WORKCELL))
     fixture = GazeboObjectFixture(
-        world_name=data["world_name"], gz_partition=data["gz_partition"],
+        world_name=data["world_name"], gz_partition=gz_partition(data),
         objects=objects)
     grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
     observed: dict = {}

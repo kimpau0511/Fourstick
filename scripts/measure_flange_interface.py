@@ -34,6 +34,7 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 #: 면으로 볼 법선 기준(축과의 코사인).
 FACE_NORMAL_COS = 0.995
@@ -414,7 +415,7 @@ def measure(path: Path, repo: Path, *, note: str, axis: str = "z") -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--fr3-repo", default="/home/asd/external/frcobot_ros2", type=Path
+        "--fr3-repo", default=None, type=Path
     )
     parser.add_argument(
         "--robotiq-share",
@@ -422,11 +423,14 @@ def main() -> int:
         type=Path,
     )
     parser.add_argument(
-        "--robotiq-repo", default="/home/asd/external/robotiq_ros", type=Path
+        "--robotiq-repo", default=None, type=Path
     )
     parser.add_argument("--out", default=ROOT / "reports/mounting/flange_measurements.json",
                         type=Path)
     args = parser.parse_args()
+    from robots.fr3_gazebo.paths import fr3_repo, robotiq_repo
+    args.fr3_repo = args.fr3_repo or fr3_repo()
+    args.robotiq_repo = args.robotiq_repo or robotiq_repo()
 
     targets = [
         (

@@ -1,0 +1,23 @@
+# FR3 작업 셀에 필요한 Ubuntu 26.04 apt 패키지(ROS 2 Lyrical apt 저장소가 설정돼 있어야 한다 — docs/SETUP.md 1단계).
+# 개발 PC 확인 버전: gz-sim 10.5.0 · MoveIt 2.15.0 · ros2_control 6.9.0 · ros_gz 3.0.9 · gz_ros2_control 3.0.8 · xacro 2.1.1
+ros-lyrical-desktop
+ros-lyrical-ros-gz
+ros-lyrical-gz-ros2-control
+ros-lyrical-ros2-control
+ros-lyrical-ros2-controllers
+ros-lyrical-moveit
+ros-lyrical-moveit-setup-assistant
+ros-lyrical-xacro
+ros-lyrical-robot-state-publisher
+# 웹 서버 가상환경이 시스템에서 빌려 쓰는 파이썬 패키지(.venv는 --system-site-packages)
+python3-venv
+python3-pip
+python3-numpy
+python3-pydantic
+python3-yaml
+python3-uvicorn
+python3-wsproto
+# 도구
+git
+curl
+iproute2

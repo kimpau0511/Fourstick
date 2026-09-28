@@ -11,7 +11,7 @@
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FR3_REPO="${FORSTICK2_FR3_REPO:-/home/asd/external/frcobot_ros2}"
+FR3_REPO="${FORSTICK2_FR3_REPO:-$ROOT/third_party/frcobot_ros2}"
 FR3_URDF="$FR3_REPO/fairino_description/urdf/FR3WMS.urdf"
 XACRO_FILE="$ROOT/config/gazebo/fr3wms_arm.urdf.xacro"
 CONTROLLERS="$ROOT/config/gazebo/fr3wms_controllers.yaml"

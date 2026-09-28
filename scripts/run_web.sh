@@ -27,7 +27,12 @@ fi
 export FORSTICK2_HOST="$HOST"
 export FORSTICK2_PORT="$PORT"
 echo "[run_web] http://${HOST}:${PORT}  (Ctrl+C로 종료)"
-exec "$ROOT/.venv/bin/python" -m uvicorn \
+source "$ROOT/scripts/lib/env.sh"
+if [[ ! -x "$FORSTICK2_VENV/bin/python" ]]; then
+  echo "[run_web] 가상환경이 없다: $FORSTICK2_VENV — ./scripts/setup/create_venv.sh" >&2
+  exit 4
+fi
+exec "$FORSTICK2_VENV/bin/python" -m uvicorn \
   --factory server.asgi:create_app \
   --host "$HOST" --port "$PORT" \
   --ws wsproto --no-access-log --app-dir "$ROOT"

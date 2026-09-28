@@ -25,6 +25,11 @@ FR3-WMS 로봇 팔과 Robotiq 2F-85 그리퍼로 구성한 **Gazebo 작업 셀**
 팔레트·자재·컨베이어), 장면 카메라, MoveIt2·Gazebo 구성은 **현재 시뮬레이션 기준
 기능**이며, 실기 지원 대상이 아니다.
 
+## 새 PC에서 시작하기
+
+설치·실행 절차는 **[docs/SETUP.md](docs/SETUP.md)**, 프론트엔드용 시뮬레이션 API는 **[docs/SIM_API.md](docs/SIM_API.md)**.
+요약: `install_system.sh` → `create_venv.sh` → `FORSTICK2_ACCEPT_FR3_TERMS=1 fetch_assets.sh` → `doctor.sh` → `fr3_up.sh` / `fr3_down.sh`.
+
 ## 전제
 
 - ROS 2 lyrical · gz-sim 10.5.0 · MoveIt 2.15.0 · ros2_control 6.9.0 (WSL2에서 확인)
@@ -287,7 +292,8 @@ humanoid/g1/run_nav.sh verify_roundtrip.py --trips 5 --stops 5
 스크립트와 설정에 들어 있는 `/home/asd/...` 는 **개발 당시 로컬 경로이며 예시다.**
 비밀 정보는 아니지만 그대로는 다른 환경에서 동작하지 않는다. 세 종류로 나뉜다.
 
-**환경변수로 덮을 수 있는 것** — 실행 스크립트 6개(`run_gazebo_fr3.sh`,
+**기본값은 이제 저장소 상대 경로다**(`third_party/`, docs/SETUP.md 6장). `scripts/run_gazebo_fr3.sh`(기준선 보존 파일)만
+예전 기본값을 그대로 둔다. **환경변수로 덮을 수 있는 것** — 실행 스크립트 6개(`run_gazebo_fr3.sh`,
 `run_gazebo_fr3_gripper.sh`, `run_gazebo_fr3_2f85_workcell_gui.sh`,
 `run_moveit_fr3.sh`, `run_moveit_workcell.sh`, `attach_gazebo_gui.sh`)는 절대경로를
 기본값으로만 쓴다. 파일을 고치지 말고 환경변수를 준다.
@@ -305,8 +311,8 @@ export FORSTICK2_GR00T_WORK=/원하는/경로/gr00t_work FORSTICK2_GR00T_WEIGHTS
 
 `humanoid/g1/config/manip_gr00t_site.json`의 `policy.onnx`는 가중치 파일 절대경로다(설정 파일에서 바꾼다).
 
-**아직 하드코딩된 것** — 분석·산출 스크립트 6개는 파일 상단 상수를 직접 고쳐야
-한다. 환경변수를 보지 않는다. 환경변수로 바꾸는 편이 낫고, 그렇게 정리할 예정이다.
+**분석·산출 스크립트** — 아래 파일도 이제 같은 규칙(환경변수 → `config/local.env` → `third_party/`)을 따른다
+(2026-09-28 정리). 표는 이전 위치 기록이다.
 
 | 파일 | 위치 |
 |---|---|

@@ -23,7 +23,10 @@ MEASUREMENTS = ROOT / "reports/mounting/flange_measurements.json"
 OUT = ROOT / "reports/mounting/interface_comparison.json"
 
 ROBOTIQ_SHARE = Path("/opt/ros/lyrical/share/robotiq_description")
-ROBOTIQ_REPO = Path("/home/asd/external/robotiq_ros")
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from robots.fr3_gazebo.paths import robotiq_repo  # noqa: E402
+ROBOTIQ_REPO = robotiq_repo()
 #: manifest가 고정한 버전. 설치본과 다르면 이 파일을 기준으로 삼는다.
 PINNED_MACRO = ROBOTIQ_REPO / "grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro"
 PINNED_ADAPTER = ROBOTIQ_REPO / "grippers/robotiq_description/urdf/ur_to_robotiq_adapter.urdf.xacro"

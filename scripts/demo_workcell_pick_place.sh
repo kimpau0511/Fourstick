@@ -24,10 +24,8 @@ if [[ "${FORSTICK2_SIM_PICK_PLACE_DEMO:-}" != "1" ]]; then
   exit 3
 fi
 
-if [[ -z "${AMENT_PREFIX_PATH:-}" ]]; then
-  # shellcheck disable=SC1091
-  source /opt/ros/lyrical/setup.bash
-fi
+source "$ROOT/scripts/lib/env.sh"
+forstick2_source_ros
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-44}"
 export GZ_PARTITION="${GZ_PARTITION:-forstick2_fr3_workcell}"
 

@@ -13,10 +13,11 @@
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FR3_REPO="${FORSTICK2_FR3_REPO:-/home/asd/external/frcobot_ros2}"
+source "$ROOT/scripts/lib/env.sh"
+FR3_REPO="$FORSTICK2_FR3_REPO"
 MOVEIT_DIR="$ROOT/config/moveit"
-LOG_DIR="${FORSTICK2_WORKCELL_LOG_DIR:-/tmp/forstick2_workcell}"
-OVERLAY="/tmp/forstick2_gazebo/overlay"
+LOG_DIR="$FORSTICK2_WORKCELL_LOG_DIR"
+OVERLAY="$FORSTICK2_GZ_LOG_DIR/overlay"
 URDF_DIR="$LOG_DIR/workcell"
 MOVEIT_URDF="$URDF_DIR/fr3wms_with_2f85.moveit.urdf"
 BASE_SRDF="$MOVEIT_DIR/fr3_2f85_workcell.base.srdf"
@@ -25,6 +26,8 @@ PARAMS="$URDF_DIR/move_group_params.yaml"
 export GZ_PARTITION="${GZ_PARTITION:-forstick2_fr3_workcell}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-44}"
 REGEN_SRDF="${FORSTICK2_MOVEIT_REGEN_SRDF:-0}"
+# 자기충돌 검토·루프 폐쇄 근거(Git 스냅숏). 측정을 다시 했으면 FORSTICK2_EVIDENCE_DIR로 바꾼다.
+EVIDENCE="${FORSTICK2_EVIDENCE_DIR:-$ROOT/config/evidence}"
 
 say() { printf '[moveit-wc] %s\n' "$*"; }
 fail() { printf '[moveit-wc] %s\n' "$*" >&2; }
@@ -35,7 +38,7 @@ if [[ ! -f "$MOVEIT_URDF" ]]; then
   exit 3
 fi
 
-source /opt/ros/lyrical/setup.bash
+forstick2_source_ros
 export AMENT_PREFIX_PATH="$OVERLAY:${AMENT_PREFIX_PATH:-}"
 export ROS_PACKAGE_PATH="${ROS_PACKAGE_PATH:-}:$FR3_REPO:$OVERLAY/share"
 
@@ -43,6 +46,12 @@ export ROS_PACKAGE_PATH="${ROS_PACKAGE_PATH:-}:$FR3_REPO:$OVERLAY/share"
 python3 "$ROOT/scripts/build_workcell_srdf.py" | sed 's/^/  /'
 
 # 2) 자기충돌 행렬
+# 처음 실행하는 PC에서는 Git에 든 스냅숏(개발 PC에서 쓰던 SRDF)을 쓴다 — collisions_updater는 무작위
+# 표본이라 PC마다 결과가 달라질 수 있다. 다시 만들려면 FORSTICK2_MOVEIT_REGEN_SRDF=1.
+if [[ "$REGEN_SRDF" != "1" && ! -f "$SRDF_OUT" && -f "$EVIDENCE/fr3_2f85_workcell.srdf" ]]; then
+  cp "$EVIDENCE/fr3_2f85_workcell.srdf" "$SRDF_OUT"
+  say "SRDF 스냅숏 사용: $EVIDENCE/fr3_2f85_workcell.srdf"
+fi
 if [[ "$REGEN_SRDF" == "1" || ! -f "$SRDF_OUT" ]]; then
   ros2 run moveit_setup_assistant collisions_updater \
     --urdf "$MOVEIT_URDF" --srdf "$BASE_SRDF" \
@@ -54,13 +63,13 @@ if [[ "$REGEN_SRDF" == "1" || ! -f "$SRDF_OUT" ]]; then
   fi
   say "생성 직후: $(grep -c disable_collisions "$SRDF_OUT") 쌍 비활성"
   python3 "$ROOT/scripts/prune_self_collision_srdf.py" "$SRDF_OUT" \
-    "$ROOT/reports/moveit/self_collision_review.json" \
-    "$ROOT/reports/gripper/self_collision_review.json" \
+    "$EVIDENCE/moveit_self_collision_review.json" \
+    "$EVIDENCE/gripper_self_collision_review.json" \
     > "$LOG_DIR/srdf_prune.json"
   say "검토 후: $(grep -c disable_collisions "$SRDF_OUT") 쌍 비활성"
   # collisions_updater는 기본 SRDF의 제외를 버린다(실측). 기구학적 루프 폐쇄
   # 쌍을 근거 파일에서 다시 넣는다.
-  python3 "$ROOT/scripts/inject_loop_closure_srdf.py" "$SRDF_OUT" \
+  python3 "$ROOT/scripts/inject_loop_closure_srdf.py" "$SRDF_OUT" "$EVIDENCE/loop_closure_pairs.json" \
     > "$LOG_DIR/srdf_loop_closure.json"
   say "루프 폐쇄 주입 후: $(grep -c disable_collisions "$SRDF_OUT") 쌍 비활성"
 else

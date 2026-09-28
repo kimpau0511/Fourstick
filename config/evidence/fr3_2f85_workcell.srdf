@@ -1,0 +1,141 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="fr3wms_with_2f85">
+    
+    
+    
+    
+    
+    <group name="fr3wms_arm">
+        <chain base_link="base_link" tip_link="robotiq_85_tcp" />
+    </group>
+    <group name="fr3wms_gripper">
+        <joint name="robotiq_85_left_knuckle_joint" />
+    </group>
+    
+    <group_state name="workcell_safe_home" group="fr3wms_arm">
+        <joint name="j1" value="0" />
+        <joint name="j2" value="-1.9" />
+        <joint name="j3" value="1.2" />
+        <joint name="j4" value="-1.9" />
+        <joint name="j5" value="-1.5708" />
+        <joint name="j6" value="0" />
+    </group_state>
+    <group_state name="pallet_1_approach" group="fr3wms_arm">
+        <joint name="j1" value="-2.95452" />
+        <joint name="j2" value="-0.733317" />
+        <joint name="j3" value="0.25298" />
+        <joint name="j4" value="-1.10956" />
+        <joint name="j5" value="-1.56802" />
+        <joint name="j6" value="-1.38365" />
+    </group_state>
+    <group_state name="pallet_1_pick" group="fr3wms_arm">
+        <joint name="j1" value="-2.95418" />
+        <joint name="j2" value="-0.862462" />
+        <joint name="j3" value="0.87702" />
+        <joint name="j4" value="-1.60104" />
+        <joint name="j5" value="-1.56853" />
+        <joint name="j6" value="-1.38343" />
+    </group_state>
+    <group_state name="pallet_2_approach" group="fr3wms_arm">
+        <joint name="j1" value="0.21043" />
+        <joint name="j2" value="-2.13684" />
+        <joint name="j3" value="-0.736386" />
+        <joint name="j4" value="-1.82382" />
+        <joint name="j5" value="1.5543" />
+        <joint name="j6" value="-1.36098" />
+    </group_state>
+    <group_state name="pallet_2_pick" group="fr3wms_arm">
+        <joint name="j1" value="0.205035" />
+        <joint name="j2" value="-2.15446" />
+        <joint name="j3" value="-1.06496" />
+        <joint name="j4" value="-1.51675" />
+        <joint name="j5" value="1.56478" />
+        <joint name="j6" value="-1.36129" />
+    </group_state>
+    <group_state name="pallet_3_approach" group="fr3wms_arm">
+        <joint name="j1" value="-0.191414" />
+        <joint name="j2" value="-2.39933" />
+        <joint name="j3" value="-0.271114" />
+        <joint name="j4" value="-2.02179" />
+        <joint name="j5" value="1.56797" />
+        <joint name="j6" value="-1.76215" />
+    </group_state>
+    <group_state name="pallet_3_pick" group="fr3wms_arm">
+        <joint name="j1" value="-0.182838" />
+        <joint name="j2" value="-2.27476" />
+        <joint name="j3" value="-0.881353" />
+        <joint name="j4" value="-1.54011" />
+        <joint name="j5" value="1.55313" />
+        <joint name="j6" value="-1.73369" />
+    </group_state>
+    <group_state name="conveyor_approach" group="fr3wms_arm">
+        <joint name="j1" value="1.84986" />
+        <joint name="j2" value="-0.708007" />
+        <joint name="j3" value="0.427346" />
+        <joint name="j4" value="-1.30855" />
+        <joint name="j5" value="-1.56835" />
+        <joint name="j6" value="3.42028" />
+    </group_state>
+    <group_state name="conveyor_place" group="fr3wms_arm">
+        <joint name="j1" value="1.8501" />
+        <joint name="j2" value="-0.749885" />
+        <joint name="j3" value="0.797851" />
+        <joint name="j4" value="-1.63386" />
+        <joint name="j5" value="-1.56865" />
+        <joint name="j6" value="3.42084" />
+    </group_state>
+    <group_state name="open" group="fr3wms_gripper">
+        <joint name="robotiq_85_left_knuckle_joint" value="0" />
+    </group_state>
+    <group_state name="close" group="fr3wms_gripper">
+        <joint name="robotiq_85_left_knuckle_joint" value="0.7929" />
+    </group_state>
+    
+    <end_effector name="robotiq_2f85" parent_link="tool_Link" group="fr3wms_gripper" parent_group="fr3wms_arm" />
+    
+    <disable_collisions link1="base_link" link2="shoulder_Link" reason="Adjacent" />
+    <disable_collisions link1="base_link" link2="upperarm_Link" reason="Never" />
+    <disable_collisions link1="forearm_Link" link2="upperarm_Link" reason="Adjacent" />
+    <disable_collisions link1="forearm_Link" link2="wrist1_Link" reason="Adjacent" />
+    <disable_collisions link1="forearm_Link" link2="wrist2_Link" reason="Never" />
+    <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_finger_tip_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_inner_knuckle_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_left_knuckle_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_right_finger_tip_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_right_inner_knuckle_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_base_link" link2="robotiq_85_right_knuckle_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_base_link" link2="ur_to_robotiq_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_left_finger_tip_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_left_knuckle_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_right_finger_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_right_finger_tip_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_right_inner_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_finger_link" link2="robotiq_85_right_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_finger_link" link2="ur_to_robotiq_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_finger_tip_link" link2="robotiq_85_left_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_finger_tip_link" link2="robotiq_85_right_finger_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_finger_tip_link" link2="robotiq_85_right_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_finger_tip_link" link2="ur_to_robotiq_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_inner_knuckle_link" link2="robotiq_85_left_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_inner_knuckle_link" link2="robotiq_85_right_finger_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_inner_knuckle_link" link2="robotiq_85_right_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_inner_knuckle_link" link2="ur_to_robotiq_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_knuckle_link" link2="robotiq_85_right_finger_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_knuckle_link" link2="robotiq_85_right_finger_tip_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_knuckle_link" link2="robotiq_85_right_inner_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_knuckle_link" link2="robotiq_85_right_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_left_knuckle_link" link2="ur_to_robotiq_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_right_finger_link" link2="robotiq_85_right_finger_tip_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_right_finger_link" link2="robotiq_85_right_knuckle_link" reason="Adjacent" />
+    <disable_collisions link1="robotiq_85_right_finger_link" link2="ur_to_robotiq_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_right_finger_tip_link" link2="robotiq_85_right_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_right_finger_tip_link" link2="ur_to_robotiq_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_right_inner_knuckle_link" link2="robotiq_85_right_knuckle_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_right_inner_knuckle_link" link2="ur_to_robotiq_link" reason="Never" />
+    <disable_collisions link1="robotiq_85_right_knuckle_link" link2="ur_to_robotiq_link" reason="Never" />
+    <disable_collisions link1="shoulder_Link" link2="upperarm_Link" reason="Adjacent" />
+    <disable_collisions link1="ur_to_robotiq_link" link2="wrist3_Link" reason="Adjacent" />
+    <disable_collisions link1="wrist1_Link" link2="wrist2_Link" reason="Adjacent" />
+    <disable_collisions link1="wrist1_Link" link2="wrist3_Link" reason="Never" />
+    <disable_collisions link1="wrist2_Link" link2="wrist3_Link" reason="Adjacent" />
+<disable_collisions link1="robotiq_85_left_inner_knuckle_link" link2="robotiq_85_left_finger_tip_link" reason="mechanism_loop_closure" /><disable_collisions link1="robotiq_85_right_inner_knuckle_link" link2="robotiq_85_right_finger_tip_link" reason="mechanism_loop_closure" /></robot>

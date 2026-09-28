@@ -887,8 +887,9 @@ def _attach_sim_demo_jobs(runtime, config, manifest, workcell_path) -> None:
     _workcell = runtime.sim_demo_jobs.workcell or {}
 
     def _observe_colors(models):
+        from robots.fr3_gazebo.paths import gz_partition
         return observe_gazebo_colors(str(_workcell.get("world_name") or ""),
-                                     str(_workcell.get("gz_partition") or ""), models)
+                                     gz_partition(_workcell), models)
 
     runtime.sim_demo_color_observer = _observe_colors
     # 생략·지시 표현의 짧은 대화 맥락 — 브라우저 세션별(서버 메모리, 10분). 인증 아님.

@@ -16,9 +16,10 @@
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FR3_REPO="${FORSTICK2_FR3_REPO:-/home/asd/external/frcobot_ros2}"
+source "$ROOT/scripts/lib/env.sh"
+FR3_REPO="$FORSTICK2_FR3_REPO"
 FR3_URDF="$FR3_REPO/fairino_description/urdf/FR3WMS.urdf"
-ROBOTIQ_REPO="${FORSTICK2_ROBOTIQ_REPO:-/home/asd/external/robotiq_ros}"
+ROBOTIQ_REPO="$FORSTICK2_ROBOTIQ_REPO"
 ROBOTIQ_DESC="$ROBOTIQ_REPO/grippers/robotiq_description"
 WORKCELL_JSON="$ROOT/config/workcell/fr3_2f85_workcell.json"
 WORLD="$ROOT/config/gazebo/fr3_2f85_workcell.sdf"
@@ -26,8 +27,8 @@ XACRO_FILE="$ROOT/config/gazebo/fr3wms_with_2f85.urdf.xacro"
 ARM_CONTROLLERS="$ROOT/config/gazebo/fr3wms_controllers.yaml"
 GRIPPER_CONTROLLERS="$ROOT/config/gazebo/fr3wms_gripper_controllers.yaml"
 MOUNTING="$ROOT/config/profiles/fr3wms_to_robotiq_2f85_mounting.json"
-LOG_DIR="${FORSTICK2_WORKCELL_LOG_DIR:-/tmp/forstick2_workcell}"
-OVERLAY="/tmp/forstick2_gazebo/overlay"
+LOG_DIR="$FORSTICK2_WORKCELL_LOG_DIR"
+OVERLAY="$FORSTICK2_GZ_LOG_DIR/overlay"
 URDF_DIR="$LOG_DIR/workcell"
 WORLD_NAME="forstick2_fr3_2f85_workcell"
 MODEL_NAME="fr3wms_2f85_workcell"
@@ -54,13 +55,13 @@ for path in "$FR3_URDF" "$ROBOTIQ_DESC/urdf/robotiq_2f_85_macro.urdf.xacro" \
             "$WORKCELL_JSON"; do
   if [[ ! -f "$path" ]]; then
     fail "자산이 없다: $path"
-    fail "asset.missing — 없는 자산을 대체하지 않는다."
+    fail "asset.missing — 없는 자산을 대체하지 않는다. 받기: ./scripts/setup/fetch_assets.sh"
     exit 3
   fi
 done
 
 mkdir -p "$LOG_DIR" "$URDF_DIR"
-source /opt/ros/lyrical/setup.bash
+forstick2_source_ros
 
 alive() { [[ -f "$LOG_DIR/$1.pid" ]] && kill -0 "$(cat "$LOG_DIR/$1.pid")" 2>/dev/null; }
 
@@ -176,9 +177,9 @@ print(f"[workcell] MoveIt용 메시 URI 치환 {count}건 -> {target}")
 PYGEN
 
 # derive_workcell_poses.py가 /tmp/forstick2_gazebo/workcell/ 를 본다.
-mkdir -p /tmp/forstick2_gazebo/workcell
+mkdir -p "$FORSTICK2_GZ_LOG_DIR/workcell"
 ln -sfn "$URDF_DIR/fr3wms_with_2f85.moveit.urdf" \
-        /tmp/forstick2_gazebo/workcell/fr3wms_with_2f85.moveit.urdf
+        "$FORSTICK2_GZ_LOG_DIR/workcell/fr3wms_with_2f85.moveit.urdf"
 
 if [[ "$URDF_ONLY" -eq 1 ]]; then
   say "--urdf-only: Gazebo를 띄우지 않고 끝낸다."

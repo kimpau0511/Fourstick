@@ -27,6 +27,7 @@ from core.execution_result import ExecutionResult, rejected, success, unverifiab
 from core.execution_state import ExecutionState
 from core.reason_codes import ReasonCode
 from robots.base.robot_adapter import RobotAdapter, RobotStateSnapshot
+from robots.fr3_gazebo.paths import gz_partition as _env_partition, ros_domain_id as _env_domain
 from robots.fr3_gazebo.transport import (
     GoalOutcome,
     JointObservation,
@@ -231,8 +232,8 @@ def load_workcell_resources(
         workcell_id=workcell["workcell_id"],
         workcell_version=workcell["workcell_version"],
         world_name=workcell["world_name"],
-        gz_partition=workcell["gz_partition"],
-        ros_domain_id=int(workcell["ros_domain_id"]),
+        gz_partition=_env_partition(workcell),
+        ros_domain_id=_env_domain(workcell),
         resources=resources,
         move_pose=move_pose,
         pick_pose=pick_pose,

@@ -1,0 +1,635 @@
+{
+  "source": {
+    "urdf": "fairino_description/urdf/FR3WMS.urdf (외부 경로 /home/asd/external/frcobot_ros2)",
+    "urdf_sha256": "73d01435d7be367176145de1376731549e9f1bf7a2bf130d09f9bf0976259767",
+    "collision_meshes": {
+      "base_link": {
+        "mesh": "fairino_description/meshes/FR3WMS/collision/base_link.STL",
+        "sha256": "896ac9bc52e36b1b",
+        "points_sampled": 4000,
+        "extent_m": [
+          0.128,
+          0.128,
+          0.0798
+        ]
+      },
+      "shoulder_Link": {
+        "mesh": "fairino_description/meshes/FR3WMS/collision/shoulder_Link.STL",
+        "sha256": "a27a33ec60c83918",
+        "points_sampled": 4000,
+        "extent_m": [
+          0.09,
+          0.0988,
+          0.1169
+        ]
+      },
+      "upperarm_Link": {
+        "mesh": "fairino_description/meshes/FR3WMS/collision/upperarm_Link.STL",
+        "sha256": "b53ffcc3c7459d19",
+        "points_sampled": 4000,
+        "extent_m": [
+          0.3696,
+          0.09,
+          0.1169
+        ]
+      },
+      "forearm_Link": {
+        "mesh": "fairino_description/meshes/FR3WMS/collision/forearm_Link.STL",
+        "sha256": "512b15f7a74129c0",
+        "points_sampled": 4000,
+        "extent_m": [
+          0.3247,
+          0.0896,
+          0.1018
+        ]
+      },
+      "wrist1_Link": {
+        "mesh": "fairino_description/meshes/FR3WMS/collision/wrist1_Link.STL",
+        "sha256": "b52dafe2fecf16b1",
+        "points_sampled": 4000,
+        "extent_m": [
+          0.08,
+          0.1016,
+          0.0888
+        ]
+      },
+      "wrist2_Link": {
+        "mesh": "fairino_description/meshes/FR3WMS/collision/wrist2_Link.STL",
+        "sha256": "6015e4cd0c7f3460",
+        "points_sampled": 4000,
+        "extent_m": [
+          0.08,
+          0.1016,
+          0.0888
+        ]
+      },
+      "wrist3_Link": {
+        "mesh": "fairino_description/meshes/FR3WMS/collision/wrist3_Link.STL",
+        "sha256": "a80e158c1451f1d0",
+        "points_sampled": 4000,
+        "extent_m": [
+          0.0802,
+          0.0804,
+          0.0468
+        ]
+      }
+    }
+  },
+  "method": {
+    "sample_points_per_link": 4000,
+    "grid_per_joint": 5,
+    "random_samples": 20000,
+    "seed": 20260916,
+    "poses_evaluated": 35625,
+    "proximity_threshold_m": 0.01,
+    "candidates_per_pair": 8,
+    "aabb_close_events": 188478,
+    "exact_distance_computations": 120,
+    "note": "표본 점군 최소거리다. 관통 깊이는 계산하지 않는다. 거친 표본으로 후보 자세를 고르고 전수 계산으로 확정하므로, 진짜 최소 자세를 놓칠 가능성이 남는다 — 이 한계를 결론에 함께 적는다"
+  },
+  "adjacent_pairs": [
+    [
+      "base_link",
+      "shoulder_Link"
+    ],
+    [
+      "forearm_Link",
+      "upperarm_Link"
+    ],
+    [
+      "forearm_Link",
+      "wrist1_Link"
+    ],
+    [
+      "shoulder_Link",
+      "upperarm_Link"
+    ],
+    [
+      "tool_Link",
+      "wrist3_Link"
+    ],
+    [
+      "wrist1_Link",
+      "wrist2_Link"
+    ],
+    [
+      "wrist2_Link",
+      "wrist3_Link"
+    ]
+  ],
+  "non_adjacent_pairs_checked": [
+    [
+      "base_link",
+      "forearm_Link"
+    ],
+    [
+      "base_link",
+      "upperarm_Link"
+    ],
+    [
+      "base_link",
+      "wrist1_Link"
+    ],
+    [
+      "base_link",
+      "wrist2_Link"
+    ],
+    [
+      "base_link",
+      "wrist3_Link"
+    ],
+    [
+      "forearm_Link",
+      "shoulder_Link"
+    ],
+    [
+      "forearm_Link",
+      "wrist2_Link"
+    ],
+    [
+      "forearm_Link",
+      "wrist3_Link"
+    ],
+    [
+      "shoulder_Link",
+      "wrist1_Link"
+    ],
+    [
+      "shoulder_Link",
+      "wrist2_Link"
+    ],
+    [
+      "shoulder_Link",
+      "wrist3_Link"
+    ],
+    [
+      "upperarm_Link",
+      "wrist1_Link"
+    ],
+    [
+      "upperarm_Link",
+      "wrist2_Link"
+    ],
+    [
+      "upperarm_Link",
+      "wrist3_Link"
+    ],
+    [
+      "wrist1_Link",
+      "wrist3_Link"
+    ]
+  ],
+  "closest_per_pair": [
+    {
+      "pair": [
+        "base_link",
+        "wrist1_Link"
+      ],
+      "min_distance_m": 0.00013,
+      "coarse_distance_m": 0.00071,
+      "angles_rad": {
+        "j1": 2.1199,
+        "j2": -3.2728,
+        "j3": -2.7582,
+        "j4": -0.8325,
+        "j5": 2.3947,
+        "j6": 1.0617
+      }
+    },
+    {
+      "pair": [
+        "upperarm_Link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.00013,
+      "coarse_distance_m": 0.00031,
+      "angles_rad": {
+        "j1": -0.269,
+        "j2": 1.4511,
+        "j3": -2.4357,
+        "j4": -4.1505,
+        "j5": -2.2882,
+        "j6": 0.8969
+      }
+    },
+    {
+      "pair": [
+        "upperarm_Link",
+        "wrist1_Link"
+      ],
+      "min_distance_m": 0.00014,
+      "coarse_distance_m": 0.00039,
+      "angles_rad": {
+        "j1": 1.0216,
+        "j2": -1.3556,
+        "j3": 2.7344,
+        "j4": -3.1945,
+        "j5": 2.0714,
+        "j6": 2.7898
+      }
+    },
+    {
+      "pair": [
+        "upperarm_Link",
+        "wrist2_Link"
+      ],
+      "min_distance_m": 0.00016,
+      "coarse_distance_m": 0.00045,
+      "angles_rad": {
+        "j1": 0.5611,
+        "j2": 0.8254,
+        "j3": 2.6317,
+        "j4": 0.7584,
+        "j5": 0.097,
+        "j6": -2.3994
+      }
+    },
+    {
+      "pair": [
+        "base_link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.00019,
+      "coarse_distance_m": 0.00045,
+      "angles_rad": {
+        "j1": -1.5272,
+        "j2": -4.6251,
+        "j3": -2.7925,
+        "j4": 1.4835,
+        "j5": 3.0543,
+        "j6": -6.2832
+      }
+    },
+    {
+      "pair": [
+        "base_link",
+        "forearm_Link"
+      ],
+      "min_distance_m": 0.00022,
+      "coarse_distance_m": 0.00056,
+      "angles_rad": {
+        "j1": 0.0157,
+        "j2": -4.5538,
+        "j3": -2.5181,
+        "j4": 0.4565,
+        "j5": 2.8021,
+        "j6": 2.8213
+      }
+    },
+    {
+      "pair": [
+        "shoulder_Link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.00023,
+      "coarse_distance_m": 0.0006,
+      "angles_rad": {
+        "j1": -2.4324,
+        "j2": -0.6575,
+        "j3": -2.5111,
+        "j4": -3.4228,
+        "j5": 2.6977,
+        "j6": 3.5737
+      }
+    },
+    {
+      "pair": [
+        "shoulder_Link",
+        "wrist2_Link"
+      ],
+      "min_distance_m": 0.00026,
+      "coarse_distance_m": 0.00026,
+      "angles_rad": {
+        "j1": -3.0543,
+        "j2": -4.6251,
+        "j3": 2.7925,
+        "j4": -0.0436,
+        "j5": 0.0,
+        "j6": 0.0
+      }
+    },
+    {
+      "pair": [
+        "forearm_Link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.0003,
+      "coarse_distance_m": 0.00098,
+      "angles_rad": {
+        "j1": -2.0634,
+        "j2": -3.2379,
+        "j3": -1.9164,
+        "j4": 1.0636,
+        "j5": 2.9795,
+        "j6": -5.8544
+      }
+    },
+    {
+      "pair": [
+        "base_link",
+        "wrist2_Link"
+      ],
+      "min_distance_m": 0.00031,
+      "coarse_distance_m": 0.00052,
+      "angles_rad": {
+        "j1": 1.5272,
+        "j2": -4.6251,
+        "j3": -2.7925,
+        "j4": -4.6251,
+        "j5": 0.0,
+        "j6": -6.2832
+      }
+    },
+    {
+      "pair": [
+        "forearm_Link",
+        "shoulder_Link"
+      ],
+      "min_distance_m": 0.00068,
+      "coarse_distance_m": 0.00103,
+      "angles_rad": {
+        "j1": 0.6519,
+        "j2": 1.2594,
+        "j3": 2.735,
+        "j4": 0.0002,
+        "j5": 0.2325,
+        "j6": 5.0064
+      }
+    },
+    {
+      "pair": [
+        "shoulder_Link",
+        "wrist1_Link"
+      ],
+      "min_distance_m": 0.00879,
+      "coarse_distance_m": 0.00879,
+      "angles_rad": {
+        "j1": -1.8683,
+        "j2": 0.5983,
+        "j3": 2.786,
+        "j4": 1.3027,
+        "j5": -2.9571,
+        "j6": -3.7856
+      }
+    },
+    {
+      "pair": [
+        "forearm_Link",
+        "wrist2_Link"
+      ],
+      "min_distance_m": 0.01051,
+      "coarse_distance_m": 0.0107,
+      "angles_rad": {
+        "j1": -0.5198,
+        "j2": -1.7244,
+        "j3": 2.1736,
+        "j4": 1.4717,
+        "j5": -2.962,
+        "j6": 4.4256
+      }
+    },
+    {
+      "pair": [
+        "base_link",
+        "upperarm_Link"
+      ],
+      "min_distance_m": 0.01065,
+      "coarse_distance_m": 0.01167,
+      "angles_rad": {
+        "j1": 1.855,
+        "j2": 1.4291,
+        "j3": 1.3731,
+        "j4": -1.7008,
+        "j5": 1.9029,
+        "j6": 3.6126
+      }
+    },
+    {
+      "pair": [
+        "wrist1_Link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.01627,
+      "coarse_distance_m": 0.01627,
+      "angles_rad": {
+        "j1": 2.6135,
+        "j2": -0.9771,
+        "j3": -0.8147,
+        "j4": 0.4158,
+        "j5": 0.9858,
+        "j6": -1.9302
+      }
+    }
+  ],
+  "pairs_within_threshold": [
+    {
+      "pair": [
+        "base_link",
+        "wrist1_Link"
+      ],
+      "min_distance_m": 0.00013,
+      "coarse_distance_m": 0.00071,
+      "angles_rad": {
+        "j1": 2.1199,
+        "j2": -3.2728,
+        "j3": -2.7582,
+        "j4": -0.8325,
+        "j5": 2.3947,
+        "j6": 1.0617
+      }
+    },
+    {
+      "pair": [
+        "upperarm_Link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.00013,
+      "coarse_distance_m": 0.00031,
+      "angles_rad": {
+        "j1": -0.269,
+        "j2": 1.4511,
+        "j3": -2.4357,
+        "j4": -4.1505,
+        "j5": -2.2882,
+        "j6": 0.8969
+      }
+    },
+    {
+      "pair": [
+        "upperarm_Link",
+        "wrist1_Link"
+      ],
+      "min_distance_m": 0.00014,
+      "coarse_distance_m": 0.00039,
+      "angles_rad": {
+        "j1": 1.0216,
+        "j2": -1.3556,
+        "j3": 2.7344,
+        "j4": -3.1945,
+        "j5": 2.0714,
+        "j6": 2.7898
+      }
+    },
+    {
+      "pair": [
+        "upperarm_Link",
+        "wrist2_Link"
+      ],
+      "min_distance_m": 0.00016,
+      "coarse_distance_m": 0.00045,
+      "angles_rad": {
+        "j1": 0.5611,
+        "j2": 0.8254,
+        "j3": 2.6317,
+        "j4": 0.7584,
+        "j5": 0.097,
+        "j6": -2.3994
+      }
+    },
+    {
+      "pair": [
+        "base_link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.00019,
+      "coarse_distance_m": 0.00045,
+      "angles_rad": {
+        "j1": -1.5272,
+        "j2": -4.6251,
+        "j3": -2.7925,
+        "j4": 1.4835,
+        "j5": 3.0543,
+        "j6": -6.2832
+      }
+    },
+    {
+      "pair": [
+        "base_link",
+        "forearm_Link"
+      ],
+      "min_distance_m": 0.00022,
+      "coarse_distance_m": 0.00056,
+      "angles_rad": {
+        "j1": 0.0157,
+        "j2": -4.5538,
+        "j3": -2.5181,
+        "j4": 0.4565,
+        "j5": 2.8021,
+        "j6": 2.8213
+      }
+    },
+    {
+      "pair": [
+        "shoulder_Link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.00023,
+      "coarse_distance_m": 0.0006,
+      "angles_rad": {
+        "j1": -2.4324,
+        "j2": -0.6575,
+        "j3": -2.5111,
+        "j4": -3.4228,
+        "j5": 2.6977,
+        "j6": 3.5737
+      }
+    },
+    {
+      "pair": [
+        "shoulder_Link",
+        "wrist2_Link"
+      ],
+      "min_distance_m": 0.00026,
+      "coarse_distance_m": 0.00026,
+      "angles_rad": {
+        "j1": -3.0543,
+        "j2": -4.6251,
+        "j3": 2.7925,
+        "j4": -0.0436,
+        "j5": 0.0,
+        "j6": 0.0
+      }
+    },
+    {
+      "pair": [
+        "forearm_Link",
+        "wrist3_Link"
+      ],
+      "min_distance_m": 0.0003,
+      "coarse_distance_m": 0.00098,
+      "angles_rad": {
+        "j1": -2.0634,
+        "j2": -3.2379,
+        "j3": -1.9164,
+        "j4": 1.0636,
+        "j5": 2.9795,
+        "j6": -5.8544
+      }
+    },
+    {
+      "pair": [
+        "base_link",
+        "wrist2_Link"
+      ],
+      "min_distance_m": 0.00031,
+      "coarse_distance_m": 0.00052,
+      "angles_rad": {
+        "j1": 1.5272,
+        "j2": -4.6251,
+        "j3": -2.7925,
+        "j4": -4.6251,
+        "j5": 0.0,
+        "j6": -6.2832
+      }
+    },
+    {
+      "pair": [
+        "forearm_Link",
+        "shoulder_Link"
+      ],
+      "min_distance_m": 0.00068,
+      "coarse_distance_m": 0.00103,
+      "angles_rad": {
+        "j1": 0.6519,
+        "j2": 1.2594,
+        "j3": 2.735,
+        "j4": 0.0002,
+        "j5": 0.2325,
+        "j6": 5.0064
+      }
+    },
+    {
+      "pair": [
+        "shoulder_Link",
+        "wrist1_Link"
+      ],
+      "min_distance_m": 0.00879,
+      "coarse_distance_m": 0.00879,
+      "angles_rad": {
+        "j1": -1.8683,
+        "j2": 0.5983,
+        "j3": 2.786,
+        "j4": 1.3027,
+        "j5": -2.9571,
+        "j6": -3.7856
+      }
+    }
+  ],
+  "closest_pair": {
+    "pair": [
+      "base_link",
+      "wrist1_Link"
+    ],
+    "min_distance_m": 0.00013,
+    "coarse_distance_m": 0.00071,
+    "angles_rad": {
+      "j1": 2.1199,
+      "j2": -3.2728,
+      "j3": -2.7582,
+      "j4": -0.8325,
+      "j5": 2.3947,
+      "j6": 1.0617
+    }
+  },
+  "conclusion": "근접 쌍 12개 발견 — 자기충돌 행렬을 재검토해야 한다"
+}

@@ -15,9 +15,9 @@
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FR3_REPO="${FORSTICK2_FR3_REPO:-/home/asd/external/frcobot_ros2}"
+FR3_REPO="${FORSTICK2_FR3_REPO:-$ROOT/third_party/frcobot_ros2}"
 FR3_URDF="$FR3_REPO/fairino_description/urdf/FR3WMS.urdf"
-ROBOTIQ_REPO="${FORSTICK2_ROBOTIQ_REPO:-/home/asd/external/robotiq_ros}"
+ROBOTIQ_REPO="${FORSTICK2_ROBOTIQ_REPO:-$ROOT/third_party/robotiq_ros}"
 ROBOTIQ_DESC="$ROBOTIQ_REPO/grippers/robotiq_description"
 # arm-only 기준선(fr3_cell.sdf)을 건드리지 않기 위해 조립 전용 world를 쓴다.
 WORLD="$ROOT/config/gazebo/fr3_2f85_cell.sdf"

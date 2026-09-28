@@ -16,3 +16,8 @@ html/임시.txt
 
 # 측정 산출물 — 스크립트로 재생성된다
 reports/
+
+# 외부 자산 복제 위치(scripts/setup/fetch_assets.sh) — 재배포 조건이 불명확한 자산이 있어 Git에 넣지 않는다
+third_party/
+# 사용자 PC 전용 경로 설정(config/local.env.example을 복사해 쓴다)
+config/local.env

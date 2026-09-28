@@ -1,0 +1,32 @@
+{
+  "schema": "forstick2.loop_closure_evidence/1",
+  "recorded_at": "2026-09-16",
+  "subject": "Robotiq 2F-85 URDF의 닫힌 4절 링크 루프 폐쇄 쌍",
+  "pairs": [
+    ["robotiq_85_left_inner_knuckle_link", "robotiq_85_left_finger_tip_link"],
+    ["robotiq_85_right_inner_knuckle_link", "robotiq_85_right_finger_tip_link"]
+  ],
+  "why_no_joint": "공식 robotiq_description은 2F-85를 열린 트리 + mimic 조인트 5개로 모델링한다. 실물의 4절 링크 루프를 끊어 놓았기 때문에 이 두 링크 사이에 URDF 조인트가 없고, collisions_updater의 Adjacent 판정에도 걸리지 않는다. 실물에서는 핀으로 직접 연결돼 있다.",
+  "moveit_observation": {
+    "service": "/check_state_validity",
+    "group": "fr3wms_arm",
+    "arm_pose": "workcell_safe_home",
+    "gripper_sweep_rad": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.7929],
+    "result": "9개 표본 전부에서 valid=false, 접촉 쌍은 매번 정확히 이 2쌍뿐이었다",
+    "conclusion": "자세에 의존하지 않는다 — 특정 구성에서 부딪히는 충돌이 아니라 모델 자체의 상시 겹침이다"
+  },
+  "gazebo_observation": {
+    "topic": "/world/forstick2_fr3_2f85_workcell/contacts",
+    "result": "이 쌍의 접촉이 보고되지 않는다",
+    "note": "gz 물리 엔진은 이 모델의 mimic 제약을 만들지 못한다(gz_server.log: 'the chosen physics engine does not support mimic constraints'). 따라서 Gazebo 접촉 부재를 단독 근거로 쓰지 않는다"
+  },
+  "why_our_point_cloud_review_was_wrong": {
+    "earlier_claim": "reports/gripper/self_collision_review.json이 이 쌍을 최소 0.01344 m / 0.0287 m로 적었다(aabb_lower_bound)",
+    "actual_aabb_gap_m": -0.01336,
+    "cause": "scripts/scripts_support_stl.py의 read_stl_points는 STL **꼭짓점만** 표본으로 쓴다. 면이 서로를 관통하는 경우를 감지하지 못하고, 경계상자가 겹칠 때 양수 거리를 적으면 '멀다'는 잘못된 근거가 된다",
+    "fix": "scripts/review_gripper_self_collision.py가 경계상자가 겹친 쌍을 unverifiable로 남기도록 고쳤다. 정확한 판정은 MoveIt(FCL 삼각형 검사)이 한다"
+  },
+  "decision": "config/moveit/fr3_2f85_workcell.base.srdf에 reason=\"mechanism_loop_closure\"로 명시 제외한다. scripts/prune_self_collision_srdf.py가 이 이유를 보존한다.",
+  "not_a_workaround": "계획을 통과시키려고 실제 충돌 검사를 끄는 것이 아니다. 이 2쌍만, 상시 겹침이라는 관측 근거와 기구학적 이유를 적어 제외한다. 다른 쌍은 여전히 검사 대상이다.",
+  "scope": "이 제외는 작업 셀 SRDF에만 적용한다. arm-only(config/moveit/fr3wms_arm.base.srdf)와 단순 조립 셀(config/moveit/fr3wms_with_2f85.base.srdf)은 건드리지 않는다."
+}

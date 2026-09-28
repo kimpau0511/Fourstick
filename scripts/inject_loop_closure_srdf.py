@@ -20,7 +20,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_EVIDENCE = ROOT / "reports/workcell/loop_closure_pairs.json"
+sys.path.insert(0, str(ROOT))
+from core.paths import evidence_dir  # noqa: E402
+#: Git에 포함된 근거 스냅숏(config/evidence). 원본 측정 기록은 reports/workcell/loop_closure_pairs.json.
+DEFAULT_EVIDENCE = evidence_dir() / "loop_closure_pairs.json"
 REASON = "mechanism_loop_closure"
 
 

@@ -91,11 +91,12 @@ class SimDemoGoals:
                  environment_path=None):
         self.jobs = jobs
         from pathlib import Path
+        from core.paths import workcell_log_dir as _workcell_log_dir
         state_path = getattr(getattr(jobs, "state", None), "path", None)
         self._environment_path = Path(
             environment_path if environment_path is not None else
             (Path(state_path).with_name("sim_demo_environment.json") if state_path
-             else "/tmp/forstick2_workcell/sim_demo_environment.json"))
+             else _workcell_log_dir() / "sim_demo_environment.json"))
         self._clock = clock
         self._sleep = sleep
         self._poll_sec = poll_sec

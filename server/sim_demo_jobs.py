@@ -52,7 +52,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEMO_SCRIPT = ROOT / "scripts" / "demo_workcell_pick_place.sh"
 JOBS_DIR = ROOT / "reports" / "workcell" / "sim_demo_jobs"
 #: 시연 스크립트가 보는 외부 정지 요청 파일(`demo_workcell_pick_place.STOP_REQUEST`).
-STOP_REQUEST = Path("/tmp/forstick2_workcell/sim_demo_stop_request.json")
+from core.paths import workcell_log_dir  # noqa: E402
+STOP_REQUEST = workcell_log_dir() / "sim_demo_stop_request.json"
 
 ACTIONS = ("transfer", "return", "move", "route", "resume_preflight", "resume",
            "restore", "reconcile")

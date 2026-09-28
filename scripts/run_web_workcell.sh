@@ -12,6 +12,7 @@
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/env.sh"
 export FORSTICK2_WORKCELL_ROBOT=1
 # G1 휴머노이드(별도 Gazebo 파티션·별도 제어기)를 웹에서 고를 수 있게 한다. 끄려면 0.
 export FORSTICK2_HUMANOID_WEB="${FORSTICK2_HUMANOID_WEB:-1}"
@@ -24,11 +25,8 @@ export GZ_PARTITION="${GZ_PARTITION:-forstick2_fr3_workcell}"
 # **ROS 환경을 소스한다.** 웹 서버가 planning scene·컨트롤러에 말하려면
 # rclpy가 필요하다. 소스하지 않으면 기하 검사기가 붙지 않아 안전 판단이
 # 계속 ASK(geometry.validator_unavailable)로 남는다(실측).
-if [[ -z "${AMENT_PREFIX_PATH:-}" ]]; then
-  # shellcheck disable=SC1091
-  source /opt/ros/lyrical/setup.bash
-fi
-if ! "$ROOT/.venv/bin/python" -c "import rclpy" 2>/dev/null; then
+forstick2_source_ros || exit 5
+if ! "$FORSTICK2_VENV/bin/python" -c "import rclpy" 2>/dev/null; then
   echo "[web-wc] rclpy를 쓸 수 없다 — ROS 환경을 소스했는지 확인한다." >&2
   echo "[web-wc] 기하 검사기가 붙지 않으면 안전 판단이 ASK로 남는다." >&2
   exit 5

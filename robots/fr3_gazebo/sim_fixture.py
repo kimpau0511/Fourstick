@@ -63,6 +63,8 @@ JOINT_PARENT_LINK = "wrist3_Link"
 JOINT_CHILD_LINK = "body"
 #: 붙임 상태 알림을 기다리는 시간(s).
 JOINT_STATE_TIMEOUT_SEC = 2.0
+#: 붙임/뗌 알림이 이 시간 안에 없으면 같은 요청을 다시 보낸다(`_send_until`).
+RESEND_SEC = 0.4
 
 
 def joint_record_path():
@@ -70,7 +72,8 @@ def joint_record_path():
     import os
     from pathlib import Path
 
-    base = Path(os.environ.get("FORSTICK2_WORKCELL_LOG_DIR", "/tmp/forstick2_workcell"))
+    from core.paths import workcell_log_dir
+    base = workcell_log_dir()
     return base / "fixture_joints.json"
 
 
@@ -450,10 +453,35 @@ class GazeboObjectFixture:
             publisher = self._node.advertise(topic, Empty)
             self._publishers[topic] = publisher
         # 구독자가 붙을 시간을 준다(새 publisher는 발견까지 수십 ms가 걸린다).
-        deadline = time.monotonic() + 1.0
+        started = time.monotonic()
+        deadline = started + 1.0
         while not publisher.has_connections() and time.monotonic() < deadline:
             time.sleep(0.02)
+        connected = publisher.has_connections()
         publisher.publish(Empty())
+        # 진단: 보낼 때 구독자가 붙어 있었는지와 기다린 시간(알림이 빠지는 원인을 가르려고 남긴다).
+        self.last_publish = {"topic": topic, "connected": bool(connected),
+                             "waited_s": round(time.monotonic() - started, 3)}
+        print(f"[fixture-diag] publish {topic} connected={connected} "
+              f"waited={self.last_publish['waited_s']}s", flush=True)
+
+    def _send_until(self, model: str, kind: str, want: str, since: float,
+                    timeout_sec: float = JOINT_STATE_TIMEOUT_SEC) -> bool:
+        """붙임/뗌 요청을 보내고 알림이 올 때까지 짧은 간격으로 **다시 보낸다**.
+
+        새 프로세스가 gz-sim에 처음 보내는 메시지는 광고 직후 바로 보내면 빠질 수 있다 — 구독자가 이미
+        알려져 `has_connections()`는 참인데 실제 전송 연결이 아직 없는 경우다(실측 2026-09-28: 세계를 새로
+        띄운 뒤 첫 작업에서 두 번 모두, 붙임은 시스템 추가로 하고 뗌 요청이 그 프로세스의 첫 발행이었다 —
+        알림 없음, 2 s 뒤 다시 보낸 뗌은 즉시 알림). 같은 요청을 다시 보내도 이미 그 상태면 시스템이 무시한다.
+        """
+        deadline = time.time() + timeout_sec
+        while True:
+            self._publish_empty(self.joint_topics(model)[kind])
+            if self._wait_joint_state(model, want, since,
+                                      timeout_sec=max(0.05, min(RESEND_SEC, deadline - time.time()))):
+                return True
+            if time.time() >= deadline:
+                return False
 
     def _wait_joint_state(self, model: str, want: str, since: float,
                           timeout_sec: float = JOINT_STATE_TIMEOUT_SEC) -> bool:
@@ -483,8 +511,7 @@ class GazeboObjectFixture:
             if self._wait_joint_state(model, "attached", started):
                 return True, "붙임 시스템을 넣었다(넣는 순간 붙음)"
             # 알림 토픽 발견이 늦어 첫 알림을 놓쳤을 수 있다 — 떼었다 다시 붙여 확인한다.
-        self._publish_empty(self.joint_topics(model)["attach"])
-        if self._wait_joint_state(model, "attached", started):
+        if self._send_until(model, "attach", "attached", started):
             return True, "attach 토픽으로 붙였다"
         again = time.time()
         self._publish_empty(self.joint_topics(model)["detach"])
@@ -500,12 +527,13 @@ class GazeboObjectFixture:
         if not self.joint_system_loaded(model):
             return True, "붙임 시스템이 없다(붙어 있지 않다)"
         started = time.time()
-        self._publish_empty(self.joint_topics(model)["detach"])
-        if self._wait_joint_state(model, "detached", started):
+        if self._send_until(model, "detach", "detached", started):
             _write_joint_record(model, "detached", "detach 토픽 → detached 알림")
             return True, "detach 토픽으로 뗐다"
         _write_joint_record(model, "unknown", "detach 뒤 알림 없음")
-        return False, "붙임 시스템이 detached를 알리지 않았다(이미 떨어져 있었을 수 있다)"
+        return False, ("붙임 시스템이 detached를 알리지 않았다(이미 떨어져 있었을 수 있다)"
+                       f" · 보냄 {getattr(self, 'last_publish', None)}"
+                       f" · 마지막 알림 {self._joint_state.get(model)}")
 
     def release_joint_if_any(self, model: str) -> None:
         """복원·배치 전에 관절이 남아 있으면 뗀다(지운 모델을 가리키는 관절을 남기지 않는다)."""

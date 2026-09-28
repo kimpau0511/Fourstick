@@ -1,0 +1,22 @@
+# 웹 서버 가상환경(.venv, --system-site-packages) 고정 목록 — 개발 PC .venv에서 그대로 뽑았다(2026-09-28).
+# numpy·pydantic·pyyaml·uvicorn·wsproto는 Ubuntu apt 패키지, rclpy·gz 파이썬 바인딩은 ROS에서 온다(scripts/setup/apt-packages.txt).
+# STT 쪽 고정 이유는 requirements-stt.txt 주석 참고.
+anyio==4.15.1
+av==18.1.0
+click==8.5.0
+ctranslate2==4.8.1
+et_xmlfile==2.0.0
+faster-whisper==1.2.1
+flatbuffers==25.12.19
+fsspec==2026.7.0
+h11==0.16.0
+hf-xet==1.6.0
+httpcore==1.0.9
+httpx==0.28.1
+huggingface_hub==1.31.0
+onnxruntime==1.29.0
+openpyxl==3.1.5
+protobuf==7.36.1
+tokenizers==0.23.2
+tqdm==4.70.1
+typing_extensions==4.16.0

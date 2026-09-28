@@ -26,7 +26,10 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-DEFAULT_REPO = Path("/home/asd/external/robotiq_ros")
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from robots.fr3_gazebo.paths import robotiq_repo  # noqa: E402
+DEFAULT_REPO = robotiq_repo()
 MACRO = "grippers/robotiq_description/urdf/robotiq_2f_85_macro.urdf.xacro"
 GRIPPER = "grippers/robotiq_description/urdf/robotiq_2f_85_gripper.urdf.xacro"
 #: 명령 관절과 상한(URDF limit). 계산은 이 값을 읽어 쓴다.

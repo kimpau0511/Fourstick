@@ -30,7 +30,10 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-REPO = Path("/home/asd/external/frcobot_ros2")
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from robots.fr3_gazebo.paths import fr3_repo  # noqa: E402
+REPO = fr3_repo()
 URDF = "fairino_description/urdf/FR3WMS.urdf"
 OUT = Path("config/profiles/fr3wms_arm.json")
 #: 도달거리 격자 분해(관절당 표본 수). 크게 하면 정확해지고 느려진다.

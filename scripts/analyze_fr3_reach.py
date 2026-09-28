@@ -26,7 +26,10 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-REPO = Path("/home/asd/external/frcobot_ros2")
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from robots.fr3_gazebo.paths import fr3_repo  # noqa: E402
+REPO = fr3_repo()
 URDF = "fairino_description/urdf/FR3WMS.urdf"
 GRID = 17          # 관절당 표본 수(제한 범위를 균등 분할)
 OFFICIAL_REACH_M = 0.622

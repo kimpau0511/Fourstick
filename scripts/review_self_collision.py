@@ -41,7 +41,10 @@ from robots.moveit.kinematics import (  # noqa: E402
     rpy_matrix,
 )
 
-DEFAULT_REPO = Path("/home/asd/external/frcobot_ros2")
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from robots.fr3_gazebo.paths import fr3_repo  # noqa: E402
+DEFAULT_REPO = fr3_repo()
 URDF_REL = "fairino_description/urdf/FR3WMS.urdf"
 #: 링크당 점군 표본 수. 메시가 크므로 균등 간격으로 줄인다.
 SAMPLE_POINTS = 4000

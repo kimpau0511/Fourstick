@@ -69,6 +69,41 @@ class ModeTest(unittest.TestCase):
         self.assertEqual(order, ["detach", "replace"])
 
 
+class ResendTest(unittest.TestCase):
+    """첫 발행이 빠져도(새 프로세스의 첫 메시지) 알림이 올 때까지 다시 보낸다 — 2026-09-28 실측 재현 조건."""
+
+    def _fx(self, drop_first: int):
+        fx = fixture("joint")
+        sent = []
+
+        def publish(topic):
+            sent.append(topic)
+            if len(sent) > drop_first:            # 앞의 drop_first번은 빠진다
+                want = "detached" if topic.endswith("/detach") else "attached"
+                fx._joint_state["material_c"] = (want, sim_fixture.time.time())
+        fx._publish_empty = publish
+        fx._subscribe_joint_state = lambda model: None
+        fx.joint_system_loaded = lambda model: True
+        return fx, sent
+
+    def test_first_detach_dropped_then_resent(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {"FORSTICK2_WORKCELL_LOG_DIR": tmp}):
+            fx, sent = self._fx(drop_first=1)
+            ok, detail = fx._joint_detach("material_c")
+        self.assertTrue(ok, detail)
+        self.assertEqual(len(sent), 2)
+
+    def test_no_notification_fails_after_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {"FORSTICK2_WORKCELL_LOG_DIR": tmp}), \
+                mock.patch.object(sim_fixture, "JOINT_STATE_TIMEOUT_SEC", 0.5):
+            fx, sent = self._fx(drop_first=10**6)
+            ok, _detail = fx._joint_detach("material_c")
+        self.assertFalse(ok)
+        self.assertGreater(len(sent), 1)
+
+
 class RecordTest(unittest.TestCase):
     def test_confirmed_state_is_persisted_across_processes(self):
         with tempfile.TemporaryDirectory() as tmp, \

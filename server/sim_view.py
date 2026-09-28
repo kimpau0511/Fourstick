@@ -23,6 +23,8 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
+from robots.fr3_gazebo.paths import gz_partition as _partition
+
 ROOT = Path(__file__).resolve().parents[1]
 #: 이 나이(초)를 넘은 관측은 낡았다. 화면은 멈추고 표시한다.
 STALE_AFTER_SEC = 0.5
@@ -270,7 +272,7 @@ class SimView:
         joints = tuple(self.source["arm_joints"]) + (self.source["gripper_joint"],)
         self.state = SimViewState(
             world=str(self.workcell.get("world_name") or ""),
-            partition=str(self.workcell.get("gz_partition") or ""),
+            partition=_partition(self.workcell),
             robot_model=str(self.source["robot_model"]), materials=materials,
             joints=joints)
 
