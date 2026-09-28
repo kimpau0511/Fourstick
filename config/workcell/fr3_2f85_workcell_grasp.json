@@ -132,12 +132,12 @@
       "target_offset_m": [
         0.0,
         0.0,
-        0.035
+        0.04
       ],
       "target_world_xyz_m": [
         0.5,
         0.2,
-        0.875
+        0.88
       ],
       "target_rpy_rad": [
         3.14159265,
@@ -145,21 +145,21 @@
         0.0
       ],
       "joint_rad": {
-        "j1": -2.950949,
-        "j2": -0.779076,
-        "j3": 0.558919,
-        "j4": -1.330317,
-        "j5": -1.573717,
-        "j6": -1.380146
+        "j1": -2.951462,
+        "j2": -0.790136,
+        "j3": 0.56333,
+        "j4": -1.332305,
+        "j5": -1.572944,
+        "j6": -1.380584
       },
       "gripper_open_joint_rad": 0.0,
       "gripper_grasp_joint_rad": 0.35664642690331616,
       "position_error_m": 0.001492,
       "orientation_error_rad": 0.020536,
       "fk_tcp_world_m": [
-        0.501177,
-        0.200496,
-        0.87577
+        0.500809,
+        0.200338,
+        0.880368
       ],
       "expected_contacts": [
         [
@@ -182,9 +182,9 @@
           0.1
         ],
         "offset_m": [
-          -0.000483,
-          0.000255,
-          0.035789
+          -0.000362,
+          0.000164,
+          0.040375
         ],
         "touch_links": [
           "robotiq_85_left_finger_tip_link",
@@ -194,8 +194,8 @@
       "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
       "source": "scripts/derive_grasp_poses.py",
       "verified": true,
-      "captured_at": "2026-09-16",
-      "note": "파지 높이는 고른 값이 아니라 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다",
+      "captured_at": "2026-09-26",
+      "note": "파지 높이는 측정한 구간에서 위치 오차 여유(±4.0 mm, yaw ±1°)를 만족하는 가장 낮은 dz다",
       "held_state_checks": {
         "material_a_grasp": {
           "valid": false,
@@ -243,6 +243,34 @@
           "collisions": [],
           "clean": true
         }
+      },
+      "clearance": {
+        "status": "verified",
+        "clean_radius_mm": 5.0,
+        "required_mm": 4.0,
+        "yaws_deg": [
+          0.0,
+          -1.0,
+          1.0
+        ],
+        "previous": {
+          "dz_m": 0.035,
+          "joint_rad": {
+            "j1": -2.950949,
+            "j2": -0.779076,
+            "j3": 0.558919,
+            "j4": -1.330317,
+            "j5": -1.573717,
+            "j6": -1.380146
+          },
+          "offset_m": [
+            -0.000483,
+            0.000255,
+            0.035789
+          ]
+        },
+        "selection": "위치 오차 여유를 만족하는 가장 낮은 dz(재측정)",
+        "report": "reports/workcell/grasp_clearance_rederive.json"
       }
     },
     "material_b_grasp": {
@@ -376,12 +404,12 @@
       "target_offset_m": [
         0.0,
         0.0,
-        0.035
+        0.04
       ],
       "target_world_xyz_m": [
         0.5,
         -0.2,
-        0.875
+        0.88
       ],
       "target_rpy_rad": [
         3.14159265,
@@ -389,21 +417,21 @@
         0.0
       ],
       "joint_rad": {
-        "j1": -0.194809,
-        "j2": -2.35538,
-        "j3": -0.573292,
-        "j4": -1.802067,
-        "j5": 1.573351,
-        "j6": -1.765732
+        "j1": -0.194331,
+        "j2": -2.3447,
+        "j3": -0.576871,
+        "j4": -1.8007,
+        "j5": 1.572642,
+        "j6": -1.765289
       },
       "gripper_open_joint_rad": 0.0,
       "gripper_grasp_joint_rad": 0.35664642690331616,
       "position_error_m": 0.001347,
       "orientation_error_rad": 0.018532,
       "fk_tcp_world_m": [
-        0.501061,
-        -0.200451,
-        0.875697
+        0.500694,
+        -0.200295,
+        0.880295
       ],
       "expected_contacts": [
         [
@@ -426,9 +454,9 @@
           0.1
         ],
         "offset_m": [
-          -0.000436,
-          -0.000235,
-          0.035713
+          -0.000318,
+          -0.000145,
+          0.040301
         ],
         "touch_links": [
           "robotiq_85_left_finger_tip_link",
@@ -438,8 +466,8 @@
       "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
       "source": "scripts/derive_grasp_poses.py",
       "verified": true,
-      "captured_at": "2026-09-16",
-      "note": "파지 높이는 고른 값이 아니라 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다",
+      "captured_at": "2026-09-26",
+      "note": "파지 높이는 측정한 구간에서 위치 오차 여유(±4.0 mm, yaw ±1°)를 만족하는 가장 낮은 dz다",
       "held_state_checks": {
         "material_c_grasp": {
           "valid": false,
@@ -487,6 +515,34 @@
           "collisions": [],
           "clean": true
         }
+      },
+      "clearance": {
+        "status": "verified",
+        "clean_radius_mm": 4.5,
+        "required_mm": 4.0,
+        "yaws_deg": [
+          0.0,
+          -1.0,
+          1.0
+        ],
+        "previous": {
+          "dz_m": 0.035,
+          "joint_rad": {
+            "j1": -0.194809,
+            "j2": -2.35538,
+            "j3": -0.573292,
+            "j4": -1.802067,
+            "j5": 1.573351,
+            "j6": -1.765732
+          },
+          "offset_m": [
+            -0.000436,
+            -0.000235,
+            0.035713
+          ]
+        },
+        "selection": "위치 오차 여유를 만족하는 가장 낮은 dz(재측정)",
+        "report": "reports/workcell/grasp_clearance_rederive.json"
       }
     }
   },
@@ -3967,9 +4023,9 @@
           0.1
         ],
         "offset_m": [
-          -0.000406,
-          -0.000657,
-          0.03574
+          -5.7e-05,
+          -9.7e-05,
+          0.039996
         ],
         "touch_links": [
           "robotiq_85_left_finger_tip_link",
@@ -3982,7 +4038,18 @@
       "scene_content_hash": "40b3afc4a83b4356cbfed6c483e060f257a1542f3411f9ba2c0e0b87fbce4695",
       "verified": true,
       "captured_at": "2026-09-18",
-      "note": "컨베이어 위 자재는 탐침으로 넣었다(공유 scene 미변경). 파지 높이는 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다"
+      "note": "컨베이어 위 자재는 탐침으로 넣었다(공유 scene 미변경). 파지 높이는 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다",
+      "clearance": {
+        "status": "verified",
+        "dz_m": 0.04,
+        "previous_offset_m": [
+          -0.000406,
+          -0.000657,
+          0.03574
+        ],
+        "required_mm": 4.0,
+        "report": "reports/workcell/grasp_clearance_rederive.json"
+      }
     },
     "material_b_conveyor_grasp": {
       "status": "verified",
@@ -4073,9 +4140,9 @@
           0.1
         ],
         "offset_m": [
-          -0.000406,
-          -0.000657,
-          0.03574
+          -5.7e-05,
+          -9.7e-05,
+          0.039996
         ],
         "touch_links": [
           "robotiq_85_left_finger_tip_link",
@@ -4088,7 +4155,18 @@
       "scene_content_hash": "40b3afc4a83b4356cbfed6c483e060f257a1542f3411f9ba2c0e0b87fbce4695",
       "verified": true,
       "captured_at": "2026-09-18",
-      "note": "컨베이어 위 자재는 탐침으로 넣었다(공유 scene 미변경). 파지 높이는 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다"
+      "note": "컨베이어 위 자재는 탐침으로 넣었다(공유 scene 미변경). 파지 높이는 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다",
+      "clearance": {
+        "status": "verified",
+        "dz_m": 0.04,
+        "previous_offset_m": [
+          -0.000406,
+          -0.000657,
+          0.03574
+        ],
+        "required_mm": 4.0,
+        "report": "reports/workcell/grasp_clearance_rederive.json"
+      }
     },
     "material_c_conveyor_grasp": {
       "status": "verified",
@@ -4179,9 +4257,9 @@
           0.1
         ],
         "offset_m": [
-          -0.000406,
-          -0.000657,
-          0.03574
+          -5.7e-05,
+          -9.7e-05,
+          0.039996
         ],
         "touch_links": [
           "robotiq_85_left_finger_tip_link",
@@ -4194,7 +4272,18 @@
       "scene_content_hash": "40b3afc4a83b4356cbfed6c483e060f257a1542f3411f9ba2c0e0b87fbce4695",
       "verified": true,
       "captured_at": "2026-09-18",
-      "note": "컨베이어 위 자재는 탐침으로 넣었다(공유 scene 미변경). 파지 높이는 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다"
+      "note": "컨베이어 위 자재는 탐침으로 넣었다(공유 scene 미변경). 파지 높이는 측정한 구간의 최저점이다. 물체를 실제로 쥐었는지는 판정하지 않는다",
+      "clearance": {
+        "status": "verified",
+        "dz_m": 0.04,
+        "previous_offset_m": [
+          -0.000406,
+          -0.000657,
+          0.03574
+        ],
+        "required_mm": 4.0,
+        "report": "reports/workcell/grasp_clearance_rederive.json"
+      }
     }
   },
   "conveyor_grasp_derived_at": "2026-09-18T12:55:01+0900",
@@ -4239,12 +4328,12 @@
       "orientation_error_rad": 0.019884,
       "release": {
         "object_center_m": [
-          0.500081,
-          0.200909,
-          0.845034
+          0.50035,
+          0.200321,
+          0.840776
         ],
-        "xy_gap_m": 0.000912,
-        "drop_to_tray_m": 0.005034,
+        "xy_gap_m": 0.000475,
+        "drop_to_tray_m": 0.000776,
         "settles_in_slot": true
       },
       "usable_dz_range_m": [
@@ -4259,12 +4348,7 @@
         "approach_held": {
           "clean": true,
           "collisions": [],
-          "expected_contacts": [
-            [
-              "material_a",
-              "material_a__held"
-            ]
-          ]
+          "expected_contacts": []
         },
         "retreat_open": {
           "clean": true,
@@ -4275,9 +4359,9 @@
       "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
       "source": "scripts/derive_grasp_poses.py --pallet-place",
       "sweep_report": "reports/workcell/pallet_place_sweep.json",
-      "scene_content_hash": "40b3afc4a83b4356cbfed6c483e060f257a1542f3411f9ba2c0e0b87fbce4695",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
       "verified": true,
-      "captured_at": "2026-09-18",
+      "captured_at": "2026-09-26",
       "note": "든 자재가 트레이에 닿지 않는 가장 낮은 측정 높이다. 받침 접촉 예외를 쓰지 않았다. 해제 뒤 안착은 Gazebo 관측으로 판정한다"
     },
     "material_c_pallet_place": {
@@ -4320,12 +4404,12 @@
       "orientation_error_rad": 0.025362,
       "release": {
         "object_center_m": [
-          0.500253,
-          -0.19968,
-          0.845277
+          0.500499,
+          -0.200204,
+          0.84101
         ],
-        "xy_gap_m": 0.000408,
-        "drop_to_tray_m": 0.005277,
+        "xy_gap_m": 0.00054,
+        "drop_to_tray_m": 0.00101,
         "settles_in_slot": true
       },
       "usable_dz_range_m": [
@@ -4356,11 +4440,2373 @@
       "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
       "source": "scripts/derive_grasp_poses.py --pallet-place",
       "sweep_report": "reports/workcell/pallet_place_sweep.json",
-      "scene_content_hash": "40b3afc4a83b4356cbfed6c483e060f257a1542f3411f9ba2c0e0b87fbce4695",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
       "verified": true,
-      "captured_at": "2026-09-18",
+      "captured_at": "2026-09-26",
       "note": "든 자재가 트레이에 닿지 않는 가장 낮은 측정 높이다. 받침 접촉 예외를 쓰지 않았다. 해제 뒤 안착은 Gazebo 관측으로 판정한다"
+    },
+    "material_b_pallet_place": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "target_world_xyz_m": [
+        0.5,
+        0.0,
+        0.88
+      ],
+      "target_rpy_rad": [
+        3.14159265,
+        0.0,
+        0.0
+      ],
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "position_error_m": 0.001556,
+      "orientation_error_rad": 0.021858,
+      "release": {
+        "object_center_m": [
+          0.500336,
+          2.1e-05,
+          0.840919
+        ],
+        "xy_gap_m": 0.000337,
+        "drop_to_tray_m": 0.000919,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "conveyor_grasp_poses.material_b_conveyor_grasp",
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": [],
+          "expected_contacts": [
+            [
+              "material_b",
+              "material_b__held"
+            ]
+          ]
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": [],
+          "expected_contacts": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-place",
+      "sweep_report": "reports/workcell/pallet_place_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "든 자재가 트레이에 닿지 않는 가장 낮은 측정 높이다. 받침 접촉 예외를 쓰지 않았다. 해제 뒤 안착은 Gazebo 관측으로 판정한다"
+    },
+    "material_a_place_at_loc_pallet_1__material_a_grasp_at_loc_pallet_2": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "slot_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -2.950514,
+        "j2": -0.747679,
+        "j3": 0.454008,
+        "j4": -1.252013,
+        "j5": -1.5744,
+        "j6": -1.379718
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500189,
+          0.200372,
+          0.845115
+        ],
+        "xy_gap_m": 0.000417,
+        "drop_to_tray_m": 0.005115,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_1_approach",
+      "held_object_source": "pallet_grasp_poses.material_a_grasp_at_loc_pallet_2",
+      "absent_ids": [],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_a_place_at_loc_pallet_1__material_a_grasp_at_loc_pallet_3": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "slot_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -2.950514,
+        "j2": -0.747679,
+        "j3": 0.454008,
+        "j4": -1.252013,
+        "j5": -1.5744,
+        "j6": -1.379718
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500259,
+          0.200444,
+          0.845734
+        ],
+        "xy_gap_m": 0.000514,
+        "drop_to_tray_m": 0.005734,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_1_approach",
+      "held_object_source": "pallet_grasp_poses.material_a_grasp_at_loc_pallet_3",
+      "absent_ids": [],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_a_place_at_loc_pallet_2__material_a_conveyor_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500336,
+          2.1e-05,
+          0.840919
+        ],
+        "xy_gap_m": 0.000337,
+        "drop_to_tray_m": 0.000919,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "conveyor_grasp_poses.material_a_conveyor_grasp",
+      "absent_ids": [
+        "material_b"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_a_place_at_loc_pallet_2__material_a_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": 0.200137,
+        "j2": -2.154573,
+        "j3": -0.88062,
+        "j4": -1.696683,
+        "j5": 1.573437,
+        "j6": -1.370786
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.499989,
+          -0.000232,
+          0.845467
+        ],
+        "xy_gap_m": 0.000232,
+        "drop_to_tray_m": 0.005467,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "poses.material_a_grasp",
+      "absent_ids": [
+        "material_b"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_a_place_at_loc_pallet_2__material_a_grasp_at_loc_pallet_3": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500069,
+          6.8e-05,
+          0.84062
+        ],
+        "xy_gap_m": 9.7e-05,
+        "drop_to_tray_m": 0.00062,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "pallet_grasp_poses.material_a_grasp_at_loc_pallet_3",
+      "absent_ids": [
+        "material_b"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_a_place_at_loc_pallet_3__material_a_conveyor_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "slot_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": -0.195403,
+        "j2": -2.379913,
+        "j3": -0.502226,
+        "j4": -1.855367,
+        "j5": 1.574283,
+        "j6": -1.766374
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500499,
+          -0.200204,
+          0.84101
+        ],
+        "xy_gap_m": 0.00054,
+        "drop_to_tray_m": 0.00101,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_3_approach",
+      "held_object_source": "conveyor_grasp_poses.material_a_conveyor_grasp",
+      "absent_ids": [
+        "material_c"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_a_place_at_loc_pallet_3__material_a_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "slot_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -0.195228,
+        "j2": -2.385135,
+        "j3": -0.471854,
+        "j4": -1.878518,
+        "j5": 1.574005,
+        "j6": -1.766177
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500159,
+          -0.200442,
+          0.845578
+        ],
+        "xy_gap_m": 0.00047,
+        "drop_to_tray_m": 0.005578,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_3_approach",
+      "held_object_source": "poses.material_a_grasp",
+      "absent_ids": [
+        "material_c"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_a_place_at_loc_pallet_3__material_a_grasp_at_loc_pallet_2": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "slot_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -0.195228,
+        "j2": -2.385135,
+        "j3": -0.471854,
+        "j4": -1.878518,
+        "j5": 1.574005,
+        "j6": -1.766177
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500136,
+          -0.200196,
+          0.845033
+        ],
+        "xy_gap_m": 0.000239,
+        "drop_to_tray_m": 0.005033,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_3_approach",
+      "held_object_source": "pallet_grasp_poses.material_a_grasp_at_loc_pallet_2",
+      "absent_ids": [
+        "material_c"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_b_place_at_loc_pallet_1__material_b_conveyor_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "slot_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": -2.951007,
+        "j2": -0.772414,
+        "j3": 0.525433,
+        "j4": -1.304137,
+        "j5": -1.573623,
+        "j6": -1.38021
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.50035,
+          0.200321,
+          0.840776
+        ],
+        "xy_gap_m": 0.000475,
+        "drop_to_tray_m": 0.000776,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_1_approach",
+      "held_object_source": "conveyor_grasp_poses.material_b_conveyor_grasp",
+      "absent_ids": [
+        "material_a"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_b_place_at_loc_pallet_1__material_b_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "slot_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -2.950514,
+        "j2": -0.747679,
+        "j3": 0.454008,
+        "j4": -1.252013,
+        "j5": -1.5744,
+        "j6": -1.379718
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500189,
+          0.200372,
+          0.845115
+        ],
+        "xy_gap_m": 0.000417,
+        "drop_to_tray_m": 0.005115,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_1_approach",
+      "held_object_source": "poses.material_b_grasp",
+      "absent_ids": [
+        "material_a"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_b_place_at_loc_pallet_1__material_b_grasp_at_loc_pallet_3": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "slot_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -2.950514,
+        "j2": -0.747679,
+        "j3": 0.454008,
+        "j4": -1.252013,
+        "j5": -1.5744,
+        "j6": -1.379718
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500259,
+          0.200444,
+          0.845734
+        ],
+        "xy_gap_m": 0.000514,
+        "drop_to_tray_m": 0.005734,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_1_approach",
+      "held_object_source": "pallet_grasp_poses.material_b_grasp_at_loc_pallet_3",
+      "absent_ids": [
+        "material_a"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_b_place_at_loc_pallet_2__material_b_grasp_at_loc_pallet_1": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": 0.200137,
+        "j2": -2.154573,
+        "j3": -0.88062,
+        "j4": -1.696683,
+        "j5": 1.573437,
+        "j6": -1.370786
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.499989,
+          -0.000232,
+          0.845467
+        ],
+        "xy_gap_m": 0.000232,
+        "drop_to_tray_m": 0.005467,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "pallet_grasp_poses.material_b_grasp_at_loc_pallet_1",
+      "absent_ids": [],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_b_place_at_loc_pallet_2__material_b_grasp_at_loc_pallet_3": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500069,
+          6.8e-05,
+          0.84062
+        ],
+        "xy_gap_m": 9.7e-05,
+        "drop_to_tray_m": 0.00062,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "pallet_grasp_poses.material_b_grasp_at_loc_pallet_3",
+      "absent_ids": [],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_b_place_at_loc_pallet_3__material_b_conveyor_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "slot_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": -0.195403,
+        "j2": -2.379913,
+        "j3": -0.502226,
+        "j4": -1.855367,
+        "j5": 1.574283,
+        "j6": -1.766374
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500499,
+          -0.200204,
+          0.84101
+        ],
+        "xy_gap_m": 0.00054,
+        "drop_to_tray_m": 0.00101,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_3_approach",
+      "held_object_source": "conveyor_grasp_poses.material_b_conveyor_grasp",
+      "absent_ids": [
+        "material_c"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_b_place_at_loc_pallet_3__material_b_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "slot_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -0.195228,
+        "j2": -2.385135,
+        "j3": -0.471854,
+        "j4": -1.878518,
+        "j5": 1.574005,
+        "j6": -1.766177
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500136,
+          -0.200196,
+          0.845033
+        ],
+        "xy_gap_m": 0.000239,
+        "drop_to_tray_m": 0.005033,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_3_approach",
+      "held_object_source": "poses.material_b_grasp",
+      "absent_ids": [
+        "material_c"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_b_place_at_loc_pallet_3__material_b_grasp_at_loc_pallet_1": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "slot_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -0.195228,
+        "j2": -2.385135,
+        "j3": -0.471854,
+        "j4": -1.878518,
+        "j5": 1.574005,
+        "j6": -1.766177
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500159,
+          -0.200442,
+          0.845578
+        ],
+        "xy_gap_m": 0.00047,
+        "drop_to_tray_m": 0.005578,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_3_approach",
+      "held_object_source": "pallet_grasp_poses.material_b_grasp_at_loc_pallet_1",
+      "absent_ids": [
+        "material_c"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_c_place_at_loc_pallet_1__material_c_conveyor_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "slot_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": -2.951007,
+        "j2": -0.772414,
+        "j3": 0.525433,
+        "j4": -1.304137,
+        "j5": -1.573623,
+        "j6": -1.38021
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.50035,
+          0.200321,
+          0.840776
+        ],
+        "xy_gap_m": 0.000475,
+        "drop_to_tray_m": 0.000776,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_1_approach",
+      "held_object_source": "conveyor_grasp_poses.material_c_conveyor_grasp",
+      "absent_ids": [
+        "material_a"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_c_place_at_loc_pallet_1__material_c_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "slot_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -2.950514,
+        "j2": -0.747679,
+        "j3": 0.454008,
+        "j4": -1.252013,
+        "j5": -1.5744,
+        "j6": -1.379718
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500259,
+          0.200444,
+          0.845734
+        ],
+        "xy_gap_m": 0.000514,
+        "drop_to_tray_m": 0.005734,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_1_approach",
+      "held_object_source": "poses.material_c_grasp",
+      "absent_ids": [
+        "material_a"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_c_place_at_loc_pallet_1__material_c_grasp_at_loc_pallet_2": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "slot_center_m": [
+        0.5,
+        0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -2.950514,
+        "j2": -0.747679,
+        "j3": 0.454008,
+        "j4": -1.252013,
+        "j5": -1.5744,
+        "j6": -1.379718
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500189,
+          0.200372,
+          0.845115
+        ],
+        "xy_gap_m": 0.000417,
+        "drop_to_tray_m": 0.005115,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_1_approach",
+      "held_object_source": "pallet_grasp_poses.material_c_grasp_at_loc_pallet_2",
+      "absent_ids": [
+        "material_a"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_c_place_at_loc_pallet_2__material_c_conveyor_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500336,
+          2.1e-05,
+          0.840919
+        ],
+        "xy_gap_m": 0.000337,
+        "drop_to_tray_m": 0.000919,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "conveyor_grasp_poses.material_c_conveyor_grasp",
+      "absent_ids": [
+        "material_b"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_c_place_at_loc_pallet_2__material_c_grasp": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.04
+      ],
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500069,
+          6.8e-05,
+          0.84062
+        ],
+        "xy_gap_m": 9.7e-05,
+        "drop_to_tray_m": 0.00062,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.04,
+        0.06
+      ],
+      "usable_step_count": 5,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "poses.material_c_grasp",
+      "absent_ids": [
+        "material_b"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_c_place_at_loc_pallet_2__material_c_grasp_at_loc_pallet_1": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "slot_center_m": [
+        0.5,
+        0.0,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": 0.200137,
+        "j2": -2.154573,
+        "j3": -0.88062,
+        "j4": -1.696683,
+        "j5": 1.573437,
+        "j6": -1.370786
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.499989,
+          -0.000232,
+          0.845467
+        ],
+        "xy_gap_m": 0.000232,
+        "drop_to_tray_m": 0.005467,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_2_approach",
+      "held_object_source": "pallet_grasp_poses.material_c_grasp_at_loc_pallet_1",
+      "absent_ids": [
+        "material_b"
+      ],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_c_place_at_loc_pallet_3__material_c_grasp_at_loc_pallet_1": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "slot_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -0.195228,
+        "j2": -2.385135,
+        "j3": -0.471854,
+        "j4": -1.878518,
+        "j5": 1.574005,
+        "j6": -1.766177
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500159,
+          -0.200442,
+          0.845578
+        ],
+        "xy_gap_m": 0.00047,
+        "drop_to_tray_m": 0.005578,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_3_approach",
+      "held_object_source": "pallet_grasp_poses.material_c_grasp_at_loc_pallet_1",
+      "absent_ids": [],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
+    },
+    "material_c_place_at_loc_pallet_3__material_c_grasp_at_loc_pallet_2": {
+      "status": "verified",
+      "kind": "place",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "slot_center_m": [
+        0.5,
+        -0.2,
+        0.84
+      ],
+      "target_offset_m": [
+        0.0,
+        0.0,
+        0.045
+      ],
+      "joint_rad": {
+        "j1": -0.195228,
+        "j2": -2.385135,
+        "j3": -0.471854,
+        "j4": -1.878518,
+        "j5": 1.574005,
+        "j6": -1.766177
+      },
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "gripper_open_joint_rad": 0.0,
+      "release": {
+        "object_center_m": [
+          0.500136,
+          -0.200196,
+          0.845033
+        ],
+        "xy_gap_m": 0.000239,
+        "drop_to_tray_m": 0.005033,
+        "settles_in_slot": true
+      },
+      "usable_dz_range_m": [
+        0.045,
+        0.06
+      ],
+      "usable_step_count": 4,
+      "sweep_step_m": 0.005,
+      "approach_pose": "pallet_3_approach",
+      "held_object_source": "pallet_grasp_poses.material_c_grasp_at_loc_pallet_2",
+      "absent_ids": [],
+      "path_checks": {
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "retreat_open": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_sweep_plus_numerical_ik",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "sweep_report": "reports/workcell/pallet_matrix_sweep.json",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "이 든 물체 출처로만 쓴다. 도착 팔레트가 비어 있어야 한다(부재 전제)"
     }
   },
-  "pallet_place_derived_at": "2026-09-18T13:00:00+0900"
+  "pallet_place_derived_at": "2026-09-26T13:43:41+0900",
+  "conveyor_slots": {
+    "status": "verified",
+    "derived_at": "2026-09-21T21:14:39+0900",
+    "is_simulated": true,
+    "method": "declared_geometry_candidates_plus_moveit_validation",
+    "support_resource_id": "loc_conveyor",
+    "pitch_m": 0.1,
+    "pitch_basis": {
+      "object_half_x_m": 0.025,
+      "gripper_open_aperture_m": 0.084996,
+      "environment_clearance_min_m": 0.01,
+      "lower": "이웃 자재 반폭 + 개구 반폭 + 선언 여유",
+      "upper": "자재 중심이 벨트 안 (usable_half_x - 자재 반폭)"
+    },
+    "report": "reports/workcell/conveyor_slots.json",
+    "slots": {
+      "slot_1": {
+        "object_world_center_m": [
+          0.25,
+          -0.5,
+          0.75
+        ],
+        "x_offset_m": 0.0,
+        "checks": {
+          "place_held": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "conveyor__belt",
+                "material_a__held"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "approach_held": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "retreat_open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "grasp_probe_open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "grasp_probe_closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_left_finger_tip_link",
+                "material_a__on_slot_probe"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "neighbours_occupied_place": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "conveyor__belt",
+                "material_a__held"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "neighbours_occupied_approach": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          }
+        },
+        "place_joint_rad": {
+          "j1": 1.850096,
+          "j2": -0.749885,
+          "j3": 0.797851,
+          "j4": -1.633863,
+          "j5": -1.568646,
+          "j6": 3.420838
+        },
+        "approach_joint_rad": {
+          "j1": 1.849855,
+          "j2": -0.708007,
+          "j3": 0.427346,
+          "j4": -1.308548,
+          "j5": -1.568355,
+          "j6": 3.420285
+        },
+        "grasp_joint_rad_arm": {
+          "j1": 1.851476,
+          "j2": -0.715378,
+          "j3": 0.80734,
+          "j4": -1.660062,
+          "j5": -1.570892,
+          "j6": 3.42211
+        },
+        "grasp_joint_rad_arm_previous": {
+          "j1": 1.851013,
+          "j2": -0.708208,
+          "j3": 0.807607,
+          "j4": -1.65925,
+          "j5": -1.570091,
+          "j6": 3.421562
+        },
+        "grasp_dz_m": 0.04
+      },
+      "slot_2": {
+        "object_world_center_m": [
+          0.15,
+          -0.5,
+          0.75
+        ],
+        "x_offset_m": -0.1,
+        "checks": {
+          "place_held": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "conveyor__belt",
+                "material_a__held"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "approach_held": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "retreat_open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "grasp_probe_open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "grasp_probe_closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a__on_slot_probe"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "neighbours_occupied_place": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "conveyor__belt",
+                "material_a__held"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "neighbours_occupied_approach": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          }
+        },
+        "place_joint_rad": {
+          "j1": 1.668807,
+          "j2": -0.872052,
+          "j3": 0.999113,
+          "j4": -1.677748,
+          "j5": -1.574567,
+          "j6": 3.240294
+        },
+        "approach_joint_rad": {
+          "j1": 1.668402,
+          "j2": -0.86338,
+          "j3": 0.689971,
+          "j4": -1.376601,
+          "j5": -1.573801,
+          "j6": 3.239304
+        },
+        "grasp_joint_rad_arm": {
+          "j1": 1.668477,
+          "j2": -0.862037,
+          "j3": 1.068947,
+          "j4": -1.761492,
+          "j5": -1.574013,
+          "j6": 3.23966
+        },
+        "grasp_joint_rad_arm_previous": {
+          "j1": 1.669485,
+          "j2": -0.846433,
+          "j3": 1.056016,
+          "j4": -1.753437,
+          "j5": -1.575637,
+          "j6": 3.241054
+        },
+        "grasp_dz_m": 0.04
+      },
+      "slot_3": {
+        "object_world_center_m": [
+          0.05,
+          -0.5,
+          0.75
+        ],
+        "x_offset_m": -0.2,
+        "checks": {
+          "place_held": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "conveyor__belt",
+                "material_a__held"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "approach_held": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "retreat_open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "grasp_probe_open": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          },
+          "grasp_probe_closed": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "robotiq_85_right_finger_tip_link",
+                "material_a__on_slot_probe"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "neighbours_occupied_place": {
+            "valid": false,
+            "out_of_bounds": [],
+            "expected_contacts": [
+              [
+                "conveyor__belt",
+                "material_a__held"
+              ]
+            ],
+            "collisions": [],
+            "clean": true
+          },
+          "neighbours_occupied_approach": {
+            "valid": true,
+            "out_of_bounds": [],
+            "expected_contacts": [],
+            "collisions": [],
+            "clean": true
+          }
+        },
+        "place_joint_rad": {
+          "j1": 1.471146,
+          "j2": -0.946874,
+          "j3": 1.125542,
+          "j4": -1.724758,
+          "j5": -1.576653,
+          "j6": 3.043501
+        },
+        "approach_joint_rad": {
+          "j1": 1.469712,
+          "j2": -0.961289,
+          "j3": 0.857314,
+          "j4": -1.444144,
+          "j5": -1.574201,
+          "j6": 3.040718
+        },
+        "grasp_joint_rad_arm": {
+          "j1": 1.468671,
+          "j2": -0.946929,
+          "j3": 1.221517,
+          "j4": -1.837701,
+          "j5": -1.572697,
+          "j6": 3.039718
+        },
+        "grasp_joint_rad_arm_previous": {
+          "j1": 1.469392,
+          "j2": -0.933765,
+          "j3": 1.214846,
+          "j4": -1.835273,
+          "j5": -1.573807,
+          "j6": 3.040637
+        },
+        "grasp_dz_m": 0.04
+      }
+    }
+  },
+  "pallet_grasp_poses": {
+    "material_b_grasp_at_loc_pallet_1": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "joint_rad": {
+        "j1": -2.951462,
+        "j2": -0.790136,
+        "j3": 0.56333,
+        "j4": -1.332305,
+        "j5": -1.572944,
+        "j6": -1.380584
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "attached_object": {
+        "object_id": "material_b__held",
+        "world_instance_id": "material_b",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000362,
+          0.000164,
+          0.040375
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measured_with": "poses.material_a_grasp",
+      "geometry_equivalence": {
+        "object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "measured_object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ]
+      },
+      "held_state_checks": {
+        "grasp_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_check(location grasp, same declared size)",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "그 팔레트 자리의 측정 파지 자세다(같은 선언 크기). 물체를 실제로 쥐었는지는 판정하지 않는다"
+    },
+    "material_c_grasp_at_loc_pallet_1": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_1",
+      "target_frame": "material_a_frame",
+      "joint_rad": {
+        "j1": -2.951462,
+        "j2": -0.790136,
+        "j3": 0.56333,
+        "j4": -1.332305,
+        "j5": -1.572944,
+        "j6": -1.380584
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "attached_object": {
+        "object_id": "material_c__held",
+        "world_instance_id": "material_c",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000362,
+          0.000164,
+          0.040375
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measured_with": "poses.material_a_grasp",
+      "geometry_equivalence": {
+        "object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "measured_object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ]
+      },
+      "held_state_checks": {
+        "grasp_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_check(location grasp, same declared size)",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "그 팔레트 자리의 측정 파지 자세다(같은 선언 크기). 물체를 실제로 쥐었는지는 판정하지 않는다"
+    },
+    "material_a_grasp_at_loc_pallet_2": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "attached_object": {
+        "object_id": "material_a__held",
+        "world_instance_id": "material_a",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000373,
+          -7.8e-05,
+          0.040922
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measured_with": "poses.material_b_grasp",
+      "geometry_equivalence": {
+        "object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "measured_object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ]
+      },
+      "held_state_checks": {
+        "grasp_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_check(location grasp, same declared size)",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "그 팔레트 자리의 측정 파지 자세다(같은 선언 크기). 물체를 실제로 쥐었는지는 판정하지 않는다"
+    },
+    "material_c_grasp_at_loc_pallet_2": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_c",
+      "support_resource_id": "loc_pallet_2",
+      "target_frame": "material_b_frame",
+      "joint_rad": {
+        "j1": 0.19993,
+        "j2": -2.155531,
+        "j3": -0.898773,
+        "j4": -1.679739,
+        "j5": 1.573744,
+        "j6": -1.371019
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "attached_object": {
+        "object_id": "material_c__held",
+        "world_instance_id": "material_c",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000373,
+          -7.8e-05,
+          0.040922
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measured_with": "poses.material_b_grasp",
+      "geometry_equivalence": {
+        "object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "measured_object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ]
+      },
+      "held_state_checks": {
+        "grasp_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_check(location grasp, same declared size)",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "그 팔레트 자리의 측정 파지 자세다(같은 선언 크기). 물체를 실제로 쥐었는지는 판정하지 않는다"
+    },
+    "material_a_grasp_at_loc_pallet_3": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_a",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "joint_rad": {
+        "j1": -0.194331,
+        "j2": -2.3447,
+        "j3": -0.576871,
+        "j4": -1.8007,
+        "j5": 1.572642,
+        "j6": -1.765289
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "attached_object": {
+        "object_id": "material_a__held",
+        "world_instance_id": "material_a",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000318,
+          -0.000145,
+          0.040301
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measured_with": "poses.material_c_grasp",
+      "geometry_equivalence": {
+        "object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "measured_object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ]
+      },
+      "held_state_checks": {
+        "grasp_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_check(location grasp, same declared size)",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "그 팔레트 자리의 측정 파지 자세다(같은 선언 크기). 물체를 실제로 쥐었는지는 판정하지 않는다"
+    },
+    "material_b_grasp_at_loc_pallet_3": {
+      "status": "verified",
+      "kind": "grasp",
+      "object_resource_id": "mat_b",
+      "support_resource_id": "loc_pallet_3",
+      "target_frame": "material_c_frame",
+      "joint_rad": {
+        "j1": -0.194331,
+        "j2": -2.3447,
+        "j3": -0.576871,
+        "j4": -1.8007,
+        "j5": 1.572642,
+        "j6": -1.765289
+      },
+      "gripper_open_joint_rad": 0.0,
+      "gripper_grasp_joint_rad": 0.35664642690331616,
+      "attached_object": {
+        "object_id": "material_b__held",
+        "world_instance_id": "material_b",
+        "link": "robotiq_85_tcp",
+        "size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "offset_m": [
+          -0.000318,
+          -0.000145,
+          0.040301
+        ],
+        "touch_links": [
+          "robotiq_85_left_finger_tip_link",
+          "robotiq_85_right_finger_tip_link"
+        ]
+      },
+      "measured_with": "poses.material_c_grasp",
+      "geometry_equivalence": {
+        "object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "measured_object_size_m": [
+          0.05,
+          0.05,
+          0.1
+        ]
+      },
+      "held_state_checks": {
+        "grasp_held": {
+          "clean": true,
+          "collisions": []
+        },
+        "approach_held": {
+          "clean": true,
+          "collisions": []
+        }
+      },
+      "measurement_method": "moveit_contact_check(location grasp, same declared size)",
+      "source": "scripts/derive_grasp_poses.py --pallet-matrix",
+      "scene_content_hash": "1155d6ba9d6381d370b0b5d351eb2b707b813dbea7dbff719af0b01072b6122a",
+      "verified": true,
+      "captured_at": "2026-09-26",
+      "note": "그 팔레트 자리의 측정 파지 자세다(같은 선언 크기). 물체를 실제로 쥐었는지는 판정하지 않는다"
+    }
+  },
+  "pallet_matrix_derived_at": "2026-09-26T13:43:51+0900",
+  "grasp_clearance_rederived_at": "2026-09-26T13:43:36+0900"
 }

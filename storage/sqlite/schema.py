@@ -757,6 +757,7 @@ MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (13, "조합형 로봇 Profile 기록 추가", MIGRATION_0013),
     (14, "시뮬레이터 검증 실행 기록 추가", MIGRATION_0014),
     (15, "MoveIt2 계획·충돌 검사 관측 연결 추가", MIGRATION_0015),
+    (16, "STT 원문과 정규화 전사 분리", "ALTER TABLE stt_inferences ADD COLUMN raw_transcript TEXT;"),
 )
 
 CREATE_MIGRATIONS_TABLE = """

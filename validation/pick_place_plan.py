@@ -35,6 +35,7 @@ planning scene에 물어 기록하는 것.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
@@ -376,7 +377,9 @@ def classify_contacts(
     2. 대상 물체 ↔ 같은 물체의 world 인스턴스 — scene이 들어올림을 모른다.
     3. (받침 단계만) 대상 물체 ↔ 선언된 받침면 — 아직 놓여 있는 상태다.
 
-    나머지는 모두 충돌이다. 이 목록을 넓혀 검사를 통과시키지 않는다.
+    나머지는 모두 충돌이다. 이 목록을 넓혀 검사를 통과시키지 않는다. 다른 자재가
+    원래 자리를 떠났다면 예외를 두지 않고 **scene을 실제 위치로 동기화**한다
+    (`validation.scene_sync`).
     """
     objects = set(object_ids)
     pads = set(pad_links)
@@ -772,6 +775,65 @@ def check_stages(
                 stage=stage.stage,
             ))
     return tuple(checks), tuple(findings)
+
+
+#: 단계 사이 경로 표본 간격(rad). 관절 공간 직선의 내부 표본만 본다(양 끝은
+#: 단계 검사가 본다). 0.02 rad는 팔 끝에서 약 1.6 cm다 — **연속 검사가 아니다.**
+PATH_STEP_RAD = 0.02
+
+
+def path_samples(
+    stages: Sequence[PickPlaceStage], *,
+    start_joints: Mapping[str, float] | None = None,
+    step_rad: float = PATH_STEP_RAD,
+) -> tuple[PickPlaceStage, ...]:
+    """팔 이동 단계 사이 경로의 내부 표본. 각 표본은 **도착 단계의 규칙**을 따른다.
+
+    실행기는 목표 한 점짜리 궤적(속도 0)을 보내고, 정지한 상태에서 출발한다 —
+    관절마다 같은 시간 비율로 움직이므로 경로는 관절 공간의 직선이다. 그리퍼
+    단계는 팔을 움직이지 않으므로 건너뛴다. 표본의 그리퍼 값·든 물체·허용 접촉은
+    도착 단계와 같다(그리퍼 단계는 이동 전에 끝난다).
+    """
+    from dataclasses import replace as dc_replace
+
+    previous = None if start_joints is None else {
+        n: float(v) for n, v in start_joints.items() if n.startswith("j")}
+    out: list[PickPlaceStage] = []
+    for stage in stages:
+        if stage.kind != "arm_motion":
+            continue
+        target = {n: float(v) for n, v in stage.joint_rad.items()}
+        if previous is not None:
+            names = [n for n in target if n in previous]
+            span = max((abs(target[n] - previous[n]) for n in names), default=0.0)
+            count = max(1, math.ceil(span / step_rad))
+            for i in range(1, count):
+                sample = {n: previous[n] + (target[n] - previous[n]) * i / count
+                          for n in names}
+                out.append(dc_replace(
+                    stage, joint_rad=sample, pose_name="path_interpolated",
+                    label=f"{stage.label} 경로 {i}/{count}", source_step=None,
+                    detail="앞 자세 → 이 단계 자세(관절 공간 직선) 내부 표본"))
+        previous = target
+    return tuple(out)
+
+
+def check_path(
+    stages: Sequence[PickPlaceStage], *, bindings: CellBindings, client,
+    start_joints: Mapping[str, float] | None = None,
+    step_rad: float = PATH_STEP_RAD,
+) -> tuple[tuple[StageCheck, ...], tuple[PlanFinding, ...], int]:
+    """단계 사이 경로 표본을 `check_stages`와 **같은 규칙**으로 검사한다.
+
+    반환: (표본 검사, 경로 사유, 표본 수). 사유 키는 `path:`로 시작한다.
+    """
+    from dataclasses import replace as dc_replace
+
+    samples = path_samples(stages, start_joints=start_joints, step_rad=step_rad)
+    checks, findings = check_stages(samples, bindings=bindings, client=client)
+    # 사유 문구에는 표본 이름("… 경로 i/n")이 들어 있다.
+    tagged = tuple(dc_replace(f, key=f"path:{f.key}") for f in findings)
+    return checks, tagged, len(samples)
 
 
 def _support_scene_ids(

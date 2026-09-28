@@ -73,6 +73,7 @@ class StopLatchDiagnosticsTest(unittest.TestCase):
         self.assertFalse(diag["stop_latch_active"])
         self.assertIsNone(diag["stop_latch_execution_id"])
         self.assertTrue(diag["is_simulated"])
+        # 어댑터의 진단값에는 실기 축이 그대로 있다 — 감춘 것은 공개 응답뿐이다.
         self.assertFalse(diag["real_hardware"])
 
     def test_active_with_execution_id_then_released(self):
@@ -158,7 +159,8 @@ class RobotsRouteTest(unittest.TestCase):
         self.assertTrue(diag["stop_latch_active"])
         self.assertEqual(diag["stop_latch_execution_id"], "exec_5143165dd177")
         self.assertTrue(diag["is_simulated"])
-        self.assertFalse(diag["real_hardware"])
+        # 실기 축은 **공개 응답에서 빠진다.** 어댑터 쪽은 위 StopLatchDiagnosticsTest가 지킨다.
+        self.assertNotIn("real_hardware", diag)
         self.assertEqual(transport.calls, [])
         self.assertTrue(adapter.tracker.stopped)
 
