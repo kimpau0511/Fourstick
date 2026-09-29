@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
 import { alertsSeed, historySeed, robots as robotSeed, routinesSeed, services, usersSeed } from './data.js';
+import SceneView from './SceneView.jsx';
 
 const STATUS = {
   normal: { label: '정상', icon: '●', tone: 'ok' },
@@ -567,10 +568,13 @@ function BlockedCard({ onEdit }) {
 
 function ReviewCard({ robot, command, expired, videoConnected, online, onExecute, onRevalidate, onChangeRobot }) {
   const valid = !expired && online;
+  const [sceneStatus, setSceneStatus] = useState('connecting');
+  // 데모 시나리오의 '영상 끊김'과 실제 Gazebo 스트림 장애를 같은 표시로 보여준다.
+  const videoLost = !videoConnected || sceneStatus === 'stalled' || sceneStatus === 'unavailable';
   return <section className="decision-card review-card"><div className="review-kicker"><Badge tone={valid ? 'ok' : 'danger'} icon={valid ? '●' : '■'}>{expired ? '검증 만료' : '안전 확인됨'}</Badge><time>검증 시각 14:36:12</time></div><h3>실행 전 최종점검</h3><p>아래 내용대로 로봇에 명령을 전달합니다.</p><div className="action-summary"><div><span>대상 로봇</span><strong>{robot.location}<br/>{robot.alias}</strong><button onClick={onChangeRobot}>다른 로봇 선택</button></div><div><span>사용 도구</span><strong>{robot.tool}</strong></div><div><span>동작</span><strong>{command}</strong></div><div><span>출발지 → 목적지</span><strong>입고대 A → 출하 팔레트 1</strong></div><div><span>영향 구역</span><strong>포장 셀 + 공유 통로</strong></div></div>
-    <div className="simulation-evidence"><div className="simulation-frame"><span>SIMULATION · 실시간 아님</span><div className="cell-map"><i className="cell-a">포장 셀</i><i className="route"/><i className="cell-b">공유 통로</i></div>{!videoConnected && <div className="video-lost">영상 끊김<br/><small>판정 결과는 유효합니다</small></div>}</div><div className="simulation-result"><strong>충돌 없이 이동 가능</strong><span>최소 이격거리 124 mm</span><span>판정 유효시간 {expired ? '만료됨' : '14:37:12까지'}</span></div></div>
+    <div className="simulation-evidence"><div className="simulation-frame"><SceneView onStatus={setSceneStatus} />{videoLost && <div className="video-lost">영상 끊김<br/><small>판정 결과는 유효합니다</small></div>}</div><div className="simulation-result"><strong>충돌 없이 이동 가능</strong><span>최소 이격거리 124 mm</span><span>판정 유효시간 {expired ? '만료됨' : '14:37:12까지'}</span></div></div>
     {expired && <div className="panel-warning"><Icon name="alert"/><div><strong>안전 확인 결과가 만료되었습니다</strong><span>현재 상태로 다시 확인해야 실행할 수 있습니다.</span></div></div>}
-    {!videoConnected && <div className="inline-warning">▲ 검증 영상이 끊겼지만 구조화된 판정 결과는 아직 유효합니다.</div>}
+    {videoLost && <div className="inline-warning">▲ 검증 영상이 끊겼지만 구조화된 판정 결과는 아직 유효합니다.</div>}
     <button className="button primary full execute-button" disabled={!online} onClick={expired ? onRevalidate : onExecute}>{expired ? '다시 안전 확인' : '이대로 실행'}</button><p className="card-footnote">로봇·계획·안전상태가 바뀌면 이 승인은 즉시 무효화됩니다.</p><details className="technical"><summary>기술 정보</summary><dl><div><dt>계획 ID</dt><dd>plan_8f3a21</dd></div><div><dt>판정 상태</dt><dd>{expired ? '검증 만료' : '안전 확인됨'}</dd></div></dl></details></section>;
 }
 
