@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { alerts, command, history, metrics, robots } from './data.js';
+import {
+  alerts, command, commandLog, commandLogNote, engineMetrics, history, issues, metrics,
+  robotDetails, robots, tool, toolHistory,
+} from './data.js';
 import SceneView, { sceneLabel } from './SceneView.jsx';
 import alertOctagon from './assets/alert-octagon.svg';
 import avatar from './assets/avatar.jpg';
@@ -12,6 +15,8 @@ import dotPanel from './assets/dot-panel.svg';
 import dotSimDanger from './assets/dot-sim-danger.svg';
 import dotSimRunning from './assets/dot-sim-running.svg';
 import dotSimStopping from './assets/dot-sim-stopping.svg';
+import dividerDiagnostics from './assets/divider-diagnostics.svg';
+import dividerSettings from './assets/divider-settings.svg';
 import headerDivider from './assets/header-divider.svg';
 import house from './assets/house.svg';
 import loaderCircle from './assets/loader-circle.svg';
@@ -22,12 +27,28 @@ import settings from './assets/settings.svg';
 import shieldCheck from './assets/shield-check.svg';
 
 const NAV = [
-  { label: '홈', icon: house, active: true },
-  { label: '로봇 관리', icon: circleX },
-  { label: '기록 및 로그', icon: logs },
-  { label: '실시간 진단', icon: chartLine },
-  { label: '관제 설정', icon: settings },
+  { id: 'home', label: '홈', icon: house, title: '종합 관제 대시보드' },
+  { id: 'robots', label: '로봇 관리', icon: circleX, title: '로봇 세부 관리 및 기구 정보' },
+  { id: 'history', label: '기록 및 로그', icon: logs, title: '명령 수행 이력 및 가상 안전 감사 로그' },
+  { id: 'diagnostics', label: '실시간 진단', icon: chartLine, title: '미들웨어 및 서비스 자가 점검 시스템' },
+  { id: 'settings', label: '관제 설정', icon: settings, title: '통합 관제 시스템 환경 설정' },
 ];
+
+// 주소(#/robots 등)로 화면을 고른다 — 새로고침해도 같은 화면에 머문다.
+function pageFromHash() {
+  const id = window.location.hash.replace('#/', '');
+  return NAV.some((item) => item.id === id) ? id : 'home';
+}
+
+function usePage() {
+  const [page, setPage] = useState(pageFromHash);
+  useEffect(() => {
+    const onHash = () => setPage(pageFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  return page;
+}
 
 function clockText(date) {
   const day = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -53,6 +74,8 @@ export default function App() {
   const [sim, setSim] = useState(null);
   const [simAt, setSimAt] = useState(null);
   const now = useNow();
+  const page = usePage();
+  const nav = NAV.find((item) => item.id === page);
 
   const open = (state) => { setSim(state); setSimAt(new Date()); };
 
@@ -63,17 +86,29 @@ export default function App() {
   }
 
   return <div className="app">
-    <Sidebar />
+    <Sidebar page={page} />
     <div className="main">
-      <Header now={now} onStop={globalStop} />
-      <Home />
+      <Header title={nav.title} now={now} onStop={globalStop} />
+      <div className="body">
+        <div className="col-main">
+          {page === 'home' && <Home />}
+          {page === 'robots' && <Robots />}
+          {page === 'history' && <History />}
+          {page === 'diagnostics' && <Diagnostics />}
+          {page === 'settings' && <Settings />}
+        </div>
+        <div className="col-side">
+          <CommandPanel />
+          {page === 'home' && <Alerts />}
+        </div>
+      </div>
     </div>
     {sim && <SimOverlay state={sim} at={simAt} onClose={() => setSim(null)} onRerun={() => open('running')} />}
     <DemoBar state={sim} onChange={(state) => (state ? open(state) : setSim(null))} />
   </div>;
 }
 
-function Sidebar() {
+function Sidebar({ page }) {
   return <aside className="sidebar">
     <div>
       <div className="brand">
@@ -81,9 +116,9 @@ function Sidebar() {
         <div><strong>FORSTICK</strong><small>CONTROL PANEL</small></div>
       </div>
       <nav className="nav">
-        {NAV.map((item) => <button key={item.label} className={item.active ? 'nav-item active' : 'nav-item'} disabled={!item.active} title={item.active ? undefined : '다음 단계에서 구현 예정'}>
-          <span className="nav-icon"><img src={item.icon} alt="" /></span>{item.label}
-        </button>)}
+        {NAV.map((item) => <a key={item.id} href={`#/${item.id}`} className={item.id === page ? 'nav-item active' : 'nav-item'} aria-current={item.id === page ? 'page' : undefined}>
+          <span className={item.id === 'home' ? 'nav-icon inset' : 'nav-icon'}><img src={item.icon} alt="" /></span>{item.label}
+        </a>)}
       </nav>
     </div>
     <div className="profile">
@@ -93,9 +128,9 @@ function Sidebar() {
   </aside>;
 }
 
-function Header({ now, onStop }) {
+function Header({ title, now, onStop }) {
   return <header className="header">
-    <div className="header-title"><h1>종합 관제 대시보드</h1><span className="chip-site">스마트 팩토리 B동</span></div>
+    <div className="header-title"><h1>{title}</h1><span className="chip-site">스마트 팩토리 B동</span></div>
     <div className="header-right">
       <button className="estop" onClick={onStop} title="목업: 실제 로봇에는 전달되지 않습니다">비상 정지</button>
       <span className="grade">실시간 공장 안전 등급: <b>안전</b></span>
@@ -107,17 +142,8 @@ function Header({ now, onStop }) {
 }
 
 function Home() {
-  return <div className="body">
-    <div className="col-main">
-      <section>
-        <h2>오늘의 핵심 운영 지표</h2>
-        <div className="row3">
-          {metrics.map((m) => <div key={m.label} className="card metric">
-            <span className="metric-label">{m.label}</span>
-            <div className="metric-value"><strong>{m.value}{m.unit && <small>{m.unit}</small>}</strong><span className={`tag ${m.tone}`}>{m.badge}</span></div>
-          </div>)}
-        </div>
-      </section>
+  return <>
+      <MetricRow title="오늘의 핵심 운영 지표" items={metrics} />
       <section>
         <h2>실시간 로봇 작동 상태</h2>
         <div className="row3">
@@ -143,23 +169,135 @@ function Home() {
           </div>)}
         </div>
       </section>
+  </>;
+}
+
+function MetricRow({ title, items, badgeSize }) {
+  return <section>
+    <h2>{title}</h2>
+    <div className="row3">
+      {items.map((m) => <div key={m.label} className="card metric">
+        <span className="metric-label">{m.label}</span>
+        <div className="metric-value"><strong>{m.value}{m.unit && <small>{m.unit}</small>}</strong><span className={`tag ${m.tone} ${badgeSize || ''}`}>{m.badge}</span></div>
+      </div>)}
     </div>
-    <div className="col-side">
-      <CommandPanel />
-      <section>
-        <div className="alerts-head"><h2>공정 실시간 안전 알림</h2><span>전체보기</span></div>
-        <div className="alerts">
-          {alerts.map((a) => <div key={a.text} className={`alert ${a.tone}`}>
-            <i />
-            <div>
-              <div className="alert-head"><span><em className={`tag ${a.tone}`}>{a.level}</em><b>{a.robot}</b></span><small>{a.ago}</small></div>
-              <p>{a.text}</p>
-            </div>
-          </div>)}
+  </section>;
+}
+
+function Alerts() {
+  return <section>
+    <div className="alerts-head"><h2>공정 실시간 안전 알림</h2><span>전체보기</span></div>
+    <div className="alerts">
+      {alerts.map((a) => <div key={a.text} className={`alert ${a.tone}`}>
+        <i />
+        <div>
+          <div className="alert-head"><span><em className={`tag ${a.tone}`}>{a.level}</em><b>{a.robot}</b></span><small>{a.ago}</small></div>
+          <p>{a.text}</p>
         </div>
-      </section>
+      </div>)}
     </div>
-  </div>;
+  </section>;
+}
+
+function Robots() {
+  return <>
+    <section>
+      <h2>실시간 운용 로봇 상태 비교</h2>
+      <div className="row3">
+        {robotDetails.map((r) => <div key={r.name} className={r.selected ? 'card robot selected' : 'card robot'}>
+          <div className="robot-head"><div><strong>{r.name}</strong><small>{r.meta}</small></div><span className={`state ${r.tone}`}>{r.state}</span></div>
+          <div className="robot-task stacked">
+            <div><span>현재 공정 단계</span><b>{r.step}</b></div>
+            <div className="bar"><i className={r.barTone} style={{ width: `${r.progress * 100}%` }} /></div>
+          </div>
+          <div className="robot-stats">
+            <div><span>배터리 잔량</span><b className={r.batteryTone}>{r.battery}</b></div>
+            <div><span>통신 감도</span><b className={r.signalTone}>{r.signal[0]}<br />{r.signal[1]}</b></div>
+          </div>
+        </div>)}
+      </div>
+    </section>
+    <section>
+      <h2>{tool.title}</h2>
+      <div className="tool-row">
+        <div className="card tool">
+          <p className="info tool-kicker">현재 장착 도구 정보</p>
+          <div><strong>{tool.name}</strong><small>{tool.model}</small></div>
+          <div className="tool-pressure"><span className="muted">{tool.range}</span><span>{tool.measured}</span></div>
+          <span className="tool-status">{tool.status}</span>
+        </div>
+        <div className="card table tool-table">
+          <div className="tr th"><span>교체/점검 일시</span><span>엔드 이펙터 툴 종류</span><span>점검 내용 및 조치 내역</span><span>담당 작업자</span></div>
+          {toolHistory.map((t) => <div key={t.at} className="tr"><span>{t.at}</span><span>{t.tool}</span><span className="muted">{t.note}</span><span>{t.by}</span></div>)}
+        </div>
+      </div>
+    </section>
+  </>;
+}
+
+function History() {
+  return <>
+    {/* 필터는 목업이다 — 실제 이력 조회 API가 연결되면 동작한다. */}
+    <div className="card filter-bar">
+      <span className="filter-label">날짜 검색</span><span className="filter-field">2024.10.20 ~ 2024.10.24</span>
+      <span className="filter-label">담당 로봇</span><span className="filter-field">전체 로봇 ▾</span>
+      <span className="filter-label">안전 검증 상태</span><span className="filter-field ok">PASS (안전) ▾</span>
+      <button className="filter-run" disabled>필터 검색 실행</button>
+    </div>
+    <div className="card table log-table">
+      <div className="tr th"><span>명령ID</span><span>입력된 자연어 지시 사항</span><span>최종 승인자</span><span>안전 시뮬레이션</span><span>가동률 보정</span><span>실행 상태</span></div>
+      {commandLog.map((c) => <div key={c.id} className="tr">
+        <b>{c.id}</b><span className="muted">{c.text}</span><span>{c.approver}</span><b className={c.simTone}>{c.sim}</b><span className={c.adjustTone}>{c.adjust}</span><b className={c.statusTone}>{c.status}</b>
+      </div>)}
+    </div>
+    <p className="note warn">{commandLogNote}</p>
+  </>;
+}
+
+function Diagnostics() {
+  return <>
+    <MetricRow title="관제 핵심 엔진 실시간 지수" items={engineMetrics} badgeSize="small" />
+    <section>
+      <h2>최근 시스템 이슈 진단 및 대응 매뉴얼</h2>
+      <div className="card issues">
+        {issues.map((issue, i) => <div key={issue.title} className="issue-wrap">
+          {i > 0 && <img src={dividerDiagnostics} alt="" className="divider" />}
+          <div className="issue">
+            <div className="issue-head"><span><em className={`tag ${issue.tone}`}>{issue.tag}</em><b>{issue.title}</b></span><small>{issue.ago}</small></div>
+            <p className="muted">{issue.body}</p>
+            <div className="issue-action"><b className="info">현장 작업자 대응 권장 사항:</b><span>{issue.action}</span></div>
+          </div>
+        </div>)}
+      </div>
+    </section>
+  </>;
+}
+
+function Settings() {
+  // 설정 버튼은 목업이다. 3번은 피그마 v3 결정: 위험 옵션은 UI에서 제거하고 사유로 대체한다.
+  return <>
+    <section>
+      <h2>1. 개인 프로필 및 알림 제어</h2>
+      <div className="card setting">
+        <div className="setting-row"><div><b>관제 근무자 권한 이메일 연동</b><small>minwoo.kim@forstick-factory.co.kr (제2공정 관리용 라이센스)</small></div><button className="setting-btn" disabled>계정 연동 변경</button></div>
+        <img src={dividerSettings} alt="" className="divider" />
+        <div className="setting-row"><div><b>실시간 비상 SMS 및 사이렌 브로드캐스트</b><small>레벨 3 안전 위협 발생 시 개인 무전기 및 스마트워치로 강제 사이렌 전송</small></div><span className="setting-on">SMS 상시 활성화</span></div>
+      </div>
+    </section>
+    <section>
+      <h2>2. 공정 효율 및 속도 가중치 정책</h2>
+      <div className="card setting">
+        <div className="setting-row"><div><b>금일 가동률 가속 드라이브 조정 지수</b><small>설정된 가동률(현재 94.2%)에 비례한 관절 구동 가속 한계 임계치 1.2배 상향 적용</small></div><button className="setting-btn" disabled>지수 설정 수정</button></div>
+      </div>
+    </section>
+    <section>
+      <h2 className="soft">3. 안전 검증 정책 (변경 불가)</h2>
+      <div className="policy">
+        <b>검증 무시·감속 해제 설정은 이 화면에서 제공하지 않습니다</b>
+        <p>안전 검증을 통과한 계획만 실행한다는 원칙에 따라 충돌 회피 검증 생략과 안전 구역 감속 제한 해제는 설정으로 바꿀 수 없습니다. (안)</p>
+      </div>
+    </section>
+  </>;
 }
 
 function CommandPanel() {
