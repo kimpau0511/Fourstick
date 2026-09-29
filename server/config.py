@@ -11,7 +11,7 @@ LLM 접속 설정은 여기 없다. `examples/config/valid_llm_provider_qwen3.js
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +34,16 @@ class ServerConfig:
     robot_config_dir: Path = ROOT / "config"
     #: SQLite 파일. 브라우저는 여기 직접 접근하지 않는다.
     db_path: Path = ROOT / "reports" / "web.sqlite3"
+    #: 저장 백엔드. 테스트·명시적 로컬 모드는 sqlite, 접속 정보가 있으면
+    #: `from_env()`가 postgres를 우선한다.
+    db_backend: str = "sqlite"
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_name: str = "fourstick"
+    db_user: str = "fourstick_app"
+    db_password: str | None = field(default=None, repr=False)
+    #: 기존 public 운영 테이블과 이름 충돌을 피하는 최신 런타임 전용 스키마.
+    db_schema: str = "forstick_runtime"
     #: LLM 공급자 설정 파일 이름. 없으면 계획 생성을 사용할 수 없는 상태로 둔다.
     llm_config_name: str = "valid_llm_provider_qwen3.json"
     #: 실제 로봇 Profile 파일. 없으면 '로봇 미설정'으로 표시한다.
@@ -87,6 +97,16 @@ class ServerConfig:
                 return default
             return value.strip().lower() not in ("0", "false", "no", "off")
 
+        db_password = (
+            os.environ.get("FORSTICK2_DB_PASSWORD")
+            or os.environ.get("FORSTICK_DB_PASSWORD")
+        )
+        # 접속 정보가 주어진 배포 환경에서는 PostgreSQL이 기본이다. 자격증명 없는
+        # 개발·테스트 checkout은 기존처럼 SQLite로 기동해 비밀값을 코드에 넣지 않는다.
+        db_backend = os.environ.get(
+            "FORSTICK2_DB_BACKEND", "postgres" if db_password else "sqlite"
+        ).strip().lower()
+
         return ServerConfig(
             host=os.environ.get("FORSTICK2_HOST", DEFAULT_HOST),
             port=int(os.environ.get("FORSTICK2_PORT", str(DEFAULT_PORT))),
@@ -94,6 +114,24 @@ class ServerConfig:
             config_dir=path_env("FORSTICK2_CONFIG_DIR", ROOT / "examples" / "config"),
             robot_config_dir=path_env("FORSTICK2_ROBOT_CONFIG_DIR", ROOT / "config"),
             db_path=path_env("FORSTICK2_DB", ROOT / "reports" / "web.sqlite3"),
+            db_backend=db_backend,
+            db_host=os.environ.get(
+                "FORSTICK2_DB_HOST",
+                os.environ.get("FORSTICK_DB_HOST", "localhost"),
+            ),
+            db_port=int(os.environ.get(
+                "FORSTICK2_DB_PORT", os.environ.get("FORSTICK_DB_PORT", "5432")
+            )),
+            db_name=os.environ.get(
+                "FORSTICK2_DB_NAME",
+                os.environ.get("FORSTICK_DB_NAME", "fourstick"),
+            ),
+            db_user=os.environ.get(
+                "FORSTICK2_DB_USER",
+                os.environ.get("FORSTICK_DB_USER", "fourstick_app"),
+            ),
+            db_password=db_password,
+            db_schema=os.environ.get("FORSTICK2_DB_SCHEMA", "forstick_runtime"),
             llm_config_name=os.environ.get(
                 "FORSTICK2_LLM_CONFIG", "valid_llm_provider_qwen3.json"
             ),

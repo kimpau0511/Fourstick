@@ -390,7 +390,11 @@ class Api:
         return {
             "status": "ok" if db_ok else "degraded",
             "now": self.now(),
-            "db": {"available": db_ok, "detail": db_detail},
+            "db": {
+                "available": db_ok,
+                "backend": getattr(runtime.repository, "backend", "unknown"),
+                "detail": db_detail,
+            },
             "robot": {
                 "configured": runtime.robot_configured,
                 "robot_id": runtime.robot_id,

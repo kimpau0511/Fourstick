@@ -10,6 +10,16 @@
 # 포트가 이미 쓰이고 있으면 **임의로 종료하지 않고** 점유 프로세스를 보고한다.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# 로컬 배포 비밀값. Git에는 올라가지 않는다(.gitignore). 이미 export된 값이
+# 우선하며, 단순 KEY=VALUE 형식만 읽어 .env를 셸 코드로 실행하지 않는다.
+if [[ -f "$ROOT/.env" ]]; then
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    if [[ -z "${!key+x}" ]]; then
+      export "$key=$value"
+    fi
+  done < "$ROOT/.env"
+fi
 HOST="${FORSTICK2_HOST:-127.0.0.1}"
 PORT="${FORSTICK2_PORT:-8092}"
 

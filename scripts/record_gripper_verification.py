@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""조립(그리퍼) 검증 결과를 SQLite에 append-only로 남긴다 (8-08 · DB).
+"""조립(그리퍼) 검증 결과를 운영 Repository에 append-only로 남긴다 (8-08).
 
 `verify_fr3_gripper_gazebo.py`의 JSON을 읽어 `sim_verification_runs`에 넣는다.
 
@@ -34,7 +34,7 @@ from core.reason_codes import ReasonCode  # noqa: E402
 from record_gazebo_verification import environment_versions  # noqa: E402
 from server.config import ServerConfig  # noqa: E402
 from storage.records import SimVerificationRecord  # noqa: E402
-from storage.sqlite.repository import SqliteRepository  # noqa: E402
+from storage.factory import build_repository  # noqa: E402
 from validation.pick_place_gate import evaluate  # noqa: E402
 
 CONFIG = ROOT / "config"
@@ -68,7 +68,7 @@ def main() -> int:
                     geometry_decision=None, revalidated=False)
 
     config = ServerConfig.from_env()
-    repository = SqliteRepository(str(config.db_path), now=time.time())
+    repository = build_repository(config, now=time.time())
     written = []
     try:
         for name, check in report["checks"].items():

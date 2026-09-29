@@ -22,7 +22,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from server import asgi
-from server.routes import HTTP_ROUTES, common, execution, planning, robot, session, stt
+from server.routes import (
+    HTTP_ROUTES, common, dashboard, execution, planning, robot, session, stt,
+)
 
 ROUTE_DIR = ROOT / "server" / "routes"
 
@@ -35,6 +37,7 @@ EXPECTED_OWNER = {
     "/v1/stop": "execution",
     "/v1/state": "execution",
     "/v1/robots": "robot",
+    "/v1/dashboard": "dashboard",
     "/v1/sessions": "session",
     "/health": "session",
     "/v1/config": "session",
@@ -97,7 +100,7 @@ class TestPathsLiveInTheirModule(unittest.TestCase):
                 self.assertIn(path, code_strings(module_source(owner)))
 
     def test_no_module_claims_another_modules_path(self):
-        for name in ("planning", "execution", "robot", "session"):
+        for name in ("planning", "execution", "robot", "dashboard", "session"):
             literals = code_strings(module_source(name))
             for path, owner in EXPECTED_OWNER.items():
                 if owner == name:
@@ -118,7 +121,7 @@ class TestNoGlobalStateBetweenRoutes(unittest.TestCase):
     """라우트 사이에 '현재 상태'를 만들지 않는다."""
 
     def test_route_modules_have_no_mutable_module_level_state(self):
-        for name in ("planning", "execution", "robot", "session", "stt"):
+        for name in ("planning", "execution", "robot", "dashboard", "session", "stt"):
             tree = ast.parse(module_source(name))
             for node in tree.body:
                 if not isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -136,7 +139,7 @@ class TestNoGlobalStateBetweenRoutes(unittest.TestCase):
                         )
 
     def test_route_modules_receive_everything_through_context(self):
-        for name in ("planning", "execution", "robot", "session"):
+        for name in ("planning", "execution", "robot", "dashboard", "session"):
             tree = ast.parse(module_source(name))
             handler = next(
                 node for node in tree.body
@@ -154,7 +157,7 @@ class TestNoGlobalStateBetweenRoutes(unittest.TestCase):
         self.assertTrue(hasattr(common.RouteContext, "repository"))
 
     def test_modules_do_not_import_each_other(self):
-        for name in ("planning", "robot", "session", "stt"):
+        for name in ("planning", "robot", "dashboard", "session", "stt"):
             tree = ast.parse(module_source(name))
             imported = set()
             for node in ast.walk(tree):
@@ -162,7 +165,7 @@ class TestNoGlobalStateBetweenRoutes(unittest.TestCase):
                     imported.add(node.module)
             siblings = {
                 f"server.routes.{other}"
-                for other in ("planning", "execution", "robot", "session", "stt")
+                for other in ("planning", "execution", "robot", "dashboard", "session", "stt")
                 if other != name
             }
             with self.subTest(module=name):
@@ -187,8 +190,8 @@ class TestForeignPathsReturnNone(unittest.IsolatedAsyncioTestCase):
         names = [m.__name__.rsplit(".", 1)[-1] for m in HTTP_ROUTES]
         self.assertEqual(
             set(names),
-            {"session", "planning", "execution", "robot", "scene", "sim_demo", "sim_view",
-             "humanoid"})
+            {"session", "planning", "execution", "robot", "dashboard", "scene",
+             "sim_demo", "sim_view", "humanoid"})
 
 
 if __name__ == "__main__":

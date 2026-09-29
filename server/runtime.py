@@ -74,7 +74,8 @@ from storage.records import FAKE_ADAPTER_KIND, RobotProfileRecord
 from robots.fake.adapter import FakeRobotAdapter
 from robots.registry import RobotRegistry
 from server.config import ROOT, ServerConfig
-from storage.sqlite.repository import SqliteRepository
+from storage.factory import build_repository
+from storage.repository import Repository
 
 #: 개발용 Fake Adapter의 robot_id. 실제 로봇이 아니라는 뜻을 이름에 남긴다.
 FAKE_ROBOT_ID = "fake_dev"
@@ -141,7 +142,7 @@ class FeatureState:
 @dataclass
 class Runtime:
     config: ServerConfig
-    repository: SqliteRepository
+    repository: Repository
     resource_catalog: ResourceCatalog
     skill_catalog: SkillCatalog
     safety_policy: SafetyPolicy
@@ -598,6 +599,13 @@ class Runtime:
         profile = self.profile
         return {
             "schema_version": TASK_PLAN_SCHEMA_VERSION,
+            "storage": {
+                "backend": self.config.db_backend,
+                "schema": (
+                    self.config.db_schema
+                    if self.config.db_backend == "postgres" else None
+                ),
+            },
             "robot": {
                 "configured": self.robot_configured,
                 "robot_id": self.robot_id,
@@ -969,7 +977,7 @@ def _load_simulation_e2e() -> dict:
 
 
 def _load_robot_configs(
-    config: ServerConfig, *, repository: SqliteRepository, now: float,
+    config: ServerConfig, *, repository: Repository, now: float,
 ) -> tuple[AssetManifest | None, tuple]:
     """자산 manifest와 조합형 로봇 Profile을 읽고 DB에 기록한다.
 
@@ -1032,7 +1040,7 @@ def _load_robot_configs(
 
 
 def _record_profile(
-    repository: SqliteRepository, composite, manifest: AssetManifest | None,
+    repository: Repository, composite, manifest: AssetManifest | None,
     now: float,
 ) -> None:
     """Profile 한 버전을 append-only로 남긴다. 실패는 조용히 넘기지 않는다."""
@@ -1217,8 +1225,7 @@ def build_runtime(config: ServerConfig) -> Runtime:
         else ApproachRequirement(approach_skill=None)
     )
 
-    config.db_path.parent.mkdir(parents=True, exist_ok=True)
-    repository = SqliteRepository(str(config.db_path), now=time.time())
+    repository = build_repository(config, now=time.time())
 
     runtime = Runtime(
         config=config, repository=repository, resource_catalog=resource_catalog,

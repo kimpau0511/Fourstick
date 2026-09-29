@@ -3,6 +3,9 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.env
+.env.*
+!.env.example
 
 # 평가용 원본 음성 — 용량이 크고 실행 기록과 분리 보관한다
 fixtures/stt/audio/

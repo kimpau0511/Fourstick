@@ -23,13 +23,15 @@ Repository로 한다. `HTTP_ROUTES` 순서대로 물어보고, 맡은 경로가 
 
 from __future__ import annotations
 
-from server.routes import (execution, humanoid, planning, robot, scene, session, sim_demo,
-                           sim_view, stt)
+from server.routes import (dashboard, execution, humanoid, planning, robot, scene, session,
+                           sim_demo, sim_view, stt)
 
 #: HTTP 처리 순서. 겹치는 경로가 없으므로 순서는 성능 외 의미가 없다.
-HTTP_ROUTES = (session, planning, execution, robot, scene, sim_demo, sim_view, humanoid)
+HTTP_ROUTES = (
+    session, planning, execution, robot, dashboard, scene, sim_demo, sim_view, humanoid,
+)
 
 __all__ = [
-    "HTTP_ROUTES", "common", "execution", "humanoid", "planning", "robot", "scene",
-    "session", "sim_demo", "sim_view", "stt",
+    "HTTP_ROUTES", "common", "dashboard", "execution", "humanoid", "planning", "robot",
+    "scene", "session", "sim_demo", "sim_view", "stt",
 ]

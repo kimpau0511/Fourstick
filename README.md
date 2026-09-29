@@ -67,6 +67,18 @@ FORSTICK2_ASSEMBLY_YAW_RAD=0 ./scripts/run_gazebo_fr3_2f85_workcell_gui.sh
 ./scripts/run_web_workcell.sh
 ```
 
+운영 기록은 PostgreSQL을 우선한다. 최초 한 번 `.env.example`을 `.env`로 복사해
+비밀번호를 채우고 DB 드라이버를 설치한다. `.env`는 Git에서 제외된다.
+
+```bash
+cp .env.example .env
+"$PWD/.venv/bin/python" -m pip install -r requirements-db.txt
+```
+
+PostgreSQL이 구성되면 최신 런타임 기록은 같은 DB의 `forstick_runtime` 스키마에,
+기존 로봇·작업셀·자재 카탈로그는 `public` 스키마에 유지된다. 명시적으로 로컬
+SQLite를 쓰려면 `FORSTICK2_DB_BACKEND=sqlite`로 실행한다.
+
 웹 페이지에서 "1번 팔레트로 가"처럼 입력하면 계획이 생성되고, 검증 결과와
 판정(허용·확인·차단)이 화면에 표시된다. 포트는 `FORSTICK2_PORT`로 바꾼다.
 

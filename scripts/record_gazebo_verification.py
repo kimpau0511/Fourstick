@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gazebo 검증 결과를 SQLite에 append-only로 남긴다 (8-03~8-06 · DB 9항).
+"""Gazebo 검증 결과를 운영 Repository에 append-only로 남긴다 (8-03~8-06).
 
 `verify_fr3_gazebo.py`의 JSON을 읽어 `sim_verification_runs`에 넣는다.
 
@@ -34,7 +34,7 @@ from core.constants import TASK_PLAN_SCHEMA_VERSION  # noqa: E402
 from core.reason_codes import ReasonCode  # noqa: E402
 from server.config import ServerConfig  # noqa: E402
 from storage.records import SimVerificationRecord  # noqa: E402
-from storage.sqlite.repository import SqliteRepository  # noqa: E402
+from storage.factory import build_repository  # noqa: E402
 
 CONFIG = ROOT / "config"
 
@@ -93,7 +93,7 @@ def main() -> int:
     env = environment_versions()
 
     config = ServerConfig.from_env()
-    repository = SqliteRepository(str(config.db_path), now=time.time())
+    repository = build_repository(config, now=time.time())
     written = []
     try:
         for step in report.get("steps", []):

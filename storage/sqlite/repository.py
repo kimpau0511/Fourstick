@@ -144,6 +144,8 @@ class _SerialConnection:
 
 
 class SqliteRepository(Repository):
+    backend = "sqlite"
+
     def __init__(self, path: str = ":memory:", *, now: float = 0.0):
         raw = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
         raw.row_factory = sqlite3.Row
@@ -1574,6 +1576,100 @@ class SqliteRepository(Repository):
             key = "unknown" if flag is None else ("simulated" if to_bool(flag) else "real")
             counts[key] += int(row["n"])
         return counts
+
+    def dashboard_snapshot(self, *, limit: int = 8) -> Mapping[str, Any]:
+        """관제 화면용 읽기 모델.
+
+        별도 상태를 만들지 않고 append-only 원장에서 계산한다. PostgreSQL 구현도
+        같은 Repository SQL을 사용하므로 대시보드가 저장 백엔드에 종속되지 않는다.
+        """
+
+        executions = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM executions"
+        ).fetchone()
+        sessions = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM sessions WHERE status = 'active'"
+        ).fetchone()
+        validations = self._conn.execute(
+            "SELECT decision, COUNT(*) AS n FROM validation_runs GROUP BY decision"
+        ).fetchall()
+        decisions = {row["decision"]: int(row["n"]) for row in validations}
+        validation_total = sum(decisions.values())
+
+        history_rows = self._conn.execute(
+            """
+            SELECT e.execution_id, e.started_at, e.robot_id, e.is_simulated,
+                   r.utterance, p.plan_id,
+                   (SELECT er.state FROM execution_results er
+                    WHERE er.execution_id = e.execution_id
+                    ORDER BY er.seq DESC LIMIT 1) AS result_state,
+                   (SELECT er.task_succeeded FROM execution_results er
+                    WHERE er.execution_id = e.execution_id
+                    ORDER BY er.seq DESC LIMIT 1) AS task_succeeded,
+                   (SELECT vr.decision FROM validation_runs vr
+                    WHERE vr.plan_id = e.plan_id
+                    ORDER BY vr.started_at DESC LIMIT 1) AS validation_decision
+            FROM executions e
+            JOIN requests r ON r.request_id = e.request_id
+            JOIN plans p ON p.plan_id = e.plan_id
+            ORDER BY e.started_at DESC, e.execution_id DESC LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+
+        latest_request = self._conn.execute(
+            "SELECT * FROM requests ORDER BY created_at DESC, request_id DESC LIMIT 1"
+        ).fetchone()
+        latest_plan = None
+        latest_validation = None
+        if latest_request is not None:
+            latest_plan = self._conn.execute(
+                "SELECT * FROM plans WHERE request_id = ?"
+                " ORDER BY stored_at DESC, plan_id DESC LIMIT 1",
+                (latest_request["request_id"],),
+            ).fetchone()
+            if latest_plan is not None:
+                latest_validation = self._conn.execute(
+                    "SELECT * FROM validation_runs WHERE plan_id = ?"
+                    " ORDER BY started_at DESC, validation_run_id DESC LIMIT 1",
+                    (latest_plan["plan_id"],),
+                ).fetchone()
+
+        alerts = self._conn.execute(
+            """
+            SELECT verification_id AS id, recorded_at AS at, step,
+                   state, reason_code, collision_decision, detail
+            FROM sim_verification_runs
+            WHERE reason_code IS NOT NULL OR collision_decision = 'block'
+                  OR task_succeeded = 0
+            ORDER BY recorded_at DESC, verification_id DESC LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+
+        return {
+            "backend": self.backend,
+            "metrics": {
+                "executions": int(executions["n"]),
+                "active_sessions": int(sessions["n"]),
+                "validation_total": validation_total,
+                "validation_allow": decisions.get("allow", 0),
+                "validation_block": decisions.get("block", 0),
+                "validation_ask": decisions.get("ask", 0),
+            },
+            "history": [dict(row) for row in history_rows],
+            "alerts": [dict(row) for row in alerts],
+            "latest": {
+                "request": None if latest_request is None else dict(latest_request),
+                "plan": None if latest_plan is None else {
+                    **dict(latest_plan),
+                    "plan": load_json(latest_plan["plan_json"], "dashboard_plan"),
+                },
+                "validation": (
+                    None if latest_validation is None else dict(latest_validation)
+                ),
+            },
+        }
 
     def executions_for_request(self, request_id: str) -> Sequence[ExecutionRecord]:
         rows = self._conn.execute(

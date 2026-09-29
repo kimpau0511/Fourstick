@@ -69,6 +69,108 @@ function useNow() {
   return now;
 }
 
+function useDashboard() {
+  const [state, setState] = useState({ payload: null, error: '', updatedAt: null });
+  useEffect(() => {
+    let disposed = false;
+    let timer;
+    async function refresh() {
+      try {
+        const response = await fetch('/v1/dashboard', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (!disposed) setState({ payload, error: '', updatedAt: new Date() });
+      } catch (error) {
+        if (!disposed) setState((prev) => ({ ...prev, error: error.message }));
+      }
+      if (!disposed) timer = setTimeout(refresh, 3000);
+    }
+    refresh();
+    return () => { disposed = true; if (timer) clearTimeout(timer); };
+  }, []);
+  return state;
+}
+
+function dashboardModel(payload) {
+  if (!payload) return {
+    metrics: [
+      { label: '누적 실행 기록', value: '—', badge: '연결 중', tone: 'warn' },
+      { label: '활성 작업 세션', value: '—', badge: '연결 중', tone: 'warn' },
+      { label: '안전 검증 통과 지수', value: '—', badge: '연결 중', tone: 'warn' },
+    ],
+    robots: [], history: [], alerts: [],
+    command: {
+      utterance: '백엔드에서 최근 명령을 불러오는 중입니다.', target: '', plan: [],
+      checks: ['• PostgreSQL 연결 확인 중', '• Gazebo 상태 확인 중'],
+      holdReason: '저장된 검증 결과를 확인하기 전에는 실행할 수 없습니다.',
+    },
+  };
+  const m = payload.metrics || {};
+  const total = Number(m.validation_total || 0);
+  const allow = Number(m.validation_allow || 0);
+  const rate = total ? `${Math.round((allow / total) * 100)}%` : '—';
+  const metrics = [
+    { label: '누적 실행 기록', value: String(m.executions || 0), badge: payload.backend === 'postgres' ? 'PostgreSQL' : 'SQLite', tone: 'ok' },
+    { label: '활성 작업 세션', value: String(m.active_sessions || 0), badge: '실시간', tone: 'ok' },
+    { label: '안전 검증 통과 지수', value: rate, badge: `차단 ${m.validation_block || 0}건`, tone: Number(m.validation_block || 0) ? 'warn' : 'ok' },
+  ];
+  const catalog = payload.catalog_robots || [];
+  const robots = catalog.length ? catalog.map((r) => {
+    const simulator = r.robot_code === 'FR3-SIM-01';
+    const registered = simulator && payload.workcell?.registered;
+    const online = r.status_code === 'ONLINE';
+    return ({
+    name: r.model_name || r.robot_code,
+    meta: `${r.robot_code}${simulator ? ' · Gazebo' : ''}`,
+    state: registered ? '시뮬레이터 등록' : online ? '연결됨' : '오프라인',
+    tone: registered || online ? 'info' : 'idle',
+    task: registered ? (payload.workcell?.detail || 'FR3 작업셀 명령 대기')
+      : r.last_seen_at ? `최근 신호 ${new Date(r.last_seen_at).toLocaleString('ko-KR')}` : '최근 연결 기록 없음',
+    progress: registered || online ? 1 : 0,
+    load: 'DB 등록',
+    temp: r.is_enabled ? '활성' : '비활성',
+  }); }) : [];
+  const history = (payload.history || []).map((h) => ({
+    id: h.execution_id,
+    task: h.utterance,
+    robot: h.robot_id,
+    check: String(h.validation_decision || '미검증').toUpperCase(),
+    checkTone: h.validation_decision === 'allow' ? 'ok' : 'warn',
+    status: h.result_state || '실행 중',
+    statusTone: h.task_succeeded === 1 ? 'ok' : h.task_succeeded === 0 ? 'danger' : 'warn',
+  }));
+  const alerts = (payload.alerts || []).map((a) => ({
+    level: a.collision_decision === 'block' ? '위험' : '경고',
+    tone: a.collision_decision === 'block' ? 'danger' : 'warn',
+    robot: payload.robot?.robot_id || '시뮬레이터',
+    ago: new Date(Number(a.at) * 1000).toLocaleTimeString('ko-KR'),
+    text: `${a.step}: ${a.detail || a.reason_code || a.state || '검증 실패'}`,
+  }));
+  const latest = payload.latest || {};
+  const steps = latest.plan?.plan?.steps || [];
+  const command = latest.request ? {
+    utterance: `“${latest.request.utterance}”`,
+    target: `요청 ID: ${latest.request.request_id}`,
+    plan: steps.slice(0, 5).map((step) => ({
+      done: true,
+      text: step.description || `${step.skill || step.skill_id || '작업'} ${step.resource_id || ''}`.trim(),
+    })),
+    checks: [
+      `• 최근 검증: ${(latest.validation?.decision || '미실행').toUpperCase()}`,
+      `• 저장소: ${payload.backend}${payload.schema ? ` / ${payload.schema}` : ''}`,
+    ],
+    holdReason: latest.validation?.detail || '실행 전 승인과 최신 상태 확인이 필요합니다.',
+  } : {
+    utterance: '저장된 명령이 없습니다.', target: '', plan: [],
+    checks: ['• 최근 검증 없음', `• 저장소: ${payload.backend}`],
+    holdReason: '새 명령과 검증 결과가 PostgreSQL에 기록되면 여기에 표시됩니다.',
+  };
+  return {
+    metrics, robots, history: history.length ? history : [],
+    alerts: alerts.length ? alerts : [], command,
+  };
+}
+
 export default function App() {
   // null(평소) | 'running'(안전 검사 중) | 'stopping'(검사 중 비상 정지) | 'danger'(위험 판정)
   const [sim, setSim] = useState(null);
@@ -76,35 +178,45 @@ export default function App() {
   const now = useNow();
   const page = usePage();
   const nav = NAV.find((item) => item.id === page);
+  const dashboard = useDashboard();
+  const model = dashboardModel(dashboard.payload);
 
   const open = (state) => { setSim(state); setSimAt(new Date()); };
 
   // 헤더 비상 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 목업이라 실제 로봇에는
   // 아무것도 보내지 않고, 검사 중이면 '정지 확인' 상태를 보여준다.
-  function globalStop() {
-    if (sim === 'running') open('stopping');
+  async function globalStop() {
+    try {
+      const response = await fetch('/v1/stop', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      open('stopping');
+    } catch {
+      open('danger');
+    }
   }
 
   return <div className="app">
     <Sidebar page={page} />
     <div className="main">
-      <Header title={nav.title} now={now} onStop={globalStop} />
+      <Header title={nav.title} now={now} onStop={globalStop} live={Boolean(dashboard.payload)} />
       <div className="body">
         <div className="col-main">
-          {page === 'home' && <Home />}
+          {page === 'home' && <Home model={model} />}
           {page === 'robots' && <Robots />}
           {page === 'history' && <History />}
           {page === 'diagnostics' && <Diagnostics />}
           {page === 'settings' && <Settings />}
         </div>
         <div className="col-side">
-          <CommandPanel />
-          {page === 'home' && <Alerts />}
+          <CommandPanel command={model.command} />
+          {page === 'home' && <Alerts alerts={model.alerts} />}
         </div>
       </div>
     </div>
     {sim && <SimOverlay state={sim} at={simAt} onClose={() => setSim(null)} onRerun={() => open('running')} />}
-    <DemoBar state={sim} onChange={(state) => (state ? open(state) : setSim(null))} />
+    <DemoBar state={sim} backend={dashboard.payload?.backend} error={dashboard.error} onChange={(state) => (state ? open(state) : setSim(null))} />
   </div>;
 }
 
@@ -128,20 +240,21 @@ function Sidebar({ page }) {
   </aside>;
 }
 
-function Header({ title, now, onStop }) {
+function Header({ title, now, onStop, live }) {
   return <header className="header">
     <div className="header-title"><h1>{title}</h1><span className="chip-site">스마트 팩토리 B동</span></div>
     <div className="header-right">
-      <button className="estop" onClick={onStop} title="목업: 실제 로봇에는 전달되지 않습니다">비상 정지</button>
-      <span className="grade">실시간 공장 안전 등급: <b>안전</b></span>
-      <span className="risk-badge">주의 · Beta</span>
+      <button className="estop" onClick={onStop} title="백엔드 전체 정지 API로 전달됩니다">비상 정지</button>
+      <span className="grade">DB·시뮬레이터: <b>{live ? '연결됨' : '연결 중'}</b></span>
+      <span className="risk-badge">{live ? 'PostgreSQL 실시간' : '연결 확인 중'}</span>
       <img src={headerDivider} alt="" className="header-divider" />
       <time>{clockText(now)}</time>
     </div>
   </header>;
 }
 
-function Home() {
+function Home({ model }) {
+  const { metrics, robots, history } = model;
   return <>
       <MetricRow title="오늘의 핵심 운영 지표" items={metrics} />
       <section>
@@ -158,6 +271,7 @@ function Home() {
               <div><span>관절 온도</span><b className={r.tempTone}>{r.temp}</b></div>
             </div>
           </div>)}
+          {!robots.length && <div className="card robot"><span className="muted">등록된 로봇 정보를 불러오는 중입니다.</span></div>}
         </div>
       </section>
       <section>
@@ -167,6 +281,7 @@ function Home() {
           {history.map((h) => <div key={h.id} className="tr">
             <b>{h.id}</b><span className="muted">{h.task}</span><span>{h.robot}</span><b className={h.checkTone}>{h.check}</b><b className={h.statusTone}>{h.status}</b>
           </div>)}
+          {!history.length && <div className="tr"><span>—</span><span className="muted">저장된 실행 이력이 없습니다.</span><span>—</span><span>—</span><span>—</span></div>}
         </div>
       </section>
   </>;
@@ -184,7 +299,7 @@ function MetricRow({ title, items, badgeSize }) {
   </section>;
 }
 
-function Alerts() {
+function Alerts({ alerts }) {
   return <section>
     <div className="alerts-head"><h2>공정 실시간 안전 알림</h2><span>전체보기</span></div>
     <div className="alerts">
@@ -195,6 +310,7 @@ function Alerts() {
           <p>{a.text}</p>
         </div>
       </div>)}
+      {!alerts.length && <div className="card alert"><div><p className="muted">현재 저장된 안전 경고가 없습니다.</p></div></div>}
     </div>
   </section>;
 }
@@ -300,7 +416,7 @@ function Settings() {
   </>;
 }
 
-function CommandPanel() {
+function CommandPanel({ command }) {
   return <section className="command">
     <div className="command-head"><span><img src={dotPanel} alt="" width="8" height="8" />통합 작업 명령 패널</span><small>정지 상태 확인 필요</small></div>
     <div className="step">
@@ -386,12 +502,11 @@ function SimOverlay({ state, at, onClose, onRerun }) {
   </div>;
 }
 
-/** 목업 상태 전환 도구. 실제 흐름(명령 → 계획 → 검사)이 백엔드와 연결되기 전까지 오버레이
- *  상태를 확인하기 위한 것이다. */
-function DemoBar({ state, onChange }) {
+/** 화면 상태 점검 도구. 데이터와 STOP은 백엔드에 연결되며, 이 버튼은 오버레이 표현만 바꾼다. */
+function DemoBar({ state, backend, error, onChange }) {
   const options = [[null, '기본'], ['running', '안전 검사 중'], ['stopping', '정지 확인'], ['danger', '위험 판정']];
   return <div className="demo-bar">
-    <span>DEMO · 목업 데이터 (영상만 실제 Gazebo)</span>
+    <span>{backend ? `LIVE · ${backend.toUpperCase()} + Gazebo` : `연결 대기 · ${error || '백엔드 확인 중'}`}</span>
     {options.map(([value, label]) => <button key={label} className={state === value ? 'on' : ''} onClick={() => onChange(value)}>{label}</button>)}
   </div>;
 }
