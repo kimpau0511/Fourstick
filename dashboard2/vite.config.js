@@ -16,6 +16,8 @@ export default defineConfig({
     proxy: {
       '/v1/scene': { target: backend, changeOrigin: true, secure: false, ws: true },
       '/v1/dashboard': { target: backend, changeOrigin: true, secure: false },
+      '/v1/sessions': { target: backend, changeOrigin: true, secure: false },
+      '/v1/plan': { target: backend, changeOrigin: true, secure: false },
       '/v1/stop': { target: backend, changeOrigin: true, secure: false },
     },
   },

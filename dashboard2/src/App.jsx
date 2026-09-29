@@ -180,6 +180,7 @@ export default function App() {
   const nav = NAV.find((item) => item.id === page);
   const dashboard = useDashboard();
   const model = dashboardModel(dashboard.payload);
+  const [commandSubmit, setCommandSubmit] = useState({ pending: false, tone: '', message: '' });
 
   const open = (state) => { setSim(state); setSimAt(new Date()); };
 
@@ -197,6 +198,44 @@ export default function App() {
     }
   }
 
+  async function submitCommand(utterance) {
+    const text = utterance.trim();
+    if (!text || commandSubmit.pending) return false;
+    setCommandSubmit({ pending: true, tone: 'info', message: '세션을 확인하고 계획을 생성하는 중입니다.' });
+    try {
+      let sessionId = window.sessionStorage.getItem('forstick2.session_id');
+      if (!sessionId) {
+        const sessionResponse = await fetch('/v1/sessions', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ origin: 'dashboard2' }),
+        });
+        const session = await sessionResponse.json();
+        if (!sessionResponse.ok) throw new Error(session.detail || `세션 생성 실패 (HTTP ${sessionResponse.status})`);
+        sessionId = session.session_id;
+        window.sessionStorage.setItem('forstick2.session_id', sessionId);
+      }
+
+      const response = await fetch('/v1/plan', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, utterance: text }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.ok === false) {
+        const reasonMessage = {
+          'plan.llm_unavailable': '계획 모델 서버가 연결되지 않았습니다. 모델 서버를 실행한 뒤 다시 시도하세요.',
+          'robot.not_registered': '명령을 수행할 로봇이 아직 연결되지 않았습니다.',
+          'plan.slot_incomplete': '명령에 대상이나 위치가 부족합니다. 작업 대상을 더 구체적으로 입력하세요.',
+        }[result.reason_code];
+        throw new Error(result.detail || result.clarification || reasonMessage || result.reason_code || `계획 생성 실패 (HTTP ${response.status})`);
+      }
+      setCommandSubmit({ pending: false, tone: 'ok', message: '명령을 저장하고 안전 계획을 생성했습니다.' });
+      return true;
+    } catch (error) {
+      setCommandSubmit({ pending: false, tone: 'danger', message: error.message || '명령을 전송하지 못했습니다.' });
+      return false;
+    }
+  }
+
   return <div className="app">
     <Sidebar page={page} />
     <div className="main">
@@ -210,7 +249,7 @@ export default function App() {
           {page === 'settings' && <Settings />}
         </div>
         <div className="col-side">
-          <CommandPanel command={model.command} />
+          <CommandPanel command={model.command} submission={commandSubmit} onSubmit={submitCommand} />
           {page === 'home' && <Alerts alerts={model.alerts} />}
         </div>
       </div>
@@ -416,11 +455,33 @@ function Settings() {
   </>;
 }
 
-function CommandPanel({ command }) {
+function CommandPanel({ command, submission, onSubmit }) {
+  const [utterance, setUtterance] = useState('');
+  async function submit(event) {
+    event.preventDefault();
+    const sent = await onSubmit(utterance);
+    if (sent) setUtterance('');
+  }
   return <section className="command">
     <div className="command-head"><span><img src={dotPanel} alt="" width="8" height="8" />통합 작업 명령 패널</span><small>정지 상태 확인 필요</small></div>
     <div className="step">
       <div className="step-title info">STEP 1. 자연어 명령 입력 (음성/텍스트)<img src={mic} alt="" width="14" height="14" /></div>
+      <form className="command-form" onSubmit={submit}>
+        <label htmlFor="command-utterance">새 작업 명령</label>
+        <textarea
+          id="command-utterance"
+          value={utterance}
+          onChange={(event) => setUtterance(event.target.value)}
+          placeholder="예: 1번 팔레트의 자재를 컨베이어로 옮겨줘"
+          rows="3"
+          disabled={submission.pending}
+        />
+        <button type="submit" disabled={!utterance.trim() || submission.pending}>
+          {submission.pending ? '계획 생성 중…' : '명령 전송 · 계획 생성'}
+        </button>
+        {submission.message && <p className={`command-feedback ${submission.tone}`}>{submission.message}</p>}
+      </form>
+      <span className="command-latest">최근 저장 명령</span>
       <p className="utterance">{command.utterance}</p>
       <small>{command.target}</small>
     </div>
