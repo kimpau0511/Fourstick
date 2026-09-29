@@ -103,6 +103,7 @@ function dashboardModel(payload) {
       utterance: '백엔드에서 최근 명령을 불러오는 중입니다.', target: '', plan: [],
       checks: ['• PostgreSQL 연결 확인 중', '• Gazebo 상태 확인 중'],
       holdReason: '저장된 검증 결과를 확인하기 전에는 실행할 수 없습니다.',
+      hasPlan: false, hasValidation: false,
     },
   };
   const m = payload.metrics || {};
@@ -160,10 +161,13 @@ function dashboardModel(payload) {
       `• 저장소: ${payload.backend}${payload.schema ? ` / ${payload.schema}` : ''}`,
     ],
     holdReason: latest.validation?.detail || '실행 전 승인과 최신 상태 확인이 필요합니다.',
+    hasPlan: steps.length > 0,
+    hasValidation: Boolean(latest.validation),
   } : {
     utterance: '저장된 명령이 없습니다.', target: '', plan: [],
     checks: ['• 최근 검증 없음', `• 저장소: ${payload.backend}`],
     holdReason: '새 명령과 검증 결과가 PostgreSQL에 기록되면 여기에 표시됩니다.',
+    hasPlan: false, hasValidation: false,
   };
   return {
     metrics, robots, history: history.length ? history : [],
@@ -485,21 +489,21 @@ function CommandPanel({ command, submission, onSubmit }) {
       <p className="utterance">{command.utterance}</p>
       <small>{command.target}</small>
     </div>
-    <div className="step">
+    {command.hasPlan && <div className="step">
       <div className="step-title warn">STEP 2. 자연어 기반 기계 작업 계획 구조화</div>
       <ul className="plan">
         {command.plan.map((p) => <li key={p.text} className={p.done ? 'done' : ''}><img src={p.done ? checkSquare : loaderCircle} alt="" width="14" height="14" />{p.text}</li>)}
       </ul>
-    </div>
-    <div className="step step-warn">
+    </div>}
+    {command.hasValidation && <div className="step step-warn">
       <div className="step-title warn">STEP 3. 계획 검증 · 전체 안전 미확인<img src={shieldCheck} alt="" width="14" height="14" /></div>
       <div className="checks"><b>{command.checks[0]}</b><span>{command.checks[1]}</span></div>
-    </div>
-    <div className="decide">
+    </div>}
+    {command.hasValidation && <div className="decide">
       <button className="hold" disabled><img src={playCircle} alt="" width="18" height="18" />실행 승인 보류 · 위험 확인</button>
       <p>{command.holdReason}</p>
       <button className="panel-estop" disabled title="비상 정지는 헤더 버튼으로만 실행합니다"><img src={alertOctagon} alt="" width="22" height="22" />비상 정지 · 별도 조작</button>
-    </div>
+    </div>}
   </section>;
 }
 
