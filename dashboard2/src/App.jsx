@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  alerts, command, commandLog, commandLogNote, engineMetrics, history, issues, metrics,
+  alerts, commandLog, commandLogNote, engineMetrics, history, issues, metrics,
   robotDetails, robots, tool, toolHistory,
 } from './data.js';
 import SceneView, { sceneLabel } from './SceneView.jsx';
+import { RESULT_LABELS, useSimCommand } from './simCommand.js';
 import alertOctagon from './assets/alert-octagon.svg';
 import avatar from './assets/avatar.jpg';
 import bot from './assets/bot.svg';
@@ -17,12 +18,10 @@ import dotSimRunning from './assets/dot-sim-running.svg';
 import dotSimStopping from './assets/dot-sim-stopping.svg';
 import dividerDiagnostics from './assets/divider-diagnostics.svg';
 import dividerSettings from './assets/divider-settings.svg';
-import headerDivider from './assets/header-divider.svg';
 import house from './assets/house.svg';
 import loaderCircle from './assets/loader-circle.svg';
 import logs from './assets/logs.svg';
 import mic from './assets/mic.svg';
-import playCircle from './assets/play-circle.svg';
 import settings from './assets/settings.svg';
 import shieldCheck from './assets/shield-check.svg';
 
@@ -50,12 +49,6 @@ function usePage() {
   return page;
 }
 
-function clockText(date) {
-  const day = date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
-  const weekday = date.toLocaleDateString('ko-KR', { weekday: 'short' });
-  return `${day} (${weekday}) ${timeText(date)}`;
-}
-
 function timeText(date) {
   return [date.getHours(), date.getMinutes(), date.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
 }
@@ -73,22 +66,24 @@ export default function App() {
   // null(평소) | 'running'(안전 검사 중) | 'stopping'(검사 중 비상 정지) | 'danger'(위험 판정)
   const [sim, setSim] = useState(null);
   const [simAt, setSimAt] = useState(null);
+  const cmd = useSimCommand();
   const now = useNow();
   const page = usePage();
   const nav = NAV.find((item) => item.id === page);
 
   const open = (state) => { setSim(state); setSimAt(new Date()); };
 
-  // 헤더 비상 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 목업이라 실제 로봇에는
-  // 아무것도 보내지 않고, 검사 중이면 '정지 확인' 상태를 보여준다.
+  // 헤더 비상 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 실행 중인 시연 작업에
+  // 정지를 요청한다(/v1/sim-demo/stop). 오버레이의 '정지 확인' 화면은 아직 목업이다.
   function globalStop() {
+    cmd.stop();
     if (sim === 'running') open('stopping');
   }
 
   return <div className="app">
     <Sidebar page={page} />
     <div className="main">
-      <Header title={nav.title} now={now} onStop={globalStop} />
+      <Header title={nav.title} onStop={globalStop} />
       <div className="body">
         <div className="col-main">
           {page === 'home' && <Home />}
@@ -98,7 +93,7 @@ export default function App() {
           {page === 'settings' && <Settings />}
         </div>
         <div className="col-side">
-          <CommandPanel />
+          <CommandPanel now={now} sim={cmd} />
           {page === 'home' && <Alerts />}
         </div>
       </div>
@@ -128,15 +123,13 @@ function Sidebar({ page }) {
   </aside>;
 }
 
-function Header({ title, now, onStop }) {
+function Header({ title, onStop }) {
   return <header className="header">
     <div className="header-title"><h1>{title}</h1><span className="chip-site">스마트 팩토리 B동</span></div>
     <div className="header-right">
-      <button className="estop" onClick={onStop} title="목업: 실제 로봇에는 전달되지 않습니다">비상 정지</button>
       <span className="grade">실시간 공장 안전 등급: <b>안전</b></span>
       <span className="risk-badge">주의 · Beta</span>
-      <img src={headerDivider} alt="" className="header-divider" />
-      <time>{clockText(now)}</time>
+      <button className="estop" onClick={onStop} title="실행 중인 시연 작업에 정지를 요청합니다"><img src={alertOctagon} alt="" width="20" height="20" />비상 정지</button>
     </div>
   </header>;
 }
@@ -300,28 +293,113 @@ function Settings() {
   </>;
 }
 
-function CommandPanel() {
+// 서버 판정 → [톤, 표시]. 판정 코드는 서버 계약(server/routes/sim_demo.py) 그대로다.
+const DECISIONS = {
+  CONFIRM: ['info', '확인 필요'],
+  CONFIRM_GOAL: ['info', '확인 필요 · 여러 단계'],
+  RUN: ['ok', '실행'],
+  STOP: ['danger', '정지 요청'],
+  ASK: ['warn', '되묻기 · 실행 안 함'],
+  BLOCK: ['danger', '차단 · 실행 안 함'],
+  PASS_THROUGH: ['warn', '시연 명령 아님'],
+  ENVIRONMENT: ['info', '환경 변경'],
+  NOOP: ['info', '할 일 없음'],
+  CANCELLED: ['warn', '취소됨'],
+};
+
+const stepText = (p) => `${p.material_label || p.material} · ${p.from_label || ''} → ${p.to_label || ''}`;
+
+function CommandPanel({ now, sim }) {
+  const [text, setText] = useState('');
+  const { result, pending, job, goal } = sim;
+  const [tone, label] = (result && DECISIONS[result.decision]) || ['info', result ? result.decision : ''];
+  const remaining = sim.deadline ? Math.max(0, Math.ceil((sim.deadline - now.getTime()) / 1000)) : null;
+  const expired = remaining === 0;
+  const running = (job && job.status === 'running') || (goal && ['running', 'stopping'].includes(goal.status));
+  const report = job && job.report;
+  const [reportTone, resultLabel] = (report && RESULT_LABELS[report.status]) || ['warn', report ? report.status : ''];
+  const resultTone = report ? reportTone : goal ? (goal.status === 'completed' ? 'ok' : goal.status === 'failed' ? 'danger' : 'warn') : 'warn';
+
+  // 피그마 v3 흐름 ①~⑤: idle → ask/confirm → running → done. 판정·문구는 서버 값이고, 여기서는 상태별 톤만 고른다.
+  const phase = pending ? 'confirm' : running ? 'running' : (job || goal) ? 'done'
+    : result && result.decision === 'ASK' ? 'ask' : (result || sim.error) ? 'other' : 'idle';
+  const [statusTone, statusLabel] = {
+    idle: ['muted', '명령 대기'],
+    ask: ['warn', '추가 확인 필요'],
+    confirm: ['warn', expired ? '확인 시간 만료' : `승인 대기 · ${remaining}초`],
+    running: ['info', '실행 중'],
+    done: [resultTone, '작업 종료'],
+    other: [tone, label || '오류'],
+  }[phase];
+  const s3Class = { confirm: 'step-ok', running: 'step-run', done: `step-${resultTone}` }[phase] || 'dim';
+  const s3Suffix = { confirm: '승인 대기', running: '진행 중', done: '결과' }[phase] || '대기';
+  const s2Suffix = { confirm: '완료', ask: '답변 대기' }[phase];
+  const steps = job ? (job.progress || []).map((p) => p.reached) : goal ? (goal.plan || []).map((p) => p.status === 'completed') : [];
+  const percent = steps.length ? Math.round((steps.filter(Boolean).length / steps.length) * 100) : 0;
+  const caption = { idle: '사유: 접수된 명령이 없습니다', ask: '사유: 되묻기 답변이 필요합니다', running: '정지는 확인 없이 즉시 요청됩니다', done: '다음 명령을 입력해 주세요' }[phase];
+
+  function submit(event) {
+    event.preventDefault();
+    if (!sim.busy) sim.send(text);
+  }
+
+  // 해석 줄: 서버가 준 요약·사유만 보인다.
+  let interpretation = [];
+  if (sim.error) interpretation = [sim.error];
+  else if (pending) interpretation = [pending.summary, pending.evidence && pending.evidence.slot_label].filter(Boolean);
+  else if (result && result.decision === 'PASS_THROUGH') interpretation = ['자재 이송·복귀·정지·이어서 명령이 아닙니다. 일반 계획 경로는 이 화면에 아직 연결되지 않았습니다.'];
+  else if (result && result.decision === 'STOP') interpretation = ['시연 작업에 정지를 요청했습니다.'];
+  else if (result) interpretation = [result.summary || (job && `${job.action_label || job.action} · ${job.slot_label || ''}`), result.reason].filter(Boolean);
+
   return <section className="command">
-    <div className="command-head"><span><img src={dotPanel} alt="" width="8" height="8" />통합 작업 명령 패널</span><small>정지 상태 확인 필요</small></div>
-    <div className="step">
-      <div className="step-title info">STEP 1. 자연어 명령 입력 (음성/텍스트)<img src={mic} alt="" width="14" height="14" /></div>
-      <p className="utterance">{command.utterance}</p>
-      <small>{command.target}</small>
+    <div className="command-head"><span><img src={dotPanel} alt="" width="8" height="8" />통합 작업 명령 패널</span><small className={`state-label ${statusTone}`}>{statusLabel}</small></div>
+    <form className={`step ${phase === 'idle' ? 'step-input' : ''}`} onSubmit={submit}>
+      <label className="step-title info" htmlFor="command-input">STEP 1. 자연어 명령 입력 (텍스트)<img src={mic} alt="" width="14" height="14" title="음성 입력은 아직 연결되지 않았습니다" /></label>
+      <textarea id="command-input" className="command-input" rows={2} value={text} placeholder="예: A 자재를 컨베이어로 옮겨줘"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
+      <div className="command-send">
+        <small>{sim.sent ? `보낸 명령: "${sim.sent}"` : 'Enter로 보내기 · Shift+Enter 줄바꿈'}</small>
+        <button type="submit" disabled={sim.busy || !text.trim()}>{sim.busy ? '보내는 중…' : '보내기'}</button>
+      </div>
+    </form>
+    <div className={`step ${phase === 'idle' ? 'dim' : phase === 'confirm' ? 'step-ok' : result && ['ASK', 'BLOCK', 'PASS_THROUGH'].includes(result.decision) || sim.error ? 'step-warn' : ''}`}>
+      <div className={`step-title ${phase === 'confirm' ? 'ok' : 'warn'}`}>STEP 2. 명령 해석{s2Suffix && ` · ${s2Suffix}`} {result && <span className={`tag ${tone}`}>{label}</span>}</div>
+      {interpretation.length
+        ? <div className="checks">{interpretation.map((line) => <span key={line}>{line}</span>)}</div>
+        : <small className="muted">명령을 보내면 서버의 해석과 판정이 여기에 표시됩니다.</small>}
+      {pending && pending.kind === 'goal' && <ul className="plan">
+        {(pending.plan || []).map((p) => <li key={p.step}><img src={loaderCircle} alt="" width="14" height="14" />{stepText(p)}</li>)}
+      </ul>}
     </div>
-    <div className="step">
-      <div className="step-title warn">STEP 2. 자연어 기반 기계 작업 계획 구조화</div>
-      <ul className="plan">
-        {command.plan.map((p) => <li key={p.text} className={p.done ? 'done' : ''}><img src={p.done ? checkSquare : loaderCircle} alt="" width="14" height="14" />{p.text}</li>)}
-      </ul>
-    </div>
-    <div className="step step-warn">
-      <div className="step-title warn">STEP 3. 계획 검증 · 전체 안전 미확인<img src={shieldCheck} alt="" width="14" height="14" /></div>
-      <div className="checks"><b>{command.checks[0]}</b><span>{command.checks[1]}</span></div>
+    <div className={`step ${s3Class}`}>
+      <div className={`step-title ${phase === 'running' ? 'info' : phase === 'confirm' || (phase === 'done' && resultTone === 'ok') ? 'ok' : 'warn'}`}>STEP 3. 시뮬레이션 실행 · {s3Suffix}<img src={shieldCheck} alt="" width="14" height="14" /></div>
+      {job ? <>
+        <ul className="plan">
+          {(job.progress || []).map((p) => <li key={p.no} className={p.reached ? 'done' : ''}><img src={p.reached ? checkSquare : loaderCircle} alt="" width="14" height="14" />{p.no}/{p.of} {p.label}</li>)}
+        </ul>
+        {running && <div className="run-bar" role="progressbar" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
+        {running ? <small className="info">Gazebo에서 실행 중…</small>
+          : <b className={resultTone}>{resultLabel || `종료 코드 ${job.exit_code}`}</b>}
+      </> : goal ? <>
+        <ul className="plan">
+          {(goal.plan || []).map((p) => <li key={p.step} className={p.status === 'completed' ? 'done' : ''}><img src={p.status === 'completed' ? checkSquare : loaderCircle} alt="" width="14" height="14" />{stepText(p)} · {p.status}</li>)}
+        </ul>
+        {running && <div className="run-bar" role="progressbar" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
+        <small className={running ? 'info' : ''}>목표 상태: {goal.status}</small>
+      </> : <small className="muted">확인을 누르면 Gazebo 시뮬레이터에서 실행되고 진행 단계가 표시됩니다.</small>}
     </div>
     <div className="decide">
-      <button className="hold" disabled><img src={playCircle} alt="" width="18" height="18" />실행 승인 보류 · 위험 확인</button>
-      <p>{command.holdReason}</p>
-      <button className="panel-estop" disabled title="비상 정지는 헤더 버튼으로만 실행합니다"><img src={alertOctagon} alt="" width="22" height="22" />비상 정지 · 별도 조작</button>
+      {pending
+        ? <div className="approve-row">
+            <button className="approve" disabled={sim.busy || expired} onClick={() => sim.answer('confirm')}><span className="icon-play" aria-hidden="true" />실행 승인</button>
+            <button className="approve-cancel" disabled={sim.busy} onClick={() => sim.answer('cancel')}>취소</button>
+          </div>
+        : <button className={`hold ${running ? 'run' : ''}`} disabled><span className="icon-play" aria-hidden="true" />{running ? '실행 중' : '승인할 작업 없음'}</button>}
+      {pending && <p>{expired ? '확인 시간이 지났습니다 — 명령을 다시 보내 주세요' : `${remaining}초 안에 승인하지 않으면 취소됩니다`}</p>}
+      {!pending && caption && <p className="muted">{caption}</p>}
+      {sim.stopNote && <p className={sim.stopNote.tone} role="status">{sim.stopNote.text}</p>}
+      <small className="sim-note">Gazebo 시뮬레이션 · 실제 로봇 아님</small>
     </div>
   </section>;
 }
@@ -391,7 +469,7 @@ function SimOverlay({ state, at, onClose, onRerun }) {
 function DemoBar({ state, onChange }) {
   const options = [[null, '기본'], ['running', '안전 검사 중'], ['stopping', '정지 확인'], ['danger', '위험 판정']];
   return <div className="demo-bar">
-    <span>DEMO · 목업 데이터 (영상만 실제 Gazebo)</span>
+    <span>DEMO · 목업 데이터 (영상·명령 패널만 실제 Gazebo)</span>
     {options.map(([value, label]) => <button key={label} className={state === value ? 'on' : ''} onClick={() => onChange(value)}>{label}</button>)}
   </div>;
 }
