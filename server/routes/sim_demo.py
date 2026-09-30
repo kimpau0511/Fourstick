@@ -728,7 +728,9 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
     source = str(payload.get("source") or "")
     raw_transcript = str(payload.get("raw_transcript") or utterance) if source == "stt_final" else None
     normalized = normalize_command(utterance)
-    base = {"is_simulated": True, "real_hardware_ready": False,
+    # 실기 상태 키(`real_hardware_*`)는 넣지 않는다 — 공개 필터가 어차피 지우므로
+    # 여기서 만들면 "필터가 무엇을 지웠나"를 신호로 쓸 수 없다.
+    base = {"is_simulated": True,
             "simulation_notice": SIMULATION_NOTICE, "utterance": utterance,
             "raw_transcript": raw_transcript, "normalized_transcript": normalized,
             "stt_confidence": payload.get("stt_confidence") if source == "stt_final" else None,
@@ -949,7 +951,7 @@ def confirm_response(ctx: RouteContext, payload: dict) -> Response:
 
     token = str(payload.get("token") or "")
     action = str(payload.get("action") or "confirm")
-    base = {"is_simulated": True, "real_hardware_ready": False,
+    base = {"is_simulated": True,
             "simulation_notice": SIMULATION_NOTICE, "token": token,
             "job": None, "job_spec": None, "confirmation": None,
             "slot": None, "slot_label": None}

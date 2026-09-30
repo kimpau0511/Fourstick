@@ -118,7 +118,12 @@ class PublicPayloadTest(unittest.TestCase):
 
 
 class RouteResponsesTest(unittest.TestCase):
-    """실제 라우트가 만드는 본문에 실기 상태가 없는지 본다."""
+    """라우트 응답 **모양**의 예시 dict가 필터를 거치면 실기 상태가 없는지 본다.
+
+    실제 라우트를 호출하지 않는다. 라우트가 필터 **전**에 금지 키를 만들지 않는지는
+    `test_sim_demo_commands.py`의 `test_routes_do_not_build_keys_the_public_filter_strips`가
+    실제 응답으로 본다 — 필터가 지운 것이 신호가 되려면 라우트가 스스로 만들지 않아야 한다.
+    """
 
     def assert_clean(self, payload, where):
         blob = json.dumps(public_payload(payload), ensure_ascii=False)
@@ -126,7 +131,8 @@ class RouteResponsesTest(unittest.TestCase):
             self.assertNotIn(f'"{key}"', blob, f"{where}에 {key}가 남아 있다")
 
     def test_sim_demo_command_base_has_no_hardware_state(self):
-        base = {"is_simulated": True, "real_hardware_ready": False,
+        # 라우트가 스스로 넣지 않는 키를 다른 코드가 실수로 넣는 경우를 흉내 낸다.
+        base = {"is_simulated": True, "real_hardware_verified": False,
                 "simulation_notice": "Gazebo 시뮬레이션 · 실제 로봇 아님",
                 "decision": "ASK", "job": None}
         out = public_payload(base)

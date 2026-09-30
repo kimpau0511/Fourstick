@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from server.routes import sim_demo as sim_demo_route  # noqa: E402
+from server.routes.common import public_payload  # noqa: E402
 from server.sim_demo_confirm import ConfirmStore  # noqa: E402
 from server.sim_demo_commands import (  # noqa: E402
     ASK,
@@ -177,6 +178,29 @@ class CommandEndpointTest(JobsBase):
     def assert_simulated(self, payload):
         self.assertIs(payload["is_simulated"], True)
         self.assertEqual(payload["simulation_notice"], SIMULATION_NOTICE)
+
+    def test_routes_do_not_build_keys_the_public_filter_strips(self):
+        """필터가 매번 지울 키를 라우트가 스스로 만들지 않는다.
+
+        만들면 필터가 무엇을 지웠는지 신호로 쓸 수 없다 — 새 응답 필드가 금지 키와
+        겹쳐 조용히 사라져도 구분되지 않는다. 필터(`public_payload`)를 거치기
+        **전** 본문을 잡아, 필터가 지울 것이 없는지 본다.
+        """
+        seen, original = [], sim_demo_route.json_response
+
+        def spy(payload, status=200):
+            seen.append(payload)
+            return original(payload, status)
+
+        sim_demo_route.json_response = spy
+        try:
+            self.send("안녕")
+            self.send_and_confirm("A 자재를 컨베이어로 옮겨줘")
+        finally:
+            sim_demo_route.json_response = original
+        self.assertGreaterEqual(len(seen), 3)  # 명령 2번 + 확인 1번
+        for raw in seen:
+            self.assertEqual(public_payload(raw), raw)
 
     def test_text_and_stt_final_produce_the_same_job_spec(self):
         status, text = self.send_and_confirm("A 자재를 컨베이어로 옮겨줘", source="text")
