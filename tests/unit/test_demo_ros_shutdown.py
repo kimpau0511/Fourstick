@@ -291,7 +291,8 @@ class RawLogTest(unittest.TestCase):
         finally:
             demo.RAW_LOG.clear()
             demo.RAW_LOG.update(saved)
-        self.assertEqual(payload["raw_log_path"],
+        # Windows는 구분 기호가 백슬래시로 나온다 — 같은 경로이므로 `/`로 맞춰 비교한다.
+        self.assertEqual(payload["raw_log_path"].replace("\\", "/"),
                          "reports/workcell/sim_demo_logs/x.log")
         self.assertIs(payload["is_simulated"], True)
 

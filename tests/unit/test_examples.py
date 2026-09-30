@@ -157,7 +157,7 @@ class TestIndexIsComplete(unittest.TestCase):
     def test_every_example_file_is_listed(self):
         listed = set(INDEX["valid"]) | set(INDEX["invalid"])
         on_disk = {
-            str(p.relative_to(EXAMPLES))
+            p.relative_to(EXAMPLES).as_posix()
             for p in EXAMPLES.rglob("*.json")
             if p.name != "INDEX.json"
         }

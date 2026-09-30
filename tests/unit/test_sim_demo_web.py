@@ -128,7 +128,7 @@ class JobRunnerTest(JobsBase):
         job = self.jobs.start("transfer", "material_b")
         call = self.popen.calls[0]
         argv = call["argv"]
-        self.assertTrue(argv[0].endswith("scripts/demo_workcell_pick_place.sh"))
+        self.assertTrue(argv[0].replace("\\", "/").endswith("scripts/demo_workcell_pick_place.sh"))
         self.assertEqual(argv[1:5], ["pallet_2", "material_b", "--cell-policy",
                                      "simulation_demo_hold"])
         self.assertEqual(argv[argv.index("--out") + 1], job["report_path"])

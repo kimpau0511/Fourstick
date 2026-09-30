@@ -109,8 +109,12 @@ class AdoptedConfigTest(unittest.TestCase):
                         [s.x_offset_m for s in self.slots])
 
     def test_spacing_is_at_least_the_declared_lower_bound(self):
-        report = json.loads(
-            (ROOT / "reports/workcell/conveyor_slots.json").read_text(encoding="utf-8"))
+        path = ROOT / "reports/workcell/conveyor_slots.json"
+        # reports/는 저장소에 올리지 않는 측정 산출물이다. MoveIt이 있는 환경에서
+        # scripts/derive_conveyor_slots.py를 실행해야 생긴다 — 없으면 실패가 아니라 건너뛴다.
+        if not path.is_file():
+            self.skipTest(f"측정 산출물이 없다: {path.relative_to(ROOT).as_posix()}")
+        report = json.loads(path.read_text(encoding="utf-8"))
         lower = report["pitch_plan"]["lower_bound_m"]
         offsets = sorted(s.x_offset_m for s in self.slots)
         gaps = [round(offsets[i + 1] - offsets[i], 6) for i in range(len(offsets) - 1)]

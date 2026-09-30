@@ -48,12 +48,13 @@ class BaseIsPassedTest(unittest.TestCase):
 
     def test_outcome_gets_base_argument(self):
         args = self.outcome_call["args"]
-        self.assertTrue(args[1].endswith("scripts/verify_workcell_outcome.py"))
+        self.assertTrue(args[1].replace("\\", "/").endswith("scripts/verify_workcell_outcome.py"))
         self.assertIn("--base", args)
         self.assertEqual(args[args.index("--base") + 1], BASE)
 
     def test_demo_gets_web_base_env(self):
-        self.assertTrue(self.demo_call["args"][0].endswith("scripts/demo_workcell_commands.sh"))
+        self.assertTrue(self.demo_call["args"][0].replace("\\", "/").endswith(
+            "scripts/demo_workcell_commands.sh"))
         self.assertEqual(self.demo_call["env"]["FORSTICK2_WEB_BASE"], BASE)
 
     def test_output_is_captured_as_text_with_timeout(self):
