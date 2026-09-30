@@ -22,6 +22,8 @@
 `/v1/sim-demo/command`는 텍스트와 STT **final**이 함께 쓰는 하나의 입구다.
 LLM·계획 생성을 거치지 않는다(`server/sim_demo_commands.py`). partial은 받지
 않는다. 모호하거나 지금 할 수 없으면 ASK/BLOCK만 돌려주고 작업을 만들지 않는다.
+규칙으로 정확히 해석된 명령도 **바로 실행하지 않는다** — 확인 대기를 만들고
+`decision:"CONFIRM"`으로 돌려준다.
 시뮬레이션 명령이 아닌 발화는 `PASS_THROUGH`다 — 화면은 그때만 기존 계획
 생성으로 간다. 시뮬레이션 셀이 아니면 403 BLOCK이고, 화면은 기존 경로를 쓴다.
 
@@ -337,22 +339,6 @@ def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
     return offer_confirmation(jobs, store, spec, utterance=utterance,
                               source=source, rule_decision=rule_decision,
                               rule_reason=rule_reason, classifier=info)
-
-
-def names_a_place(spec: dict, places) -> bool:
-    """요청이 **특정한 자리**를 지목했는가.
-
-    자리 미지정 컨베이어(`loc_conveyor`)는 지목이 아니다 — 그건 "컨베이어에
-    올려줘"이고, 자리는 서버가 고른다. 팔레트나 검증된 컨베이어 자리를 말했을
-    때만 참이다.
-    """
-    from server.sim_demo_places import CONVEYOR_SLOT, PALLET, resolve
-
-    for field in ("source", "destination"):
-        found = resolve(places, spec.get(field))
-        if found is not None and found.kind in (PALLET, CONVEYOR_SLOT):
-            return True
-    return False
 
 
 def offer_confirmation(jobs, store, spec: dict, *, utterance: str, source: str,
@@ -723,7 +709,7 @@ def _dialogue_for(ctx: RouteContext, payload: dict):
 
 
 def command_response(ctx: RouteContext, payload: dict) -> Response:
-    """발화 하나 → RUN(작업 생성) / CONFIRM(확인 대기) / STOP / ASK / BLOCK."""
+    """발화 하나 → CONFIRM(확인 대기) / STOP / ASK / BLOCK. 작업은 만들지 않는다."""
     from server.sim_demo_commands import (
         ASK,
         BLOCK,
@@ -736,7 +722,6 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
         looks_like_material_work,
         parse_command,
     )
-    from server.sim_demo_jobs import SimDemoJobError
     from stt.command_normalization import normalize_command
 
     utterance = str(payload.get("utterance") or "")
@@ -835,7 +820,6 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
     if resolution.applied:
         utterance = resolution.text
         normalized = normalize_command(utterance)
-    interpreted = bool(substitutions) or resolution.applied
     if dialogue is not None:
         # "그거"는 직전에 **말한** 자재다 — 판정 결과와 무관하게 언급을 기억한다.
         from server.sim_demo_context import _mentioned as mentioned_in
@@ -937,35 +921,20 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
     if decision.get("decision") != RUN:
         return answer(409, **fields)
     spec = decision["job_spec"]
-    from server.sim_demo_commands import requested_slot
-    # **자리를 콕 집어 말한 요청은 확인을 받는다.** 어느 팔레트에서 어느 자리로
-    # 놓을지까지 말한 것은 배치를 정한 것이고, 사람이 그 판정을 한 번 보고
-    # 눌러야 한다(요구: 자유 발화 → 확인 한 번 → 실행).
-    #
-    # 자리를 말하지 않은 기존 정확 명령("A 자재를 컨베이어로 옮겨줘")은 지금처럼
-    # 바로 실행한다 — 기존 계약을 바꾸지 않는다.
+    # **로봇이 움직이는 동작은 모두 확인 카드를 거친다.** 규칙으로 정확히
+    # 해석된 텍스트 명령("A 자재를 컨베이어로 옮겨줘")도 사람이 판정을 한 번
+    # 보고 눌러야 한다(요구: 발화 → 확인 한 번 → 실행).
+    # 작업은 `/v1/sim-demo/confirm`에서만 만들어진다.
     store = getattr(ctx.runtime, "sim_demo_confirm", None)
-    # 색으로 가리킨 자재도 사람이 한 번 보고 누른다 — 색 → 자재 대응을 확인한다.
-    if interpreted and store is None:
+    if store is None:
         return answer(409, **{**fields, "decision": BLOCK, "job_spec": None,
-                              "reason": "색으로 지정한 명령은 확인 카드가 필요한데 확인"
-                                        " 기능을 쓸 수 없어 실행하지 않았습니다"})
-    if store is not None and (source == "stt_final" or names_a_place(spec, places)
-                              or interpreted):
-        body, code = offer_confirmation(
-            jobs, store, spec, utterance=utterance, source=source,
-            rule_decision=decision.get("decision"),
-            rule_reason=decision.get("reason"))
-        return answer(code, **{**fields, **body})
-    try:
-        job = jobs.start(spec["action"], spec["material"],
-                         checkpoint_id=spec.get("checkpoint_id"),
-                         requested_slot=requested_slot(spec, places))
-    except SimDemoJobError as exc:
-        return answer(409, **{**fields, "decision": BLOCK, "reason": str(exc)})
-    actual_spec = {**spec, "slot": job.get("slot")}
-    return answer(202, **{**fields, "job_spec": actual_spec}, job=job,
-                  slot=job.get("slot"), slot_label=job.get("slot_label"))
+                              "reason": "확인 카드가 필요한데 확인 기능을 쓸 수 없어"
+                                        " 실행하지 않았습니다"})
+    body, code = offer_confirmation(
+        jobs, store, spec, utterance=utterance, source=source,
+        rule_decision=decision.get("decision"),
+        rule_reason=decision.get("reason"))
+    return answer(code, **{**fields, **body})
 
 
 def confirm_response(ctx: RouteContext, payload: dict) -> Response:

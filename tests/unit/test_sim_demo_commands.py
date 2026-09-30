@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from server.routes import sim_demo as sim_demo_route  # noqa: E402
+from server.sim_demo_confirm import ConfirmStore  # noqa: E402
 from server.sim_demo_commands import (  # noqa: E402
     ASK,
     BLOCK,
@@ -141,14 +142,10 @@ class CommandEndpointTest(JobsBase):
         self.state = SimulationDemoState(self.state_path)
         self.runtime = types.SimpleNamespace(
             sim_demo_jobs=self.jobs, sim_demo_disabled_reason=None,
+            sim_demo_confirm=ConfirmStore(ttl_sec=60),
             simulation_demo_status=lambda: self.state.status())
 
-    def send(self, utterance, *, source="text", mode="simulation_demo",
-             runtime=None):
-        payload = {"utterance": utterance, "source": source}
-        if mode is not None:
-            payload["mode"] = mode
-
+    def post(self, path, payload, runtime=None):
         async def read(_receive):
             return payload
 
@@ -157,15 +154,32 @@ class CommandEndpointTest(JobsBase):
             # 계획·LLM 경로는 쓰지 않는다. 쓰면 테스트가 깨진다.
             api=_NoApi())
         status, _, raw = asyncio.run(
-            sim_demo_route.handle(ctx, "POST", "/v1/sim-demo/command", None, {}))
+            sim_demo_route.handle(ctx, "POST", path, None, {}))
         return status, json.loads(raw)
+
+    def send(self, utterance, *, source="text", mode="simulation_demo",
+             runtime=None):
+        payload = {"utterance": utterance, "source": source}
+        if mode is not None:
+            payload["mode"] = mode
+        return self.post("/v1/sim-demo/command", payload, runtime)
+
+    def send_and_confirm(self, utterance, *, source="text"):
+        """명령 → 확인 카드(작업 0건) → 확인. 확인 응답을 돌려준다."""
+        before = len(self.popen.calls)
+        status, pending = self.send(utterance, source=source)
+        self.assertEqual((status, pending["decision"]), (200, "CONFIRM"))
+        self.assertEqual(len(self.popen.calls), before, "확인 전에 작업이 생겼다")
+        return self.post("/v1/sim-demo/confirm",
+                         {"token": pending["confirmation"]["token"],
+                          "action": "confirm"})
 
     def assert_simulated(self, payload):
         self.assertIs(payload["is_simulated"], True)
         self.assertEqual(payload["simulation_notice"], SIMULATION_NOTICE)
 
     def test_text_and_stt_final_produce_the_same_job_spec(self):
-        status, text = self.send("A 자재를 컨베이어로 옮겨줘", source="text")
+        status, text = self.send_and_confirm("A 자재를 컨베이어로 옮겨줘", source="text")
         self.assertEqual(status, 202)
         self.assertEqual(text["decision"], RUN)
         # job_spec에 슬롯 자리가 생겼다. 이 시험은 슬롯 설정 없이 돌므로
@@ -180,7 +194,8 @@ class CommandEndpointTest(JobsBase):
         first_argv = self.popen.calls[0]["argv"]
         # 작업이 끝난 뒤 같은 발화를 STT final로 보내면 같은 spec이 나온다.
         self.popen.procs[0].code = 0
-        _, voice = self.send("에이 자재를 컨베이어로 옮겨줘", source="stt_final")
+        _, voice = self.send_and_confirm("에이 자재를 컨베이어로 옮겨줘",
+                                         source="stt_final")
         self.assertEqual(voice["job_spec"], text["job_spec"])
         self.assertEqual(self.popen.calls[1]["argv"], first_argv[:-1] + [
             self.popen.calls[1]["argv"][-1]])
@@ -193,7 +208,7 @@ class CommandEndpointTest(JobsBase):
         self.state.record_run(policy=POLICY_DEMO_HOLD, model="material_a",
                               result=completed_result(),
                               final_pose_m=(0.25, -0.5, 0.75), restored=None)
-        status, ok = self.send("A 자재를 원래 자리로 돌려놔")
+        status, ok = self.send_and_confirm("A 자재를 원래 자리로 돌려놔")
         self.assertEqual((status, ok["decision"]), (202, RUN))
         self.assertEqual(ok["job_spec"]["action"], "return")
         self.assertIn("--return-held-to-origin", self.popen.calls[0]["argv"])
@@ -202,7 +217,7 @@ class CommandEndpointTest(JobsBase):
         self.state.record_run(policy=POLICY_DEMO_HOLD, model="material_b",
                               result=completed_result(),
                               final_pose_m=(0.25, -0.5, 0.75), restored=None)
-        status, ok = self.send("돌려놔", source="stt_final")
+        status, ok = self.send_and_confirm("돌려놔", source="stt_final")
         self.assertEqual((status, ok["decision"]), (202, RUN))
         self.assertEqual(ok["job_spec"], {"action": "return",
                                           "material": "material_b",
@@ -235,7 +250,7 @@ class CommandEndpointTest(JobsBase):
                               result=stopped_result(), final_pose_m=(0.4, 0, 1),
                               restored=None)
         checkpoint = self.state.record_checkpoint(build()[0])
-        status, ok = self.send("이어서 해줘", source="stt_final")
+        status, ok = self.send_and_confirm("이어서 해줘", source="stt_final")
         self.assertEqual((status, ok["decision"]), (202, RUN))
         self.assertEqual(ok["job_spec"], {"action": "resume",
                                           "material": "material_a",

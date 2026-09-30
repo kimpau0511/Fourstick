@@ -102,6 +102,14 @@ class ClockBase(JobsBase):
         return self.call("POST", "/v1/sim-demo/confirm",
                          {"token": token, "action": action})
 
+    def command_and_confirm(self, utterance, source="text"):
+        """명령 → 확인 카드(작업 0건) → 확인. 확인 응답을 돌려준다."""
+        before = self.job_count
+        status, payload = self.command(utterance, source)
+        self.assertEqual((status, payload["decision"]), (200, "CONFIRM"))
+        self.assertEqual(self.job_count, before, "확인 전에 작업이 생겼다")
+        return self.confirm(payload["confirmation"]["token"])
+
     @property
     def job_count(self):
         return len(self.popen.calls)
@@ -219,18 +227,26 @@ class RoutingTest(ClockBase):
             with self.subTest(text=text):
                 self.assertFalse(looks_like_material_work(text, WORKCELL))
 
-    def test_clear_rule_command_runs_without_confirmation(self):
+    def test_clear_rule_command_still_waits_for_confirmation(self):
         client = self.with_classifier(answer({"intent": "transfer",
                                               "material_id": "material_a",
                                               "confidence": 0.99}))
         status, payload = self.command("A 자재를 컨베이어로 옮겨줘")
-        self.assertEqual(status, 202)
-        self.assertEqual(payload["decision"], "RUN")
-        self.assertIsNone(payload["confirmation"])
-        self.assertIsNotNone(payload["job"])
-        self.assertEqual(self.job_count, 1)
+        # 로봇이 움직이는 동작은 정확한 텍스트 명령이어도 확인 카드를 거친다.
+        self.assertEqual((status, payload["decision"]), (200, "CONFIRM"))
+        self.assertIsNone(payload["job"])
+        self.assertEqual(self.job_count, 0)
         # 규칙이 정한 명령은 분류기를 **부르지 않는다.**
         self.assertEqual(client.calls, [])
+        _, confirmed = self.confirm(payload["confirmation"]["token"])
+        self.assertEqual(confirmed["decision"], "RUN")
+        self.assertEqual(self.job_count, 1)
+
+    def test_clear_rule_command_without_confirm_store_is_blocked(self):
+        self.runtime.sim_demo_confirm = None
+        status, payload = self.command("A 자재를 컨베이어로 옮겨줘")
+        self.assertEqual((status, payload["decision"]), (409, "BLOCK"))
+        self.assertEqual(self.job_count, 0)
 
     def test_stop_never_reaches_the_classifier_or_a_confirmation(self):
         client = self.with_classifier(answer({"intent": "transfer",
@@ -629,7 +645,8 @@ class SlotAssignmentTest(ClockBase):
                                         ("material_b", "B", "slot_2"),
                                         ("material_c", "C", "slot_3")):
             with self.subTest(slot=expected):
-                status, payload = self.command(f"{letter} 자재를 컨베이어로 옮겨줘")
+                status, payload = self.command_and_confirm(
+                    f"{letter} 자재를 컨베이어로 옮겨줘")
                 self.assertEqual((status, payload["decision"]), (202, "RUN"))
                 self.assertEqual(payload["slot"], expected)
                 self.assertEqual(payload["job_spec"]["slot"], expected)
@@ -691,7 +708,7 @@ class SlotAssignmentTest(ClockBase):
 
     def test_return_uses_the_slot_the_material_was_given(self):
         self.hold("material_b", "slot_2")
-        status, payload = self.command("B 자재를 원래 자리로 돌려놔")
+        status, payload = self.command_and_confirm("B 자재를 원래 자리로 돌려놔")
         self.assertEqual((status, payload["decision"]), (202, "RUN"))
         self.assertEqual(payload["slot"], "slot_2")
         argv = self.popen.calls[-1]["argv"]
