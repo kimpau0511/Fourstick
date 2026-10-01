@@ -1,0 +1,28 @@
+{
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": { "source": "github", "repo": "anthropics/claude-plugins-official" }
+    },
+    "karpathy-skills": {
+      "source": { "source": "github", "repo": "multica-ai/andrej-karpathy-skills" }
+    }
+  },
+  "enabledPlugins": {
+    "claude-md-management@claude-plugins-official": true,
+    "andrej-karpathy-skills@karpathy-skills": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/prd_sync_check.mjs\"",
+            "timeout": 10,
+            "statusMessage": "기획서↔PRD 동기화 확인"
+          }
+        ]
+      }
+    ]
+  }
+}
