@@ -1,6 +1,6 @@
 // 공통 레이아웃·홈·로봇 관리·기록·진단·설정 — 화면설계서 가~아, 상태매트릭스, 용어 매핑표
 import { expect, test } from '@playwright/test';
-import { mockBackend } from '../mock.js';
+import { fixture, mockBackend } from '../mock.js';
 
 test.beforeEach(async ({ page }) => { await mockBackend(page); });
 
@@ -59,9 +59,17 @@ test.describe('현황(홈)', () => {
     await expect(page.locator('.robot').first()).not.toContainText('38.4°C');
   });
 
-  test('[UI-HOME-05][④⑤·§5·6] 긴급 배너(긴급 N건 집계, 정지 버튼 비가림)', async ({ page }) => {
+  test('[UI-HOME-05][④⑤·§5·6] 긴급 배너(긴급 N건 집계, 닫기 없음, 정지 버튼 비가림)', async ({ page }) => {
+    // 긴급 상황 = 서버의 정지 래치 활성(IMPLEMENTATION_SPEC alerts). 기본 고정 데이터엔 없어서 여기서 켠다.
+    const stop = fixture('robots').stop_diagnostics;
+    await mockBackend(page, { overrides: { robots: { stop_diagnostics: { ...stop, stop_latch_active: true } } } });
     await page.goto('/');
-    await expect(page.getByRole('alert').filter({ hasText: /긴급/ })).toBeVisible();
+    const banner = page.getByRole('alert').filter({ hasText: /긴급\s*\d+건/ });
+    await expect(banner).toBeVisible();
+    await expect(banner.getByRole('button', { name: /닫기|×/ })).toHaveCount(0);
+    await banner.getByRole('button', { name: /인지 확인/ }).click();
+    await expect(page.getByRole('alert').filter({ hasText: /긴급/ })).toBeVisible(); // 축소될 뿐 사라지지 않는다
+    await page.locator('header').getByRole('button', { name: /즉시 정지/ }).click({ trial: true }); // 가려지지 않는다
   });
 
   test('[UI-HOME-06][⑥·§11] 사이드바 로봇 관리 배지 "가동 N/전체"', async ({ page }) => {
@@ -127,7 +135,7 @@ test.describe('기록', () => {
 
   test('[UI-RECORD-03][⑭·⑯-2] 명령 1건 상세 타임라인(계획→시뮬레이션→허가→실행)', async ({ page }) => {
     await page.goto('/#/history');
-    await page.locator('.tr').nth(1).click();
+    await page.getByRole('table').getByRole('row').nth(1).click(); // 첫 데이터 행(머리 행 다음)
     for (const step of ['계획', '시뮬레이션', '허가', '실행']) await expect(page.locator('.col-main')).toContainText(step);
     await expect(page.locator('.col-main')).toContainText(/정지 요청 없음|STOP/);
   });
@@ -155,6 +163,8 @@ test.describe('진단·설정·공통', () => {
 
   test('[UI-SET-02][㉑·§17] 안전 임계값 변경은 상태머신(작성 중→검사 중→승인 필요→적용 예약→사용 중)', async ({ page }) => {
     await page.goto('/#/settings');
+    // 상태머신은 '안전·권한' 구역의 요구다(㉒-4) — 그 구역을 연 뒤 본다.
+    await page.getByRole('button', { name: /안전\s*·\s*권한/ }).click();
     await expect(page.locator('.col-main')).toContainText(/승인 필요|적용 예약/);
   });
 

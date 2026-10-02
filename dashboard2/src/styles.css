@@ -41,7 +41,7 @@ button:disabled { cursor: default; }
 h1, h2, p { margin: 0; }
 small { display: block; }
 
-.app { display: flex; min-height: 100vh; min-width: 1280px; }
+.app { display: flex; min-height: 100vh; }
 
 /* ── 사이드바 ── */
 .sidebar { position: sticky; top: 0; height: 100vh; width: 240px; flex: none; display: flex; flex-direction: column; justify-content: space-between; background: var(--sidebar); border-right: 1px solid var(--border); }
@@ -64,11 +64,11 @@ small { display: block; }
 
 /* ── 헤더 ── */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.header { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; height: 64px; padding: 0 24px; box-sizing: border-box; background: var(--bg); border-bottom: 1px solid var(--border); }
+.header { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 8px 16px; flex-wrap: wrap; min-height: 64px; padding: 8px 24px; box-sizing: border-box; background: var(--bg); border-bottom: 1px solid var(--border); }
 .header-title { display: flex; gap: 12px; align-items: center; }
 .header-title h1 { font-size: 20px; font-weight: 700; white-space: nowrap; }
 .chip-site { padding: 4px 8px; border-radius: 8px; background: var(--info-subtle); color: var(--cyan); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.header-right { display: flex; gap: 20px; align-items: center; white-space: nowrap; }
+.header-right { display: flex; gap: 8px 16px; align-items: center; justify-content: flex-end; flex-wrap: wrap; white-space: nowrap; font-size: 12px; }
 .estop { display: flex; gap: 8px; align-items: center; height: 40px; padding: 0 16px; border-radius: 12px; background: var(--danger-bg); color: var(--on-accent); box-shadow: var(--btn); font-size: 15px; font-weight: 800; }
 .grade { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
 .grade b { padding: 4px 8px; border-radius: 10px; background: var(--ok-subtle); color: var(--green); font-weight: 700; }
@@ -77,7 +77,7 @@ small { display: block; }
 /* ── 본문 ── */
 .body { display: flex; gap: 24px; align-items: flex-start; padding: 24px; }
 .col-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
-.col-side { width: 400px; flex: none; display: flex; flex-direction: column; gap: 24px; }
+.col-side { width: var(--cmd-w, 400px); flex: none; display: flex; flex-direction: column; gap: 24px; }
 section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .row3 { display: flex; gap: 16px; }
 .row3 > * { flex: 1; min-width: 0; }
@@ -241,7 +241,7 @@ h2.soft { color: var(--soft); }
 
 /* ── 시뮬레이션 오버레이(C안) ── */
 /* 스크림은 헤더 아래부터 덮는다 — 헤더의 즉시 정지는 항상 누를 수 있어야 한다(피그마 메모). */
-.scrim { position: fixed; inset: 60px 0 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: rgba(47, 55, 71, .45); }
+.scrim { position: fixed; inset: 64px 0 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: rgba(47, 55, 71, .45); }
 .sim-card { width: 880px; display: flex; flex-direction: column; gap: 20px; padding: 28px 32px; background: var(--panel); border: 2px solid var(--accent-border); border-radius: 24px; box-shadow: var(--raised); }
 .sim-card.stopping, .sim-card.danger { border-color: var(--danger-border); }
 .sim-head { display: flex; gap: 12px; align-items: center; }
@@ -284,7 +284,9 @@ h2.soft { color: var(--soft); }
 .sim-actions button { flex: 1; padding: 10px 20px; border: 1px solid var(--line); border-radius: 12px; background: #dde3eb; color: #3d4556; box-shadow: var(--btn); font-size: 14px; font-weight: 600; }
 
 /* ── 목업 상태 전환 도구 ── */
-.demo-bar { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: flex; gap: 6px; align-items: center; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 12px; background: rgba(228, 233, 240, .92); font-size: 11px; }
+/* DEMO 바는 시뮬레이션 창(덮개 z-index 20) 위에서도 눌려야 한다 — 오른쪽 아래 고정.
+   본문 흐름 안으로 옮기는 안(반응형 결정 #5)은 아직 확인받지 않은 추천안이라 적용하지 않는다. */
+.demo-bar { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 12px; background: rgba(228, 233, 240, .92); font-size: 11px; }
 .demo-bar span { margin-right: 4px; color: var(--muted-2); }
 .demo-bar button { padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
 .demo-bar button.on { border-color: var(--cyan); color: var(--cyan); }
@@ -306,3 +308,58 @@ h2.soft { color: var(--soft); }
 .cmd-card > .tag { align-self: flex-start; }
 .cmd-title { font-size: 14px; font-weight: 700; }
 .cmd-reason { color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+
+/* ── 틀: 사이드바 System status · 배지 · 헤더 · 긴급 배너 · 폭 조절 · 반응형 ── */
+.side-bottom { display: flex; flex-direction: column; }
+.nav-badge { margin-left: auto; padding: 2px 6px; border-radius: 8px; background: var(--info-subtle); color: var(--cyan); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.status-widget { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 11px; }
+.status-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.status-head b { color: var(--muted); font-weight: 700; letter-spacing: .5px; }
+.status-head small { color: var(--muted); font-weight: 600; }
+.status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px; border-radius: 8px; color: var(--white); text-decoration: none; }
+.status-row:hover { background: var(--nav-active); }
+.status-val { display: inline-flex; gap: 4px; align-items: center; font-weight: 600; white-space: nowrap; }
+.status-val i { font-style: normal; }
+.conn { font-weight: 600; }
+.grade { font-size: 12px; }
+.header-meta { font-size: 12px; }
+.drawer-btn { display: none; height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--btn); font-size: 13px; font-weight: 600; }
+.estop { flex: none; }
+
+.emergency { position: sticky; top: 64px; z-index: 29; display: flex; gap: 12px; align-items: center; padding: 10px 24px; background: var(--danger-subtle); border-bottom: 2px solid var(--danger-border); color: var(--red); font-size: 14px; }
+.emergency b { font-weight: 800; white-space: nowrap; }
+.emergency-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.emergency-ack { flex: none; padding: 6px 14px; border: 1px solid var(--danger-border); border-radius: 10px; background: var(--panel); color: var(--red); font-size: 13px; font-weight: 700; }
+.emergency.folded { padding: 4px 24px; font-size: 12px; }
+
+.col-sep { flex: none; align-self: stretch; width: 8px; margin: 0 -16px; border-radius: 4px; cursor: col-resize; touch-action: none; }
+.col-sep:hover, .col-sep:focus-visible, .col-sep:active { background: var(--accent-border); opacity: .5; outline: none; }
+
+/* 1024~1279: 사이드바는 64px 아이콘 레일, 명령 패널은 오른쪽 서랍 */
+@media (max-width: 1279px) {
+  .sidebar { width: 64px; }
+  .rail-hide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .brand { justify-content: center; padding: 20px 0; }
+  .nav { padding: 12px 8px; }
+  .nav-item { position: relative; justify-content: center; padding: 12px 0; }
+  .nav-badge { position: absolute; top: 0; right: 0; padding: 0 4px; font-size: 9px; }
+  .status-widget { padding: 12px 6px; align-items: center; }
+  .status-head { flex-direction: column; }
+  .status-row { padding: 4px; }
+  .drawer-btn { display: inline-block; }
+  .body { padding: 16px; }
+  .col-sep { display: none; }
+  .col-side { position: fixed; top: 64px; right: 0; bottom: 0; z-index: 25; width: min(var(--cmd-w, 400px), 100vw - 64px); padding: 16px; overflow-y: auto; background: var(--bg); border-left: 1px solid var(--border); box-shadow: var(--raised); visibility: hidden; transform: translateX(100%); transition: transform .2s, visibility .2s; }
+  .col-side.open { visibility: visible; transform: none; }
+  .tr { grid-template-columns: 56px minmax(0, 1fr) 96px 140px 60px; }
+  .header { padding: 8px 16px; }
+  .emergency { padding: 10px 16px; }
+}
+/* 768~1023: 로봇 카드·지표 1열 */
+@media (max-width: 1023px) {
+  .row3 { flex-direction: column; }
+  .tr { grid-template-columns: 56px minmax(0, 1fr) 96px; }
+  .tr > :nth-child(n+4) { display: none; }
+  .chip-site { display: none; }
+}

@@ -1,5 +1,6 @@
 // 시뮬레이션 창·개발 중 결정·반응형 — 추적표 5장(DEV-01~12), 화면설계서 ⑧
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { sep } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { mockBackend } from '../mock.js';
 
@@ -42,12 +43,18 @@ test('[UI-DEV-03][DEV-05] 위험 판정 창 영상 칸에 문구 없음 · 설�
   await expect(page.locator('.sim-video')).not.toContainText('BLOCKED');
   await page.locator('.demo-bar').getByRole('button', { name: '기본' }).click();
   await page.goto('/#/settings');
-  await expect(page.locator('.policy')).not.toContainText('(안)');
+  // 설정 3구역 어디에도 초안 표시 "(안)"이 남아 있지 않다.
+  for (const zone of [/개인/, /운영/, /안전\s*·\s*권한/]) {
+    await page.getByRole('button', { name: zone }).first().click();
+    await expect(page.locator('.col-main')).not.toContainText('(안)');
+  }
 });
 
-test('[UI-DEV-04][DEV-09 D2] 화면 값은 서버에서 온다 — 목업 데이터 모듈을 쓰지 않는다', async () => {
-  const app = readFileSync(new URL('../../src/App.jsx', import.meta.url), 'utf-8');
-  expect(app).not.toMatch(/from '\.\/data\.js'/);
+test('[UI-DEV-04][DEV-09 D2] 화면 값은 서버에서 온다 — src 어디에서도 목업 데이터 모듈(data.js)을 쓰지 않는다', async () => {
+  const src = new URL('../../src/', import.meta.url);
+  const files = readdirSync(src, { recursive: true }).filter((f) => /\.(jsx?|mjs)$/.test(f));
+  const users = files.filter((f) => /from ['"](\.\.?\/)+data\.js['"]/.test(readFileSync(new URL(f.split(sep).join('/'), src), 'utf-8')));
+  expect(users).toEqual([]);
 });
 
 test('[UI-DEV-05][DEV-12] 개발 서버는 localhost에만 열린다(인증 없음)', async () => {

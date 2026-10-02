@@ -5,7 +5,8 @@
 // 테스트 제목 앞의 [ID]가 추적표의 테스트 ID다. 결과 요약: npm run qa:report
 import { defineConfig } from '@playwright/test';
 
-const PORT = 5181; // 개발 서버(5175)와 겹치지 않게 따로 띄운다
+// 개발 서버(5175)와 겹치지 않게 따로 띄운다. 여러 작업을 동시에 돌릴 땐 QA_PORT로 바꾼다.
+const PORT = Number(process.env.QA_PORT || 5181);
 
 export default defineConfig({
   testDir: './e2e',

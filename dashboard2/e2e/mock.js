@@ -1,5 +1,21 @@
+import { readFileSync } from 'node:fs';
 // 화면 테스트용 가짜 서버 응답. 실제 서버(/v1/sim-demo · /v1/sim-view · /v1/scene)에 닿지 않게 막는다.
 // 응답 모양은 dashboard2/src/simCommand.js가 읽는 필드에 맞춘다(서버 값을 화면이 그대로 보이는지 보려는 것).
+
+
+
+// 실제 서버에서 저장해 둔 응답(e2e/fixtures). 화면이 서버 값을 그대로 보이는지 보려는 것이라 지어낸 값이 아니다.
+const FIXTURE_FILES = {
+  health: 'health', config: 'v1_config', robots: 'v1_robots', simDemo: 'v1_sim-demo', simState: 'v1_sim-view_state',
+};
+const readFixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${FIXTURE_FILES[name]}.json`, import.meta.url), 'utf8'));
+
+/** 저장된 응답을 얕게 병합해 돌려준다. patch는 객체(덮어쓸 최상위 키) 또는 (원본) => 새 값 함수. */
+export function fixture(name, patch) {
+  const base = readFixture(name);
+  if (typeof patch === 'function') return patch(base);
+  return patch ? { ...base, ...patch } : base;
+}
 
 export const SAMPLES = {
   ask: { decision: 'ASK', reason: '어느 자재를 옮길지 알 수 없습니다 — 가능한 답: A 자재, B 자재' },
@@ -22,16 +38,27 @@ export const SAMPLES = {
 };
 
 /** 모든 서버 경로를 막고, 명령 응답만 주어진 값으로 돌려준다. 호출 기록을 돌려준다. */
-export async function mockBackend(page, { command, confirm, jobs = [] } = {}) {
+export async function mockBackend(page, { command, confirm, jobs = [], overrides = {} } = {}) {
   const calls = [];
-  await page.route('**/v1/sim-view/**', (route) => route.fulfill({ status: 503, json: { available: false, detail: 'QA: 서버 없음' } }));
+  // page.route는 나중에 등록한 것이 먼저 처리된다 — 겹치는 경로는 pathname으로 직접 가른다.
+  const pathOf = (url) => new URL(url).pathname;
+  await page.route('**/health', (route) => (pathOf(route.request().url()) === '/health'
+    ? route.fulfill({ json: fixture('health', overrides.health) }) : route.fallback()));
+  await page.route('**/v1/config', (route) => route.fulfill({ json: fixture('config', overrides.config) }));
+  await page.route('**/v1/robots', (route) => route.fulfill({ json: fixture('robots', overrides.robots) }));
+  await page.route((url) => url.pathname.startsWith('/v1/sim-view/'), (route) => (
+    pathOf(route.request().url()) === '/v1/sim-view/state'
+      ? route.fulfill({ json: fixture('simState', overrides.simState) }) // 3D 모델(/model)은 계속 503 — Gazebo 대체 검사용
+      : route.fulfill({ status: 503, json: { available: false, detail: 'QA: 서버 없음' } })));
   await page.route('**/v1/scene**', (route) => route.fulfill({ status: 503, json: { available: false, reason_code: 'config.missing', detail: 'QA: 서버 없음' } }));
   // 영상 스트림(웹소켓)도 실제 서버로 나가지 않게 바로 닫는다.
   await page.routeWebSocket(/\/v1\/(scene|sim-view)\/stream/, (ws) => ws.close());
   let jobIndex = 0;
-  await page.route('**/v1/sim-demo/**', async (route) => {
+  await page.route((url) => url.pathname.startsWith('/v1/sim-demo'), async (route) => {
     const req = route.request();
     const path = new URL(req.url()).pathname;
+    // 상태 조회(GET /v1/sim-demo)는 fixture — 명령 호출 기록(calls)에 넣지 않는다.
+    if (path === '/v1/sim-demo' && req.method() === 'GET') return route.fulfill({ json: fixture('simDemo', overrides.simDemo) });
     calls.push({ method: req.method(), path, body: req.postDataJSON?.() ?? null });
     if (path.endsWith('/command')) return route.fulfill({ json: command ?? SAMPLES.passThrough });
     if (path.endsWith('/confirm')) return route.fulfill({ json: confirm ?? SAMPLES.run });

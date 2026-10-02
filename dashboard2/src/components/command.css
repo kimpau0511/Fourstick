@@ -1,0 +1,14 @@
+/* 명령 패널: 체크리스트·대상 로봇·스킬 Chip. 색은 styles.css :root 토큰만 쓴다. */
+.cmd-stages { display: flex; gap: 6px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; font-size: 12px; font-weight: 600; }
+.cmd-stages li { display: flex; gap: 4px; align-items: center; padding: 3px 8px; border-radius: 10px; background: var(--panel-2); color: var(--muted-2); }
+.cmd-stages li.done { color: var(--green); background: var(--ok-subtle); }
+.cmd-stages li.active { color: var(--cyan); background: var(--info-subtle); }
+.cmd-stages li.fail { color: var(--red); background: var(--danger-subtle); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.cmd-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.chip { padding: 5px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); color: var(--muted); font-size: 12px; font-weight: 600; }
+.chip[aria-pressed='true'] { border-color: var(--accent-border); color: var(--cyan); background: var(--info-subtle); }
+.chip:disabled { opacity: .45; }
+.chip-stop { border-color: var(--danger-border); color: var(--red); }
+.cmd-lock { color: var(--red); font-size: 12px; }
+.cmd-target { color: var(--muted); font-size: 12px; font-weight: 600; }
