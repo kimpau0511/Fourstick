@@ -148,5 +148,10 @@ export function useSimCommand() {
     else patch({ stopNote: { tone: 'warn', text: p.detail || '정지할 시연 작업이 없습니다' } });
   }, [patch]);
 
-  return { ...state, send, answer, stop };
+  /** 결과 카드를 닫고 입력으로 돌아간다(피그마 '새 명령 입력'). 서버에는 아무것도 보내지 않는다. */
+  const reset = useCallback(() => {
+    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null });
+  }, [patch]);
+
+  return { ...state, send, answer, stop, reset };
 }

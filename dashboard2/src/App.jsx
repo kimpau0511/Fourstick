@@ -288,7 +288,7 @@ function Settings() {
       <h2 className="soft">3. 안전 검증 정책 (변경 불가)</h2>
       <div className="policy">
         <b>검증 무시·감속 해제 설정은 이 화면에서 제공하지 않습니다</b>
-        <p>안전 검증을 통과한 계획만 실행한다는 원칙에 따라 충돌 회피 검증 생략과 안전 구역 감속 제한 해제는 설정으로 바꿀 수 없습니다. (안)</p>
+        <p>안전 검증을 통과한 계획만 실행한다는 원칙에 따라 충돌 회피 검증 생략과 안전 구역 감속 제한 해제는 설정으로 바꿀 수 없습니다.</p>
       </div>
     </section>
   </>;
@@ -321,7 +321,9 @@ function CommandPanel({ now, sim }) {
   const [reportTone, resultLabel] = (report && RESULT_LABELS[report.status]) || ['warn', report ? report.status : ''];
   const resultTone = report ? reportTone : goal ? (goal.status === 'completed' ? 'ok' : goal.status === 'failed' ? 'danger' : 'warn') : 'warn';
 
-  // 피그마 v3 흐름 ①~⑤: idle → ask/confirm → running → done. 판정·문구는 서버 값이고, 여기서는 상태별 톤만 고른다.
+  // 피그마 Light CommandPanel(23:2517)의 상태: 입력 → 해석·승인/되묻기/차단… → 실행 중 → 완료.
+  // 입력 칸은 대기·되묻기에서만 보이고, 나머지는 결과 카드 하나가 그 자리를 쓴다.
+  // 판정·문구는 서버 값이고, 여기서는 상태별 톤만 고른다.
   const phase = pending ? 'confirm' : running ? 'running' : (job || goal) ? 'done'
     : result && result.decision === 'ASK' ? 'ask' : (result || sim.error) ? 'other' : 'idle';
   const [statusTone, statusLabel] = {
@@ -330,18 +332,15 @@ function CommandPanel({ now, sim }) {
     confirm: ['warn', expired ? '확인 시간 만료' : `승인 대기 · ${remaining}초`],
     running: ['info', '실행 중'],
     done: [resultTone, '작업 종료'],
-    other: [tone, label || '오류'],
+    other: [sim.error ? 'danger' : tone, sim.error ? '오류' : label || '오류'],
   }[phase];
-  const s3Class = { confirm: 'step-ok', running: 'step-run', done: `step-${resultTone}` }[phase] || 'dim';
-  const s3Suffix = { confirm: '승인 대기', running: '진행 중', done: '결과' }[phase] || '대기';
-  const s2Suffix = { confirm: '완료', ask: '답변 대기' }[phase];
   const steps = job ? (job.progress || []).map((p) => p.reached) : goal ? (goal.plan || []).map((p) => p.status === 'completed') : [];
   const percent = steps.length ? Math.round((steps.filter(Boolean).length / steps.length) * 100) : 0;
-  const caption = { idle: '사유: 접수된 명령이 없습니다', ask: '사유: 되묻기 답변이 필요합니다', running: '정지는 확인 없이 즉시 요청됩니다', done: '다음 명령을 입력해 주세요' }[phase];
+  const cardTone = { confirm: expired ? 'warn' : 'ok', running: 'info', done: resultTone, ask: 'warn', other: statusTone }[phase];
 
   function submit(event) {
     event.preventDefault();
-    if (!sim.busy) sim.send(text);
+    if (!sim.busy && text.trim()) { sim.send(text); setText(''); }
   }
 
   // 해석 줄: 서버가 준 요약·사유만 보인다.
@@ -351,56 +350,57 @@ function CommandPanel({ now, sim }) {
   else if (result && result.decision === 'PASS_THROUGH') interpretation = ['자재 이송·복귀·정지·이어서 명령이 아닙니다. 일반 계획 경로는 이 화면에 아직 연결되지 않았습니다.'];
   else if (result && result.decision === 'STOP') interpretation = ['시연 작업에 정지를 요청했습니다.'];
   else if (result) interpretation = [result.summary || (job && `${job.action_label || job.action} · ${job.slot_label || ''}`), result.reason].filter(Boolean);
+  const [headline, ...details] = interpretation;
+
+  const input = <form className="cmd-form" onSubmit={submit}>
+    <div className="cmd-field">
+      <textarea id="command-input" className="command-input" rows={phase === 'idle' ? 3 : 1} value={text}
+        aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: A 자재를 컨베이어로 옮겨줘'}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
+      <button type="button" className="mic-btn" disabled title="음성 입력은 아직 연결되지 않았습니다" aria-label="음성 입력(연결 안 됨)">
+        <img src={mic} alt="" width="16" height="16" />
+      </button>
+    </div>
+    {phase === 'idle' && <button type="submit" className="btn-primary send" disabled={sim.busy || !text.trim()}>{sim.busy ? '보내는 중…' : '보내기'}</button>}
+  </form>;
+
+  const progress = job ? (job.progress || []).map((p) => ({ key: p.no, done: p.reached, text: `${p.no}/${p.of} ${p.label}` }))
+    : goal ? (goal.plan || []).map((p) => ({ key: p.step, done: p.status === 'completed', text: `${stepText(p)} · ${p.status}` })) : [];
 
   return <section className="command">
     <div className="command-head"><span><img src={dotPanel} alt="" width="8" height="8" />통합 작업 명령 패널</span><small className={`state-label ${statusTone}`}>{statusLabel}</small></div>
-    <form className={`step ${phase === 'idle' ? 'step-input' : ''}`} onSubmit={submit}>
-      <label className="step-title info" htmlFor="command-input">STEP 1. 자연어 명령 입력 (텍스트)<img src={mic} alt="" width="14" height="14" title="음성 입력은 아직 연결되지 않았습니다" /></label>
-      <textarea id="command-input" className="command-input" rows={2} value={text} placeholder="예: A 자재를 컨베이어로 옮겨줘"
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
-      <div className="command-send">
-        <small>{sim.sent ? `보낸 명령: "${sim.sent}"` : 'Enter로 보내기 · Shift+Enter 줄바꿈'}</small>
-        <button type="submit" disabled={sim.busy || !text.trim()}>{sim.busy ? '보내는 중…' : '보내기'}</button>
-      </div>
-    </form>
-    <div className={`step ${phase === 'idle' ? 'dim' : phase === 'confirm' ? 'step-ok' : result && ['ASK', 'BLOCK', 'PASS_THROUGH'].includes(result.decision) || sim.error ? 'step-warn' : ''}`}>
-      <div className={`step-title ${phase === 'confirm' ? 'ok' : 'warn'}`}>STEP 2. 명령 해석{s2Suffix && ` · ${s2Suffix}`} {result && <span className={`tag ${tone}`}>{label}</span>}</div>
-      {interpretation.length
-        ? <div className="checks">{interpretation.map((line) => <span key={line}>{line}</span>)}</div>
-        : <small className="muted">명령을 보내면 서버의 해석과 판정이 여기에 표시됩니다.</small>}
-      {pending && pending.kind === 'goal' && <ul className="plan">
-        {(pending.plan || []).map((p) => <li key={p.step}><img src={loaderCircle} alt="" width="14" height="14" />{stepText(p)}</li>)}
-      </ul>}
-    </div>
-    <div className={`step ${s3Class}`}>
-      <div className={`step-title ${phase === 'running' ? 'info' : phase === 'confirm' || (phase === 'done' && resultTone === 'ok') ? 'ok' : 'warn'}`}>STEP 3. 시뮬레이션 실행 · {s3Suffix}<img src={shieldCheck} alt="" width="14" height="14" /></div>
-      {job ? <>
-        <ul className="plan">
-          {(job.progress || []).map((p) => <li key={p.no} className={p.reached ? 'done' : ''}><img src={p.reached ? checkSquare : loaderCircle} alt="" width="14" height="14" />{p.no}/{p.of} {p.label}</li>)}
-        </ul>
+    {phase === 'idle' ? <div className="step step-input">{input}</div>
+      : <div className={`step cmd-card ${cardTone}`}>
+        {phase === 'running' || phase === 'done'
+          ? <img src={shieldCheck} alt="" width="16" height="16" />
+          : <span className={`tag ${cardTone}`}>{phase === 'confirm' && expired ? '확인 시간 만료' : sim.error ? '오류' : label}</span>}
+        {headline && <b className="cmd-title">{headline}</b>}
+        {details.map((line) => <small key={line} className="cmd-reason">{line}</small>)}
+        {pending && pending.kind === 'goal' && <ul className="plan">
+          {(pending.plan || []).map((p) => <li key={p.step}><img src={loaderCircle} alt="" width="14" height="14" />{stepText(p)}</li>)}
+        </ul>}
+        {progress.length > 0 && <ul className="plan">
+          {progress.map((p) => <li key={p.key} className={p.done ? 'done' : ''}><img src={p.done ? checkSquare : loaderCircle} alt="" width="14" height="14" />{p.text}</li>)}
+        </ul>}
         {running && <div className="run-bar" role="progressbar" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
-        {running ? <small className="info">Gazebo에서 실행 중…</small>
-          : <b className={resultTone}>{resultLabel || `종료 코드 ${job.exit_code}`}</b>}
-      </> : goal ? <>
-        <ul className="plan">
-          {(goal.plan || []).map((p) => <li key={p.step} className={p.status === 'completed' ? 'done' : ''}><img src={p.status === 'completed' ? checkSquare : loaderCircle} alt="" width="14" height="14" />{stepText(p)} · {p.status}</li>)}
-        </ul>
-        {running && <div className="run-bar" role="progressbar" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
-        <small className={running ? 'info' : ''}>목표 상태: {goal.status}</small>
-      </> : <small className="muted">확인을 누르면 Gazebo 시뮬레이터에서 실행되고 진행 단계가 표시됩니다.</small>}
-    </div>
+        {running && <small className="info">Gazebo에서 실행 중…</small>}
+        {phase === 'done' && job && <b className={resultTone}>{resultLabel || `종료 코드 ${job.exit_code}`}</b>}
+        {phase === 'done' && goal && !job && <small>목표 상태: {goal.status}</small>}
+        {phase === 'ask' && input}
+        {phase === 'confirm' && <div className="approve-row">
+          <button className="approve" disabled={sim.busy || expired} onClick={() => sim.answer('confirm')}><span className="icon-play" aria-hidden="true" />{pending.kind === 'goal' ? '전체 실행 승인' : '실행 승인'}</button>
+          {!expired && <button className="approve-cancel" disabled={sim.busy} onClick={() => sim.answer('cancel')}>취소</button>}
+        </div>}
+        {(phase === 'done' || phase === 'other' || (phase === 'confirm' && expired)) &&
+          <button className="btn-secondary" onClick={sim.reset}>{phase === 'other' && result && result.decision === 'BLOCK' ? '명령 수정' : '새 명령 입력'}</button>}
+      </div>}
     <div className="decide">
-      {pending
-        ? <div className="approve-row">
-            <button className="approve" disabled={sim.busy || expired} onClick={() => sim.answer('confirm')}><span className="icon-play" aria-hidden="true" />실행 승인</button>
-            <button className="approve-cancel" disabled={sim.busy} onClick={() => sim.answer('cancel')}>취소</button>
-          </div>
-        : <button className={`hold ${running ? 'run' : ''}`} disabled><span className="icon-play" aria-hidden="true" />{running ? '실행 중' : '승인할 작업 없음'}</button>}
-      {pending && <p>{expired ? '확인 시간이 지났습니다 — 명령을 다시 보내 주세요' : `${remaining}초 안에 승인하지 않으면 취소됩니다`}</p>}
-      {!pending && caption && <p className="muted">{caption}</p>}
+      {phase === 'confirm' && !expired && <p className="muted">{remaining}초 안에 승인하지 않으면 취소됩니다</p>}
+      {phase === 'confirm' && expired && <p>확인 시간이 지났습니다 — 명령을 다시 보내 주세요</p>}
+      {phase === 'running' && <p className="muted">정지는 확인 없이 즉시 요청됩니다</p>}
+      {phase === 'done' && <p className="muted">다음 명령을 입력해 주세요</p>}
       {sim.stopNote && <p className={sim.stopNote.tone} role="status">{sim.stopNote.text}</p>}
-      <small className="sim-note">Gazebo 시뮬레이션 · 실제 로봇 아님</small>
     </div>
   </section>;
 }
@@ -413,8 +413,8 @@ function SimOverlay({ state, at, onClose, onRerun }) {
   const time = at ? timeText(at) : '';
   const card = {
     running: {
-      dot: dotSimRunning, title: 'STEP 3. 안전 검사 실행 중', titleTone: '', sub: simLabel(scene),
-      section: 'STEP 3 세부 진행 (검증 하위 단계)',
+      dot: dotSimRunning, title: '안전 검사 실행 중', titleTone: '', sub: simLabel(scene),
+      section: '검사 세부 진행',
       stages: [{ mark: '1', tone: 'done' }, { mark: '2', tone: 'current' }, { mark: '3', tone: 'wait' }],
       lines: ['done', 'wait'],
       foot: `1/3 단계 완료 · 마지막 갱신 ${time}   ·   이 창이 열려 있어도 헤더의 비상 정지는 언제든 즉시 실행됩니다.`,
@@ -427,8 +427,8 @@ function SimOverlay({ state, at, onClose, onRerun }) {
       foot: `정지 확인 · ${time}   ·   재개하려면 명령을 다시 확인해야 합니다. 헤더의 비상 정지는 계속 즉시 실행됩니다.`,
     },
     danger: {
-      dot: dotSimDanger, title: 'STEP 3. 안전 검사 결과 — 실행 불가', titleTone: 'danger', sub: '검증 완료 · 위험 감지',
-      section: 'STEP 3 완료 (위험 판정)',
+      dot: dotSimDanger, title: '안전 검사 결과 — 실행 불가', titleTone: 'danger', sub: '검증 완료 · 위험 감지',
+      section: '안전 검사 완료 · 위험 판정',
       stages: [{ mark: '✓', tone: 'done' }, { mark: '✓', tone: 'current' }, { mark: '!', tone: 'danger', label: '안전 검증 (위험)' }],
       lines: ['done', 'danger'],
       foot: '3/3 완료 · 위험 판정으로 실행이 차단되었습니다   ·   헤더의 비상 정지는 언제든 즉시 실행됩니다.',
@@ -444,11 +444,8 @@ function SimOverlay({ state, at, onClose, onRerun }) {
       <div className="sim-video">
         {state === 'running' && <SimView3D onView={onView} />}
         {state === 'stopping' && <p className="sim-message">로봇이 현재 위치에서 정지했습니다<br />(정지 확인됨 · 이 명령의 이전 검증 결과는 폐기되었습니다)</p>}
-        {state === 'danger' && <div className="sim-message left">
-          <b>• 충돌 위협 반경 분석: 위험 감지 (BLOCKED)</b>
-          <span><b>• 공동 안전 구역 센서 </b>피드백: Beta 펜스 2 경고 미해결</span>
-          <span className="gap">안전 검증을 통과하지 못해 이 계획은 로봇에 전달되지 않았습니다.</span>
-        </div>}
+        {/* 위험 판정: 영상 칸은 시뮬레이션 화면 자리다 — 문구를 두지 않는다(피그마 결정 2026-10-02). */}
+        {state === 'danger' && <SimView3D onView={onView} />}
       </div>
       <hr />
       <p className="sim-section">{card.section}</p>
