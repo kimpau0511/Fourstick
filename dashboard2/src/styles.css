@@ -76,7 +76,7 @@ small { display: block; }
 
 /* ── 본문 ── */
 .body { display: flex; gap: 24px; align-items: flex-start; padding: 24px; }
-.col-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; padding-bottom: 72px; } /* 맨 아래 표가 고정된 DEMO 바(높이 약 44px + 아래 16px)에 가리지 않게 */
+.col-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
 .col-side { width: var(--cmd-w, 400px); flex: none; display: flex; flex-direction: column; gap: 24px; }
 section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .row3 { display: flex; gap: 16px; }
@@ -128,6 +128,8 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .data-table th { background: var(--panel-2); color: var(--muted); font-weight: 600; white-space: nowrap; }
 .data-table tbody tr:last-child > * { border-bottom: 0; } /* 카드 아래 테두리와 겹쳐 두 줄로 보이지 않게 */
 .card:has(> .data-table) { overflow: hidden; } /* 머리줄 배경이 카드 둥근 모서리 밖으로 나가지 않게 */
+/* 표가 화면 맨 아래 있을 때만 — 고정된 DEMO 바(높이 약 44px + 아래 16px)에 가리지 않게. 표가 없는 블록에는 주지 않는다. */
+.col-main > :last-child:has(.data-table) { margin-bottom: 72px; }
 .tr { display: grid; grid-template-columns: 56px minmax(300px, 1fr) 96px 140px 60px; gap: 12px; align-items: center; padding: 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
 .tr:last-child { border-bottom: 0; }
 .tr.th { background: var(--panel-2); color: var(--muted); font-weight: 600; border-bottom: 0; box-shadow: var(--inset); }
