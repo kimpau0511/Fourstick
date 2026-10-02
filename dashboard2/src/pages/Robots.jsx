@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Spinner from '../components/Spinner.jsx';
 import { LEVEL_LABELS } from '../server.js';
 import './robots.css';
 
@@ -32,7 +33,7 @@ export default function Robots({ server }) {
 
   return <section>
     <h2>로봇 관리</h2>
-    {!ids.length ? <p className="muted">{NONE}</p> : <div className="robots-split">
+    {!ids.length ? <p className="muted">{!robots && server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p> : <div className="robots-split">
       <div className="card table robots-list">
         <table className="robots-table" aria-label="로봇 목록">
           <thead><tr><th>이름</th><th>모델</th><th>셀</th><th>현재 도구</th><th>운용 여부</th></tr></thead>

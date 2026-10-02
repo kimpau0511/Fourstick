@@ -104,17 +104,19 @@ export function useSimCommand() {
   }, [patch, addEvent]);
 
   // robot: 대상 로봇 id(모르면 null). 서버는 이 값을 받지 않고 기록용으로만 쓴다.
-  const send = useCallback(async (text, robot = null) => {
+  // stt: 음성 final이면 { rawText, confidence } — source를 stt_final로 보낸다(옛 화면 simDemoCommand와 같다).
+  const send = useCallback(async (text, robot = null, stt = null) => {
     const utterance = text.trim();
     if (!utterance) return;
     const id = nextId.current++;
     currentId.current = id;
-    setLog((entries) => [...entries, { id, sentAt: Date.now(), text: utterance, robot, events: [] }].slice(-LOG_MAX));
+    setLog((entries) => [...entries, { id, sentAt: Date.now(), text: utterance, robot, via: stt ? '음성' : '텍스트', events: [] }].slice(-LOG_MAX));
     patch({ busy: true, sent: utterance, result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null });
     let res;
     try {
       res = await call('POST', '/v1/sim-demo/command', {
-        mode: 'simulation_demo', utterance, source: 'text', session_id: SESSION_ID,
+        mode: 'simulation_demo', utterance, source: stt ? 'stt_final' : 'text', session_id: SESSION_ID,
+        ...(stt ? { raw_transcript: stt.rawText, stt_confidence: stt.confidence } : {}),
       });
     } catch (error) {
       patch({ busy: false, error: `백엔드에 연결하지 못했습니다: ${error.message}` });

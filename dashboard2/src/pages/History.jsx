@@ -1,3 +1,4 @@
+import Spinner from '../components/Spinner.jsx';
 import { useState } from 'react';
 import { RESULT_LABELS } from '../simCommand.js';
 import './records.css';
@@ -130,7 +131,7 @@ export default function History({ server, log = [] }) {
           </tr>)}
         </tbody>
       </table>
-      {!shown.length && <p className="rec-empty">{rows.length ? '조건에 맞는 기록이 없습니다' : '기록이 없습니다'}</p>}
+      {!shown.length && <p className="rec-empty">{rows.length ? '조건에 맞는 기록이 없습니다' : !server?.simDemo && server?.conn?.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : '기록이 없습니다'}</p>}
     </div>
     {current && <section className="card rec-detail" aria-label="명령 상세">
       <h2>명령 상세 · {current.text}</h2>

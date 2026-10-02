@@ -41,3 +41,11 @@
 .rec-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .rec-pad { padding: 16px 20px; }
 @media (max-width: 1023px) { .rec-split { flex-direction: column; } .rec-nav { width: 100%; flex-direction: row; } }
+
+.widget-prefs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.widget-switch { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 12px; background: var(--panel-2); box-shadow: var(--raised); font-size: 12px; font-weight: 700; color: var(--muted); }
+.widget-switch i { width: 26px; height: 14px; border-radius: 8px; background: var(--panel-2); box-shadow: var(--inset); position: relative; }
+.widget-switch i::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: transform .15s; }
+.widget-switch[aria-checked="true"] { color: var(--cyan); }
+.widget-switch[aria-checked="true"] i::after { background: var(--cyan); transform: translateX(12px); }
+.widget-switch:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }

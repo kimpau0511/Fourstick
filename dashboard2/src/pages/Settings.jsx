@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Spinner from '../components/Spinner.jsx';
 import './records.css';
 
 // 설정 3구역. 개인 = 이 브라우저(localStorage)에만 저장하는 루틴, 운영 = 인증 도입 전 빈 상태,
@@ -88,7 +89,7 @@ function Policies({ server }) {
       <b>조회 전용 · 변경은 안전관리자 권한 필요</b>
       <p className="note muted">아래는 서버가 지금 적용 중인 정책입니다. 이 화면에서는 바꿀 수 없습니다.</p>
     </div>
-    {!policies ? <p className="rec-empty">정책 값을 받지 못했습니다(확인 안 됨)</p> : Object.entries(policies).map(([group, values]) => <section key={group} className="card rec-pad">
+    {!policies ? <p className="rec-empty">{server?.conn?.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : '정책 값을 받지 못했습니다(확인 안 됨)'}</p> : Object.entries(policies).map(([group, values]) => <section key={group} className="card rec-pad">
       <h2>{POLICY_LABELS[group] || group} <small className="muted">정책 버전 {values.policy_version || '확인 안 됨'}</small></h2>
       <dl className="rec-kv">
         {Object.entries(values).filter(([k]) => k !== 'policy_version').map(([k, v]) => <div key={k} style={{ display: 'contents' }}>

@@ -29,6 +29,8 @@ function deriveConn(s) {
   const maxAge = s.config?.policies?.freshness?.environment_max_age_sec;
   const ageSec = s.healthOkAt == null ? null : (s.nowMs - s.healthOkAt) / 1000;
   const base = { lastReceivedAt: s.healthOkAt, latencyMs: s.latencyMs, ageSec };
+  // 한 번도 받은 적 없이 요청이 실패하고 있으면 끊김이다 — 정책을 못 받았다고 무한히 '연결 중'으로 두지 않는다.
+  if (s.healthOkAt == null && s.healthFailing) return { ...base, status: 'down' };
   // 기준(서버 정책)을 아직 못 받았으면 판단 불가 — 기본값을 지어내지 않고 연결 중으로 둔다.
   if (typeof maxAge !== 'number' || ageSec == null) return { ...base, status: 'connecting' };
   if (ageSec <= maxAge) return { ...base, status: 'ok' };

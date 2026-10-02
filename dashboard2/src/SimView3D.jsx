@@ -6,6 +6,7 @@ import {
   ClockSkew, DISPLAY_DELAY_SEC, SampleBuffer, lerpJoints, lerpPoses, staleness,
 } from '../../html/static/js/sim-view-core.js';
 import SceneView from './SceneView.jsx';
+import Spinner from './components/Spinner.jsx';
 
 /** 서버가 스트림을 닫으면 이 간격으로 다시 붙는다(백엔드 화면 sim-view.js와 같은 값). */
 const RECONNECT_MS = 2000;
@@ -25,6 +26,7 @@ export default function SimView3D({ onView }) {
   const frameRef = useRef(null);
   const canvasRef = useRef(null);
   const [mode, setMode] = useState('3d');
+  const [observed, setObserved] = useState(false); // 첫 관측이 오면 연결 중 스피너를 지운다
   const onCameraView = useCallback((view) => onView?.({ mode: 'camera', ...view }), [onView]);
 
   useEffect(() => {
@@ -166,6 +168,7 @@ export default function SimView3D({ onView }) {
         }
       }
       // FPS를 5 단위로 반올림해 알린다 — 59·60·61로 흔들릴 때마다 상위 컴포넌트를 다시 그리지 않게.
+      setObserved(true);
       report({ status: 'live', fps: Math.round(s.frames.length / 5) * 5, stale: status.stale, reason: status.reason });
       world.controls.update();
       renderer.render(world.scene, world.camera);
@@ -199,5 +202,6 @@ export default function SimView3D({ onView }) {
   if (mode === 'camera') return <SceneView onView={onCameraView} />;
   return <div ref={frameRef} className="sim3d-frame">
     <canvas ref={canvasRef} className="scene-canvas" />
+    {!observed && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}><Spinner size={28} label="3D 화면 연결 중" /></div>}
   </div>;
 }

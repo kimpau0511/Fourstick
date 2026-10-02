@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { RESULT_LABELS } from '../simCommand.js';
+import { useVoice } from '../voice.js';
+import Spinner from './Spinner.jsx';
 import './command.css';
 import checkSquare from '../assets/check-square-2.svg';
 import dotPanel from '../assets/dot-panel.svg';
-import loaderCircle from '../assets/loader-circle.svg';
 import mic from '../assets/mic.svg';
 import shieldCheck from '../assets/shield-check.svg';
 
@@ -31,6 +32,21 @@ const STAGE_TEXT = { done: '완료', active: '진행 중', fail: '실패', idle:
 // 로봇 이름은 역할 우선(이송 가능하면 "이송 로봇"), 모델·id는 title로 보조.
 const robotName = (id, profile) => ((profile.supported_skills || []).some((k) => k === 'pick' || k === 'place') ? '이송 로봇' : id);
 
+// 입력칸 안 마이크 버튼. 듣는 동안은 음성 파형(막대 3개), 연결·확정 중에는 스피너를 보인다.
+function MicButton({ voice, locked }) {
+  const { status, unavailable } = voice;
+  const listening = status === 'listening';
+  const busy = status === 'connecting' || status === 'finalizing';
+  const name = unavailable ? '음성 입력(사용할 수 없음)' : listening ? '음성 인식 중 — 누르면 종료'
+    : status === 'connecting' ? '음성 입력 연결 중 — 누르면 취소' : status === 'finalizing' ? '음성 입력 확정 중' : '음성 입력 시작';
+  const onClick = listening ? voice.stop : status === 'connecting' ? voice.cancel : voice.start;
+  return <button type="button" className="mic-btn" aria-label={name} aria-pressed={listening} title={unavailable || undefined}
+    disabled={!!unavailable || status === 'finalizing' || (locked && !listening && !busy)} onClick={onClick}>
+    {listening ? <span className="voice-bars" aria-hidden="true"><i /><i /><i /></span>
+      : busy ? <Spinner size={16} label={name} /> : <img src={mic} alt="" width="16" height="16" />}
+  </button>;
+}
+
 export default function CommandPanel({ now, sim, server }) {
   const [text, setText] = useState('');
   const [picked, setPicked] = useState(null);
@@ -47,6 +63,11 @@ export default function CommandPanel({ now, sim, server }) {
     m.actions && m.actions.transfer && { key: `${m.model}-t`, label: `${m.korean} → 컨베이어`, sentence: `${m.korean}를 컨베이어로 옮겨줘` },
     m.actions && m.actions.return && { key: `${m.model}-r`, label: `${m.korean} 원래 자리로`, sentence: `${m.korean}를 원래 자리로 돌려놔` },
   ]).filter(Boolean);
+  // 음성 입력. final만 명령으로 보낸다(대상 로봇 선택 유지) — partial·clarify는 보내지 않는다.
+  const voice = useVoice({
+    config: server && server.config, health: server && server.health,
+    onFinal: (utterance, stt) => { if (!sim.busy && !lockReason) sim.send(utterance, target && target.id, stt); },
+  });
   const { result, pending, job, goal } = sim;
   const [tone, label] = (result && DECISIONS[result.decision]) || ['info', result ? result.decision : ''];
   const remaining = sim.deadline ? Math.max(0, Math.ceil((sim.deadline - now.getTime()) / 1000)) : null;
@@ -97,11 +118,12 @@ export default function CommandPanel({ now, sim, server }) {
         aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: A 자재를 컨베이어로 옮겨줘'}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
-      <button type="button" className="mic-btn" disabled title="음성 입력은 아직 연결되지 않았습니다" aria-label="음성 입력(연결 안 됨)">
-        <img src={mic} alt="" width="16" height="16" />
-      </button>
+      <MicButton voice={voice} locked={!!lockReason} />
     </div>
     {phase === 'idle' && <button type="submit" className="btn-primary send" disabled={sim.busy || !!lockReason || !text.trim()}>{sim.busy ? '보내는 중…' : '보내기'}</button>}
+    {voice.partial && <small className="cmd-partial" aria-live="polite">{voice.partial}</small>}
+    {voice.clarify && <small className="cmd-lock" role="status">{voice.clarify}</small>}
+    {(voice.error || voice.unavailable) && <small className="cmd-lock" role="status">{voice.error || voice.unavailable}</small>}
     {lockReason && <small className="cmd-lock" role="status">{lockReason}</small>}
   </form>;
 
@@ -135,10 +157,10 @@ export default function CommandPanel({ now, sim, server }) {
         {details.map((line) => <small key={line} className="cmd-reason">{line}</small>)}
         {phase === 'confirm' && target && <small className="cmd-target">대상: {target.name}</small>}
         {pending && pending.kind === 'goal' && <ul className="plan">
-          {(pending.plan || []).map((p) => <li key={p.step}><img src={loaderCircle} alt="" width="14" height="14" />{stepText(p)}</li>)}
+          {(pending.plan || []).map((p) => <li key={p.step}><Spinner size={14} decorative />{stepText(p)}</li>)}
         </ul>}
         {progress.length > 0 && <ul className="plan">
-          {progress.map((p) => <li key={p.key} className={p.done ? 'done' : ''}><img src={p.done ? checkSquare : loaderCircle} alt="" width="14" height="14" />{p.text}</li>)}
+          {progress.map((p) => <li key={p.key} className={p.done ? 'done' : ''}>{p.done ? <img src={checkSquare} alt="" width="14" height="14" /> : <Spinner size={14} decorative />}{p.text}</li>)}
         </ul>}
         {running && <div className="run-bar" role="progressbar" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
         {running && <small className="info">Gazebo에서 실행 중…</small>}

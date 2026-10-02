@@ -12,3 +12,13 @@
 .chip-stop { border-color: var(--danger-border); color: var(--red); }
 .cmd-lock { color: var(--red); font-size: 12px; }
 .cmd-target { color: var(--muted); font-size: 12px; font-weight: 600; }
+
+/* 음성 인식 표시 — uiverse.io/aryamitra06/silent-lion-21(막대 3개, 가운데가 더 길고 차례로 커짐)을
+   라이트 테마 색(--cyan)으로 옮기고 36px 원형 버튼 안에 들어가게 줄였다(높이 20:35:20 비율 유지). */
+.voice-bars { display: flex; align-items: center; gap: 2px; }
+.voice-bars i { display: inline-block; width: 2px; height: 8px; border-radius: 10px; background-color: color-mix(in srgb, var(--cyan) 50%, transparent); animation: voice-scale-up 1s linear infinite; }
+.voice-bars i:nth-child(2) { height: 14px; animation-delay: .25s; }
+.voice-bars i:nth-child(3) { animation-delay: .5s; }
+@keyframes voice-scale-up { 20% { background-color: var(--cyan); transform: scaleY(1.5); } 40% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .voice-bars i { animation-duration: 3s; } }
+.cmd-partial { color: var(--muted); font-size: 12px; font-style: italic; }

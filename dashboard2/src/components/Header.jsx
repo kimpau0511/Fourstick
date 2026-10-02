@@ -1,4 +1,5 @@
 import alertOctagon from '../assets/alert-octagon.svg';
+import Spinner from './Spinner.jsx';
 import { StatusCount } from './StatusWidget.jsx';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -18,7 +19,7 @@ export default function Header({ title, onStop, server, drawerOpen, onToggleDraw
   return <header className="header">
     <div className="header-title"><h1>{title}</h1></div>
     <div className="header-right">
-      <span className={conn.cls} role="status">{conn.text}</span>
+      <span className={conn.cls} role="status">{server.conn.status === 'connecting' && <><Spinner size={12} label="연결 확인 중" />{' '}</>}{conn.text}</span>
       <span className="grade">로봇 상태: <b>{server.robotStatus.label || '확인 중'}</b></span>
       <span className="muted header-meta">운전 모드: {mode}</span>
       <span className="muted header-meta">제어권: 정보 없음</span>

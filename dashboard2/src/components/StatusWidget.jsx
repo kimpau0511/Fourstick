@@ -1,3 +1,4 @@
+import { useWidgetPrefs } from '../widgetPrefs.js';
 // System status 위젯(가-4·§15). 서버 값만 쓰고, 값이 없으면 "수신 없음" — 정상으로 세지 않는다(설계원칙 4).
 const STATE = {
   ok: { icon: '●', text: '정상', cls: 'ok' },
@@ -25,10 +26,19 @@ function systemRows(server) {
 
 const okCount = (rows) => rows.filter((r) => r.state === 'ok').length;
 
+// 숨긴 행을 뺀 보이는 행 계산 — 사이드바 위젯과 헤더가 같이 쓴다. 숨겨도 각 행의 판정(state)은 그대로다.
+function visibleRows(server, hidden) {
+  const all = systemRows(server);
+  const rows = all.filter((r) => !hidden.has(r.id));
+  return { rows, hiddenCount: all.length - rows.length };
+}
+
 export default function StatusWidget({ server }) {
-  const rows = systemRows(server);
+  const { hidden } = useWidgetPrefs();
+  const { rows, hiddenCount } = visibleRows(server, hidden);
   return <div className="status-widget" role="group" aria-label="System status">
-    <div className="status-head"><b>SYSTEM STATUS</b><small>{okCount(rows)}/4 정상</small></div>
+    <div className="status-head"><b>SYSTEM STATUS</b>{rows.length > 0 && <small>{okCount(rows)}/{rows.length} 정상{hiddenCount > 0 && <em style={{ fontStyle: "normal", fontWeight: 500, fontSize: 10 }}> · 숨김 {hiddenCount}</em>}</small>}</div>
+    {rows.length === 0 && <a className="status-row" href="#/diagnostics"><span className="status-name rail-hide">표시할 항목 없음 — 실시간 진단에서 켜기</span></a>}
     {rows.map((r) => {
       const s = STATE[r.state];
       return <a key={r.id} className="status-row" href={`#/diagnostics?service=${r.id}`} title={`${r.label}: ${s.text}`}>
@@ -39,7 +49,11 @@ export default function StatusWidget({ server }) {
   </div>;
 }
 
-// 헤더용 "N/4 정상" — 사이드바 위젯과 같은 계산.
+// 헤더용 "N/M 정상" — 사이드바 위젯과 같은 계산(M = 보이는 행 수).
 export function StatusCount({ server }) {
-  return <span className="muted header-meta">{okCount(systemRows(server))}/4 정상</span>;
+  const { hidden } = useWidgetPrefs();
+  const { rows } = visibleRows(server, hidden);
+  // 전부 숨기면 '0/0 정상'처럼 정상으로 읽히지 않게 숨김이라고만 적는다.
+  if (!rows.length) return <span className="muted header-meta">상태 위젯 숨김</span>;
+  return <span className="muted header-meta">{okCount(rows)}/{rows.length} 정상</span>;
 }

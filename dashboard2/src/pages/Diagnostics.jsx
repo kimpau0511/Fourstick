@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import Spinner from '../components/Spinner.jsx';
+import { useWidgetPrefs } from '../widgetPrefs.js';
 import './records.css';
 
 // 진단 = useServer 수집값 + 장면 카메라(/v1/scene, 이 페이지에서 직접 조회).
@@ -7,6 +9,7 @@ const SCENE_POLL_MS = 10000; // 장면 카메라 상태 조회 주기(화면 갱
 const STATUS = {
   ok: ['정상', 'ok', '●'], warn: ['경고', 'warn', '▲'], fail: ['장애', 'danger', '■'], none: ['수신 없음', 'muted', '?'],
 };
+const WIDGET_ROWS = [['ros2', 'ROS 2'], ['planner', 'PLANNER'], ['safety-plc', 'SAFETY PLC'], ['latency', 'LATENCY']]; // StatusWidget 행 id
 const ORDER = { fail: 0, warn: 1, none: 2, ok: 3 }; // 문제 있는 것 위로
 const stamp = () => Date.now(); // 이벤트 시점 시각(렌더 순수성 규칙 때문에 렌더 밖 함수로 둔다)
 const clock = (ms) => (ms == null ? '—' : new Date(ms).toTimeString().slice(0, 8));
@@ -79,6 +82,7 @@ function buildServices(server, scene) {
 
 export default function Diagnostics({ server }) {
   const scene = useScene();
+  const { hidden, toggle: toggleWidget, showAll } = useWidgetPrefs();
   // 사이드바 상태 위젯에서 #/diagnostics?service=<id>로 오면 그 서비스 행으로 스크롤한다.
   useEffect(() => {
     const id = new URLSearchParams(window.location.hash.split('?')[1] || '').get('service');
@@ -162,6 +166,14 @@ export default function Diagnostics({ server }) {
   const toggle = (key) => setOpen((o) => ({ ...o, [key]: !o[key] }));
 
   return <>
+    <div className="card rec-pad widget-prefs" role="group" aria-label="상태 위젯 표시">
+      <b>상태 위젯 표시</b>
+      {WIDGET_ROWS.map(([id, label]) => <button key={id} type="button" role="switch" aria-checked={!hidden.has(id)} className="widget-switch" onClick={() => toggleWidget(id)}>
+        <i aria-hidden="true" />{label}
+      </button>)}
+      <button type="button" className="rec-btn" onClick={showAll} disabled={hidden.size === 0}>모두 보이기</button>
+      <small className="muted">사이드바 System status 위젯에 보일 항목만 고릅니다. 아래 서비스 목록과 상태 판정은 그대로입니다.</small>
+    </div>
     <div className="rec-head">
       <h2>서비스 상태{problem ? ' · 확인이 필요한 항목이 있습니다' : ''}</h2>
       <button type="button" className="rec-btn" onClick={exportData}>진단자료 내보내기</button>
@@ -170,7 +182,7 @@ export default function Diagnostics({ server }) {
       <table className="rec-table" aria-label="진단자료 내보내기 작업">
         <thead><tr><th>요청 시각</th><th>상태</th><th>결과</th></tr></thead>
         <tbody>{exportJobs.map((j) => <tr key={j.id}>
-          <td>{clock(j.at)}</td><td>{j.state}</td>
+          <td>{clock(j.at)}</td><td>{j.state === '생성 중' ? <><Spinner size={14} label="생성 중" /> 생성 중</> : j.state}</td>
           <td>{j.state === '완료' && <button type="button" className="rec-btn" onClick={() => download(j)}>JSON 다운로드 ({j.size} B)</button>}
             {j.state === '실패' && <span className="danger">{j.error}</span>}</td>
         </tr>)}</tbody>
@@ -185,7 +197,7 @@ export default function Diagnostics({ server }) {
           <td>{clock(s.checked)}</td>
           <td>{s.status === 'ok' ? '지금' : track.lastOk[s.id] ? clock(track.lastOk[s.id]) : '이 화면이 본 적 없음'}</td>
           <td>{track.since[s.id] ? span(now - track.since[s.id]) : '—'}</td>
-          <td>{s.error || '—'}
+          <td>{s.id === 'camera' && scene.at == null ? <><Spinner size={14} label="카메라 확인 중" /> 확인 중</> : s.error || '—'}
             {s.status !== 'ok' && <div>
               <button type="button" className="rec-btn" aria-expanded={!!open[s.id]} onClick={() => toggle(s.id)}>문제 전후 원시 샘플 보기</button>
               {open[s.id] && <pre className="rec-pre">{JSON.stringify(s.raw ?? null, null, 2)}</pre>}

@@ -1,3 +1,4 @@
+import Spinner from '../components/Spinner.jsx';
 import MetricRow from '../components/MetricRow.jsx';
 import { RESULT_LABELS } from '../simCommand.js';
 import './home.css';
@@ -20,12 +21,15 @@ function resultText(j) {
 
 export default function Home({ server }) {
   const { health, config, simDemo, simState, robotStatus } = server;
+  const loading = server.conn.status === 'connecting'; // 첫 응답 전 — 연결이 실패·끊김이면 기존 문구
+  const wait = <><Spinner size={14} label="불러오는 중" /> 불러오는 중</>;
+  const none = loading ? wait : '데이터 없음';
   const exec = health?.executions;
   const planning = health?.features?.planning;
   const metrics = [
-    { label: '시뮬레이션 실행 누적', value: exec ? exec.simulated : '데이터 없음', unit: exec ? '건' : '' },
-    { label: '확인 안 된 실행', value: exec ? exec.unknown : '데이터 없음', unit: exec ? '건' : '', ...(exec?.unknown > 0 ? { badge: '확인 필요', tone: 'warn' } : {}) },
-    { label: '계획 모델 상태', value: planning ? (planning.available ? '사용 가능' : '사용 불가') : '데이터 없음',
+    { label: '시뮬레이션 실행 누적', value: exec ? exec.simulated : none, unit: exec ? '건' : '' },
+    { label: '확인 안 된 실행', value: exec ? exec.unknown : none, unit: exec ? '건' : '', ...(exec?.unknown > 0 ? { badge: '확인 필요', tone: 'warn' } : {}) },
+    { label: '계획 모델 상태', value: planning ? (planning.available ? '사용 가능' : '사용 불가') : none,
       ...(planning ? { badge: planning.detail || '', tone: planning.available ? 'ok' : 'warn' } : {}) },
   ];
   const robot = config?.robot;
@@ -63,7 +67,7 @@ export default function Home({ server }) {
             <td>{j.action_label || j.action}</td>
             <td><b>{resultText(j)}</b></td>
           </tr>)}</tbody>
-        </table> : <p className="muted" style={{ padding: 14 }}>기록 없음</p>}
+        </table> : <p className="muted" style={{ padding: 14 }}>{!jobs && loading ? wait : '기록 없음'}</p>}
       </div>
     </section>
   </>;

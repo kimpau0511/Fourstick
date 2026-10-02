@@ -20,6 +20,8 @@ export default defineConfig({
       '/v1/sim-view': { target: backend, changeOrigin: true, secure: false, ws: true },
       '/v1/scene': { target: backend, changeOrigin: true, secure: false, ws: true },
       '/v1/sim-demo': { target: backend, changeOrigin: true, secure: false },
+      '/v1/sessions': { target: backend, changeOrigin: true, secure: false },
+      '/v1/stt': { target: backend, changeOrigin: true, secure: false, ws: true },
       '/v1/robots': { target: backend, changeOrigin: true, secure: false },
       '/v1/config': { target: backend, changeOrigin: true, secure: false },
       '/health': { target: backend, changeOrigin: true, secure: false },

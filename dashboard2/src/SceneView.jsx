@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Spinner from './components/Spinner.jsx';
 
 /** 실시간 프레임이 없을 때 서버 스냅샷을 다시 받는 간격. 스냅샷 한 장은 서버에서
  *  `gz topic -n 1`로 약 0.5초가 든다(실측 2026-09-28) — 카메라 주기보다 느리게 둔다. */
@@ -162,6 +163,6 @@ export default function SceneView({ onView }) {
   const hasImage = drawn && status !== 'unavailable' && status !== 'connecting';
   return <>
     <canvas ref={canvasRef} className="scene-canvas" width="480" height="360" style={{ visibility: hasImage ? 'visible' : 'hidden' }} />
-    {!hasImage && <p className="scene-waiting">{status === 'unavailable' ? detail : status === 'snapshot' ? '실시간 영상이 없어 서버 스냅샷을 받는 중…' : 'Gazebo 시뮬레이션에 연결하는 중…'}</p>}
+    {!hasImage && <p className="scene-waiting">{status !== 'unavailable' && <><Spinner size={14} label={status === 'snapshot' ? '스냅샷 받는 중' : '연결 중'} />{' '}</>}{status === 'unavailable' ? detail : status === 'snapshot' ? '실시간 영상이 없어 서버 스냅샷을 받는 중…' : 'Gazebo 시뮬레이션에 연결하는 중…'}</p>}
   </>;
 }
