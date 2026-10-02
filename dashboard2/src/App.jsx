@@ -3,7 +3,8 @@ import {
   alerts, commandLog, commandLogNote, engineMetrics, history, issues, metrics,
   robotDetails, robots, tool, toolHistory,
 } from './data.js';
-import SceneView, { sceneLabel } from './SceneView.jsx';
+import SimView3D from './SimView3D.jsx';
+import { simLabel } from './simLabel.js';
 import { RESULT_LABELS, useSimCommand } from './simCommand.js';
 import alertOctagon from './assets/alert-octagon.svg';
 import avatar from './assets/avatar.jpg';
@@ -407,12 +408,12 @@ function CommandPanel({ now, sim }) {
 const STAGES = ['명령·범위 확인', '로봇 상태 확인', '안전 검증'];
 
 function SimOverlay({ state, at, onClose, onRerun }) {
-  const [scene, setScene] = useState({ status: 'connecting', fps: 0, snapshotAt: null });
+  const [scene, setScene] = useState({ mode: '3d', status: 'connecting', fps: 0 });
   const onView = useCallback((view) => setScene(view), []);
   const time = at ? timeText(at) : '';
   const card = {
     running: {
-      dot: dotSimRunning, title: 'STEP 3. 안전 검사 실행 중', titleTone: '', sub: sceneLabel(scene),
+      dot: dotSimRunning, title: 'STEP 3. 안전 검사 실행 중', titleTone: '', sub: simLabel(scene),
       section: 'STEP 3 세부 진행 (검증 하위 단계)',
       stages: [{ mark: '1', tone: 'done' }, { mark: '2', tone: 'current' }, { mark: '3', tone: 'wait' }],
       lines: ['done', 'wait'],
@@ -441,7 +442,7 @@ function SimOverlay({ state, at, onClose, onRerun }) {
         {state === 'running' && <button className="sim-cancel" onClick={onClose}><b>안전 검사 취소</b><small>검사만 중단 · 로봇 동작에는 영향 없음</small></button>}
       </div>
       <div className="sim-video">
-        {state === 'running' && <SceneView onView={onView} />}
+        {state === 'running' && <SimView3D onView={onView} />}
         {state === 'stopping' && <p className="sim-message">로봇이 현재 위치에서 정지했습니다<br />(정지 확인됨 · 이 명령의 이전 검증 결과는 폐기되었습니다)</p>}
         {state === 'danger' && <div className="sim-message left">
           <b>• 충돌 위협 반경 분석: 위험 감지 (BLOCKED)</b>
@@ -469,7 +470,7 @@ function SimOverlay({ state, at, onClose, onRerun }) {
 function DemoBar({ state, onChange }) {
   const options = [[null, '기본'], ['running', '안전 검사 중'], ['stopping', '정지 확인'], ['danger', '위험 판정']];
   return <div className="demo-bar">
-    <span>DEMO · 목업 데이터 (영상·명령 패널만 실제 Gazebo)</span>
+    <span>DEMO · 목업 데이터 (시뮬레이션 화면·명령 패널만 실제 Gazebo)</span>
     {options.map(([value, label]) => <button key={label} className={state === value ? 'on' : ''} onClick={() => onChange(value)}>{label}</button>)}
   </div>;
 }

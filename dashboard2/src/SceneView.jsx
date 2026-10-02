@@ -6,17 +6,6 @@ const SNAPSHOT_INTERVAL_MS = 2000;
 /** 서버가 스트림을 닫으면(프레임 없음·재시작) 이 간격으로 다시 붙는다. */
 const RECONNECT_MS = 3000;
 
-export function sceneLabel({ status, fps, snapshotAt }) {
-  if (status === 'live') return `Gazebo 실시간 스트리밍 · ${fps} FPS`;
-  if (status === 'snapshot') {
-    const at = snapshotAt ? ` · ${new Date(snapshotAt).toTimeString().slice(0, 8)}` : '';
-    return `Gazebo 서버 스냅샷 · 실시간 아님${at}`;
-  }
-  if (status === 'stalled') return 'Gazebo 프레임 끊김 · 마지막 화면 표시 중';
-  if (status === 'unavailable') return 'Gazebo 장면 카메라를 쓸 수 없음';
-  return 'Gazebo 시뮬레이션에 연결하는 중';
-}
-
 /** forstick2 백엔드의 Gazebo 장면 카메라(`/v1/scene/stream`)를 그린다.
  *
  *  백엔드 화면(html/static/js/main.js)과 같은 규칙이다: 받은 프레임만 그리고,

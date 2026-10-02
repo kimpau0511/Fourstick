@@ -242,6 +242,7 @@ h2.soft { color: var(--soft); }
 .sim-cancel small { font-size: 10px; }
 .sim-video { position: relative; height: 420px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--video); }
 .sim-card.stopping .sim-video, .sim-card.danger .sim-video { border-color: var(--red); }
+.sim3d-frame { position: absolute; inset: 0; }
 .scene-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .scene-waiting, .sim-message { color: var(--muted-2); font-size: 13px; text-align: center; }
 .sim-message.left { display: flex; flex-direction: column; text-align: left; }

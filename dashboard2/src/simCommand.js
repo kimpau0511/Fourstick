@@ -36,6 +36,8 @@ async function call(method, path, body) {
   return { status: response.status, ok: response.ok, payload };
 }
 
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
 function reasonOf(res) {
   const p = res.payload;
   return p.reason || p.detail || p.message || `백엔드 응답 ${res.status}`;
@@ -53,19 +55,25 @@ export function useSimCommand() {
 
   // 작업·목표는 끝날 때까지 읽기만 한다. 로봇 명령을 보내지 않는다.
   const pollJob = useCallback(async (jobId) => {
-    const res = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`);
-    if (!alive.current) return;
-    if (!res.ok) { patch({ error: reasonOf(res) }); return; }
-    patch({ job: res.payload });
-    if (res.payload.status === 'running') setTimeout(() => pollJob(jobId), POLL_MS);
+    for (;;) {
+      const res = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`);
+      if (!alive.current) return;
+      if (!res.ok) { patch({ error: reasonOf(res) }); return; }
+      patch({ job: res.payload });
+      if (res.payload.status !== 'running') return;
+      await sleep(POLL_MS);
+    }
   }, [patch]);
 
   const pollGoal = useCallback(async (goalId) => {
-    const res = await call('GET', `/v1/sim-demo/goals/${encodeURIComponent(goalId)}`);
-    if (!alive.current) return;
-    if (!res.ok) { patch({ error: reasonOf(res) }); return; }
-    patch({ goal: res.payload });
-    if (['running', 'stopping'].includes(res.payload.status)) setTimeout(() => pollGoal(goalId), POLL_MS);
+    for (;;) {
+      const res = await call('GET', `/v1/sim-demo/goals/${encodeURIComponent(goalId)}`);
+      if (!alive.current) return;
+      if (!res.ok) { patch({ error: reasonOf(res) }); return; }
+      patch({ goal: res.payload });
+      if (!['running', 'stopping'].includes(res.payload.status)) return;
+      await sleep(POLL_MS);
+    }
   }, [patch]);
 
   const send = useCallback(async (text) => {
