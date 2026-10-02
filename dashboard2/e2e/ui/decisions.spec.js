@@ -21,10 +21,8 @@ test('[UI-SIM-03][DEV-01] 3D 모델을 못 받으면 Gazebo 영상 경로로 대
   await expect(page.locator('.sim-head > div small')).toContainText('Gazebo');
 });
 
-test('[UI-SIM-01][⑧ D3] 시뮬레이션 창에 "SIMULATION — 실시간 아님" 표기', async ({ page }) => {
-  await openSim(page);
-  await expect(page.locator('.sim-card')).toContainText(/SIMULATION|실시간 아님/);
-});
+// UI-SIM-01(⑧ "SIMULATION — 실시간 아님")은 넣지 않는다 — 2026-10-01 "표지 없음" 결정(D3). 지금 창은 실시간 관측이라
+// 문구 자체도 사실과 다르다. 기획서 ⑧ 갱신 대상으로 추적표에 남긴다.
 
 test('[UI-DEV-01][DEV-02] 라이트 테마: 페이지 바탕 #e4e9f0, 카드 #e8edf3', async ({ page }) => {
   await page.goto('/');

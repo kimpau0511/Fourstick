@@ -22,7 +22,7 @@
 | 환경변수 | `server/config.py` |
 | 이송 스킬 계약(로봇 무관) | `core/transfer_skill.py` |
 | 시연 명령 API (`/v1/sim-demo/*`) | `server/routes/sim_demo.py` — `/command` 응답은 `command_response`의 `base`와 `answer()`에서 조립한다. **`/confirm`은 `confirm_response`(940행~)가 자기 `base`(952행)를 따로 만든다 — `command_response`의 `base`를 고쳐도 반영되지 않는다.** `/goals/<id>/confirm`은 `handle`의 goals 분기(135행~)가 따로 처리. 하위 모듈: 규칙 해석 `server/sim_demo_commands.py`, 모호 발화 분류 `sim_demo_intent.py`, 확인 대기 `sim_demo_confirm.py`, 목표 `sim_demo_goals.py`, 맥락 `sim_demo_context.py`, 배치 `sim_demo_arrangement.py`, 자리 `sim_demo_places.py`, 작업 실행 `sim_demo_jobs.py` |
-| 공개 응답 필터 — **모든 응답이 지나며 실기 상태 키를 조용히 지운다** | `server/routes/common.py`의 `json_response` → `public_payload`, 제거 대상 `HIDDEN_HARDWARE_KEYS`(`real_hardware*`, `hardware_readiness`). 새 응답 필드 이름이 겹치면 사라진다. 의도된 동작(시뮬레이션 전용 서비스) |
+| 공개 응답 필터 — **모든 응답이 지나며 실기 상태 키를 조용히 지운다** | `server/routes/common.py`의 `json_response` → `public_payload`, 제거 대상 `HIDDEN_HARDWARE_KEYS` — 이름이 **정확히 일치하는** 6개 키(`real_hardware`·`real_hardware_ready`·`real_hardware_verified`·`real_hardware_connected`·`real_hardware_ready_at`·`hardware_readiness`)만 지운다. 접두어로 지우지 않으므로 `real_hardware_claim` 같은 다른 이름은 그대로 나간다. 새 응답 필드 이름이 저 6개와 겹치면 사라진다. 의도된 동작(시뮬레이션 전용 서비스) |
 | 같은 API를 쓰는 화면 | 신 `dashboard2/src/simCommand.js`(표시 `App.jsx`), 구 웹 `html/static/js/` — 호출 `backend-http.js`, 처리 `main.js`, 상태 `state.js`, 표시 `render.js`·`sim-demo.js`, 모의 `backend-sim.js` |
 | 관제 대시보드 (React+Vite, `npm run dev`) | `dashboard2/` — 진입 `dashboard2/src/App.jsx`, 시연 API 호출 `dashboard2/src/simCommand.js` |
 | 요구사항 QA(대시보드 화면·서버 API·백엔드 테스트 대응) | `dashboard2/e2e/` — `npm run qa`·`qa:report`, 백엔드 대응 `dashboard2/e2e/backend_map.py`. 추적표·결과는 저장소 밖 `문서/QA_*.md`(로컬) |

@@ -64,7 +64,7 @@ function useNow() {
 }
 
 export default function App() {
-  // null(평소) | 'running'(안전 검사 중) | 'stopping'(검사 중 비상 정지) | 'danger'(위험 판정)
+  // null(평소) | 'running'(안전 검사 중) | 'stopping'(검사 중 즉시 정지) | 'danger'(위험 판정)
   const [sim, setSim] = useState(null);
   const [simAt, setSimAt] = useState(null);
   const cmd = useSimCommand();
@@ -74,7 +74,7 @@ export default function App() {
 
   const open = (state) => { setSim(state); setSimAt(new Date()); };
 
-  // 헤더 비상 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 실행 중인 시연 작업에
+  // 헤더 즉시 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 실행 중인 시연 작업에
   // 정지를 요청한다(/v1/sim-demo/stop). 오버레이의 '정지 확인' 화면은 아직 목업이다.
   function globalStop() {
     cmd.stop();
@@ -130,7 +130,7 @@ function Header({ title, onStop }) {
     <div className="header-right">
       <span className="grade">실시간 공장 안전 등급: <b>안전</b></span>
       <span className="risk-badge">주의 · Beta</span>
-      <button className="estop" onClick={onStop} title="실행 중인 시연 작업에 정지를 요청합니다"><img src={alertOctagon} alt="" width="20" height="20" />비상 정지</button>
+      <button className="estop" onClick={onStop} title="실행 중인 시연 작업에 정지를 요청합니다"><img src={alertOctagon} alt="" width="20" height="20" />즉시 정지</button>
     </div>
   </header>;
 }
@@ -417,21 +417,21 @@ function SimOverlay({ state, at, onClose, onRerun }) {
       section: '검사 세부 진행',
       stages: [{ mark: '1', tone: 'done' }, { mark: '2', tone: 'current' }, { mark: '3', tone: 'wait' }],
       lines: ['done', 'wait'],
-      foot: `1/3 단계 완료 · 마지막 갱신 ${time}   ·   이 창이 열려 있어도 헤더의 비상 정지는 언제든 즉시 실행됩니다.`,
+      foot: `1/3 단계 완료 · 마지막 갱신 ${time}   ·   이 창이 열려 있어도 헤더의 즉시 정지는 언제든 즉시 실행됩니다.`,
     },
     stopping: {
-      dot: dotSimStopping, title: '비상 정지 처리됨', titleTone: 'danger', sub: '검사가 중단되었습니다 · 이전 검증 결과는 재사용되지 않습니다',
-      section: '비상 정지 처리 흐름',
-      stages: [{ mark: '✓', tone: 'requested', label: '비상 정지 요청됨' }, { mark: '✓', tone: 'confirmed', label: '정지 확인' }],
+      dot: dotSimStopping, title: '즉시 정지 처리됨', titleTone: 'danger', sub: '검사가 중단되었습니다 · 이전 검증 결과는 재사용되지 않습니다',
+      section: '즉시 정지 처리 흐름',
+      stages: [{ mark: '✓', tone: 'requested', label: '즉시 정지 요청됨' }, { mark: '✓', tone: 'confirmed', label: '정지 확인' }],
       lines: ['danger'],
-      foot: `정지 확인 · ${time}   ·   재개하려면 명령을 다시 확인해야 합니다. 헤더의 비상 정지는 계속 즉시 실행됩니다.`,
+      foot: `정지 확인 · ${time}   ·   재개하려면 명령을 다시 확인해야 합니다. 헤더의 즉시 정지는 계속 즉시 실행됩니다.`,
     },
     danger: {
       dot: dotSimDanger, title: '안전 검사 결과 — 실행 불가', titleTone: 'danger', sub: '검증 완료 · 위험 감지',
       section: '안전 검사 완료 · 위험 판정',
       stages: [{ mark: '✓', tone: 'done' }, { mark: '✓', tone: 'current' }, { mark: '!', tone: 'danger', label: '안전 검증 (위험)' }],
       lines: ['done', 'danger'],
-      foot: '3/3 완료 · 위험 판정으로 실행이 차단되었습니다   ·   헤더의 비상 정지는 언제든 즉시 실행됩니다.',
+      foot: '3/3 완료 · 위험 판정으로 실행이 차단되었습니다   ·   헤더의 즉시 정지는 언제든 즉시 실행됩니다.',
     },
   }[state];
   return <div className="scrim">

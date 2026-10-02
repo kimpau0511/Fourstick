@@ -13,7 +13,7 @@
   --amber: #873d0c;         /* status/warning */
   --red: #a81919;           /* status/danger — 글자 */
   --danger-border: #dc2626; /* border/danger */
-  --danger-bg: #dc2626;     /* action/danger-bg — 비상 정지 */
+  --danger-bg: #dc2626;     /* action/danger-bg — 즉시 정지(UI STOP) */
   --white: #2f3747;         /* text/primary (v3에서 흰 글자였던 자리) */
   --on-accent: #ffffff;     /* text/on-accent */
   --muted: #5a6478;         /* text/muted */
@@ -240,7 +240,7 @@ h2.soft { color: var(--soft); }
 .alert p { overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── 시뮬레이션 오버레이(C안) ── */
-/* 스크림은 헤더 아래부터 덮는다 — 헤더의 비상 정지는 항상 누를 수 있어야 한다(피그마 메모). */
+/* 스크림은 헤더 아래부터 덮는다 — 헤더의 즉시 정지는 항상 누를 수 있어야 한다(피그마 메모). */
 .scrim { position: fixed; inset: 60px 0 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: rgba(47, 55, 71, .45); }
 .sim-card { width: 880px; display: flex; flex-direction: column; gap: 20px; padding: 28px 32px; background: var(--panel); border: 2px solid var(--accent-border); border-radius: 24px; box-shadow: var(--raised); }
 .sim-card.stopping, .sim-card.danger { border-color: var(--danger-border); }

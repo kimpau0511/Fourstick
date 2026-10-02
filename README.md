@@ -313,6 +313,7 @@ npm run dev                 # http://localhost:5175
   npm run build               # dist/ 생성
   npm run qa                  # 요구사항 QA(Playwright): 화면(가짜 응답) + 서버 API(읽기·취소만)
   npm run qa:report           # 요구사항 ID별 결과 표
+  QA_ROBOT=1 npm run qa:api   # 로봇을 실제로 움직이는 검사(E2E·정지 반응) — 작업 셀 PC 담당 팀원 허락 뒤에만
   ```
 
 ## 경로 설정 — 본인 환경에 맞게 바꿔야 한다

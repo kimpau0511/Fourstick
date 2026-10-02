@@ -7,7 +7,8 @@ import { expect, test } from '@playwright/test';
 
 const BACKEND = process.env.FORSTICK2_BACKEND_URL || 'https://192.168.0.175:8443';
 const SESSION = `qa-${Date.now()}`;
-const HIDDEN = /"real_hardware[^"]*"\s*:|"hardware_readiness"\s*:/;
+// server/routes/common.py의 HIDDEN_HARDWARE_KEYS — 정확히 일치하는 키만 지운다(접두어 아님, 결정 D7).
+const HIDDEN = /"(real_hardware|real_hardware_ready|real_hardware_verified|real_hardware_connected|real_hardware_ready_at|hardware_readiness)"\s*:/;
 
 let api;
 let reachable = false;
@@ -86,7 +87,7 @@ test('[API-06][DEV-11·⑥-4] 이송 명령은 바로 실행하지 않고 확인
   expect(cancel.job ?? null).toBeNull();
 });
 
-test('[API-07][DEV-10] 공개 응답에 실기 상태 키(real_hardware*, hardware_readiness)가 없다', async () => {
+test('[API-07][DEV-10] 공개 응답에 실기 상태 키(공개 필터의 6개 키)가 없다', async () => {
   for (const path of ['/health', '/v1/config', '/v1/robots', '/v1/sim-demo', '/v1/sim-view/model', '/v1/scene']) {
     const text = await (await api.get(path)).text();
     expect(text, path).not.toMatch(HIDDEN);
