@@ -53,7 +53,7 @@ function reasonOf(res) {
 export function useSimCommand() {
   const [state, setState] = useState({
     busy: false, sent: '', result: null, pending: null, deadline: null,
-    job: null, goal: null, error: null, stopNote: null,
+    job: null, goal: null, error: null, stopNote: null, statusUnknown: false,
   });
   // 이 탭에서 보낸 명령 기록(최근 LOG_MAX개, 메모리). 서버 기록(recent_jobs)과 별개다.
   const [log, setLog] = useState([]);
@@ -71,13 +71,21 @@ export function useSimCommand() {
     setLog((entries) => entries.map((e) => (e.id === id ? { ...e, events: [...e.events, event] } : e)));
   }, []);
 
+  // 작업 상태 조회가 실패하면 마지막 '실행 중'을 그대로 두지 않는다 — 서버에서 아직 돌고 있을 수도,
+  // 끝났을 수도 있으니 '상태 확인 안 됨'으로 보인다(설계원칙 4). 정지는 헤더에서 계속 요청할 수 있다.
+  const lost = useCallback((res, logId) => {
+    const why = `작업 상태를 확인하지 못했습니다(마지막 관측: 실행 중) — ${reasonOf(res)}`;
+    patch({ error: why, statusUnknown: true });
+    addEvent('error', '상태 확인 안 됨', reasonOf(res), logId);
+  }, [patch, addEvent]);
+
   // 작업·목표는 끝날 때까지 읽기만 한다. 로봇 명령을 보내지 않는다.
   const pollJob = useCallback(async (jobId, logId) => {
     addEvent('job', '작업 시작', jobId, logId);
     for (;;) {
-      const res = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`);
+      const res = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`).catch((e) => ({ ok: false, payload: { detail: e.message } }));
       if (!alive.current) return;
-      if (!res.ok) { patch({ error: reasonOf(res) }); addEvent('error', '오류', reasonOf(res), logId); return; }
+      if (!res.ok) { lost(res, logId); return; }
       patch({ job: res.payload });
       if (res.payload.status !== 'running') {
         const report = res.payload.report;
@@ -86,14 +94,14 @@ export function useSimCommand() {
       }
       await sleep(POLL_MS);
     }
-  }, [patch, addEvent]);
+  }, [patch, addEvent, lost]);
 
   const pollGoal = useCallback(async (goalId, logId) => {
     addEvent('job', '목표 시작', goalId, logId);
     for (;;) {
-      const res = await call('GET', `/v1/sim-demo/goals/${encodeURIComponent(goalId)}`);
+      const res = await call('GET', `/v1/sim-demo/goals/${encodeURIComponent(goalId)}`).catch((e) => ({ ok: false, payload: { detail: e.message } }));
       if (!alive.current) return;
-      if (!res.ok) { patch({ error: reasonOf(res) }); addEvent('error', '오류', reasonOf(res), logId); return; }
+      if (!res.ok) { lost(res, logId); return; }
       patch({ goal: res.payload });
       if (!['running', 'stopping'].includes(res.payload.status)) {
         addEvent('result', '목표 종료', res.payload.status, logId);
@@ -101,7 +109,7 @@ export function useSimCommand() {
       }
       await sleep(POLL_MS);
     }
-  }, [patch, addEvent]);
+  }, [patch, addEvent, lost]);
 
   // robot: 대상 로봇 id(모르면 null). 서버는 이 값을 받지 않고 기록용으로만 쓴다.
   // stt: 음성 final이면 { rawText, confidence } — source를 stt_final로 보낸다(옛 화면 simDemoCommand와 같다).
@@ -111,7 +119,8 @@ export function useSimCommand() {
     const id = nextId.current++;
     currentId.current = id;
     setLog((entries) => [...entries, { id, sentAt: Date.now(), text: utterance, robot, via: stt ? '음성' : '텍스트', events: [] }].slice(-LOG_MAX));
-    patch({ busy: true, sent: utterance, result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null });
+    patch({ busy: true, sent: utterance, result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false });
+    const requestedAt = Date.now(); // 남은 시간은 요청을 보낸 시각부터 센다 — 왕복 시간만큼 짧게(안전한 쪽) 보인다
     let res;
     try {
       res = await call('POST', '/v1/sim-demo/command', {
@@ -130,7 +139,7 @@ export function useSimCommand() {
     const pending = ['CONFIRM', 'CONFIRM_GOAL'].includes(result.decision) ? result.confirmation : null;
     patch({
       busy: false, result, pending,
-      deadline: pending && pending.remaining_sec != null ? Date.now() + pending.remaining_sec * 1000 : null,
+      deadline: pending && pending.remaining_sec != null ? requestedAt + pending.remaining_sec * 1000 : null,
     });
     // 옛 백엔드는 정확한 텍스트 명령을 확인 없이 바로 실행한다(RUN + job).
     if (result.job) pollJob(result.job.job_id, id);
@@ -153,14 +162,16 @@ export function useSimCommand() {
       return;
     }
     patch({ busy: false, pending: null, deadline: null });
+    // 취소도 서버가 받아들였는지 먼저 본다 — 거부를 "취소했습니다"로 확정하지 않는다.
+    if (!res.ok) {
+      const what = action === 'cancel' ? '취소' : '확인';
+      addEvent('error', `${what} 거부됨`, reasonOf(res), id);
+      patch({ result: { decision: 'BLOCK', reason: `${action === 'cancel' ? '취소가' : '확인이'} 거부되었습니다 — ${reasonOf(res)}` } });
+      return;
+    }
     if (action === 'cancel') {
       addEvent('cancel', '취소', '', id);
       patch({ result: { decision: 'CANCELLED', reason: '취소했습니다 — 작업을 만들지 않았습니다' } });
-      return;
-    }
-    if (!res.ok) {
-      addEvent('error', '확인 거부됨', reasonOf(res), id);
-      patch({ result: { decision: 'BLOCK', reason: `확인이 거부되었습니다 — ${reasonOf(res)}` } });
       return;
     }
     addEvent('confirm', '승인', '', id);
@@ -193,7 +204,7 @@ export function useSimCommand() {
 
   /** 결과 카드를 닫고 입력으로 돌아간다(피그마 '새 명령 입력'). 서버에는 아무것도 보내지 않는다. */
   const reset = useCallback(() => {
-    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null });
+    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false });
   }, [patch]);
 
   return { ...state, log, send, answer, stop, reset };

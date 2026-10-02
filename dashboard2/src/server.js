@@ -16,7 +16,7 @@ const SOURCES = [
 
 const INITIAL = {
   health: null, config: null, robots: null, simDemo: null, simState: null,
-  healthOkAt: null, healthFailing: false, latencyMs: null, refreshedAt: null, nowMs: Date.now(),
+  healthOkAt: null, healthFailing: false, robotsFailing: false, latencyMs: null, refreshedAt: null, nowMs: Date.now(),
   conn: { status: 'connecting', lastReceivedAt: null, latencyMs: null, ageSec: null },
   alerts: [], robotStatus: { level: 'NO_DATA', label: '', reasons: [] },
 };
@@ -44,6 +44,8 @@ function deriveRobotStatus(s, conn) {
   if (conn.status !== 'ok') noData.push('서버 연결이 정상이 아닙니다');
   if (!simState) noData.push('3D 관측 값이 없습니다');
   else if (simState.stale) noData.push('3D 관측이 오래되었습니다');
+  // 정지 래치는 /v1/robots에서만 온다. 못 받았거나 마지막 조회가 실패했으면 '래치 없음'으로 치지 않는다.
+  if (!s.robots?.stop_diagnostics || s.robotsFailing) noData.push('정지 진단 값을 받지 못했습니다');
   if (noData.length) return { level: 'NO_DATA', label: LEVEL_LABELS.NO_DATA, reasons: noData };
   if (s.robots?.stop_diagnostics?.stop_latch_active) {
     return { level: 'CRITICAL', label: LEVEL_LABELS.CRITICAL, reasons: ['정지 래치가 활성입니다'] };
@@ -102,11 +104,12 @@ export function useServer() {
           update((s) => ({
             ...s, [key]: data, refreshedAt: at,
             ...(key === 'health' ? { healthOkAt: at, healthFailing: false, latencyMs: at - startedAt } : {}),
+            ...(key === 'robots' ? { robotsFailing: false } : {}),
           }));
         } catch {
           // 실패한 값은 지우지 않는다(마지막 값 유지) — 얼마나 오래됐는지는 conn이 말한다.
           // 3D 관측은 서버가 못 줄 수도 있으므로(503) 값 없음으로 둔다.
-          update((s) => ({ ...s, ...(key === 'health' ? { healthFailing: true } : {}), ...(key === 'simState' ? { simState: null } : {}) }));
+          update((s) => ({ ...s, ...(key === 'health' ? { healthFailing: true } : {}), ...(key === 'robots' ? { robotsFailing: true } : {}), ...(key === 'simState' ? { simState: null } : {}) }));
         }
         if (!cancelled) timers.push(setTimeout(loop, every));
       };
@@ -116,6 +119,6 @@ export function useServer() {
     return () => { cancelled = true; timers.forEach(clearTimeout); clearInterval(tick); };
   }, []);
 
-  const { health, config, robots, simDemo, simState, conn, alerts, robotStatus, refreshedAt } = state;
-  return { health, config, robots, simDemo, simState, conn, alerts, robotStatus, refreshedAt };
+  const { health, config, robots, robotsFailing, simDemo, simState, conn, alerts, robotStatus, refreshedAt } = state;
+  return { health, config, robots, robotsFailing, simDemo, simState, conn, alerts, robotStatus, refreshedAt };
 }

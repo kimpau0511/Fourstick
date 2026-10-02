@@ -7,10 +7,14 @@ const STATE = {
   none: { icon: '?', text: '수신 없음', cls: 'muted' },
 };
 
+const ROWS = [['ros2', 'ROS 2'], ['planner', 'PLANNER'], ['safety-plc', 'SAFETY PLC'], ['latency', 'LATENCY']];
+
 // 반환: [{ id, label, state }] — 사이드바 위젯과 헤더 "N/4 정상"이 같은 계산을 쓴다.
 function systemRows(server) {
-  const { health, robots, conn, config } = server;
-  const ros = robots?.stop_diagnostics && health?.robot ? (robots.stop_diagnostics.available && health.robot.configured ? 'ok' : 'fail') : 'none';
+  const { health, robots, robotsFailing, conn, config } = server;
+  // 연결이 정상이 아니면 보관된 마지막 값으로 '정상'이라 하지 않는다 — 전부 '수신 없음'(설계원칙 4).
+  if (conn?.status !== 'ok') return ROWS.map(([id, label]) => ({ id, label, state: 'none' }));
+  const ros = robots?.stop_diagnostics && health?.robot && !robotsFailing ? (robots.stop_diagnostics.available && health.robot.configured ? 'ok' : 'fail') : 'none';
   const planning = health?.features?.planning;
   const planner = planning ? (planning.available ? 'ok' : 'fail') : 'none';
   // 정상 기준 = 정지 취소 응답 제한(stop.cancel_ack_timeout_sec). 서버 정책이 없으면 판단 불가.

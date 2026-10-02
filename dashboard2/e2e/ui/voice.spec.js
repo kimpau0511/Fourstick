@@ -1,6 +1,6 @@
 // 음성 입력 — 마이크 버튼 → STT 웹소켓(가짜 서버) → final만 명령으로 전송. 실제 마이크·서버는 쓰지 않는다.
 import { expect, test } from '@playwright/test';
-import { mockBackend } from '../mock.js';
+import { SAMPLES, mockBackend, sendCommand } from '../mock.js';
 
 test.use({
   permissions: ['microphone'],
@@ -65,5 +65,30 @@ test.describe('음성 입력', () => {
     await page.goto('/');
     await expect(panel(page).getByRole('button', { name: /음성 입력/ })).toBeDisabled();
     await expect(panel(page)).toContainText('음성 인식을 쓸 수 없습니다 — 모델 없음');
+  });
+});
+
+// Codex 리뷰(2026-10-02) 지적 6번 회귀.
+test.describe('음성과 텍스트가 겹칠 때', () => {
+  test('[UI-REV-10][SFR-001] 녹음 중 텍스트로 보내면 음성은 버리고, 뜬 확인 카드를 덮어쓰지 않는다', async ({ page }) => {
+    const calls = await mockBackend(page, { command: SAMPLES.confirm(60) });
+    await page.route('**/v1/sessions', (route) => route.fulfill({ json: { session_id: 'qa-session', client_id: 'qa-client' } }));
+    const seen = { abort: 0 };
+    await page.routeWebSocket(/\/v1\/stt/, (ws) => {
+      ws.send(JSON.stringify({ kind: 'session', session_id: 'qa-session', stream_id: 'stt_qa', sample_rate_hz: 16000 }));
+      ws.onMessage((m) => {
+        if (typeof m !== 'string') return;
+        const type = JSON.parse(m).type;
+        if (type === 'abort') seen.abort += 1;
+        if (type === 'flush') ws.send(JSON.stringify({ kind: 'final', text: 'B 자재를 컨베이어로 옮겨줘', confidence: 0.9 }));
+      });
+    });
+    await page.goto('/');
+    await panel(page).getByRole('button', { name: /음성 입력/ }).click();
+    await expect(panel(page).getByRole('button', { name: /음성 인식 중/ })).toBeVisible();
+    await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
+    await expect(panel(page)).toContainText('A 자재를 컨베이어로 옮깁니다');
+    await expect.poll(() => seen.abort).toBe(1);
+    expect(calls.filter((c) => c.path.endsWith('/command'))).toHaveLength(1);
   });
 });

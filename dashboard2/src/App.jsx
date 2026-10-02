@@ -73,10 +73,11 @@ export default function App() {
   const open = (state) => { setSim(state); setSimAt(new Date()); };
 
   // 헤더 즉시 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 실행 중인 시연 작업에
-  // 정지를 요청한다(/v1/sim-demo/stop). 오버레이의 '정지 확인' 화면은 아직 목업이다.
+  // 정지를 요청한다(/v1/sim-demo/stop). 결과(요청됨·실패·정지할 작업 없음)는 명령 패널에 서버 응답대로 뜬다.
+  // 오버레이의 '정지 확인' 화면은 서버 값과 이어지지 않은 목업이라, 실제 정지 버튼으로는 열지 않는다
+  // (응답 없이 "정지 확인"을 보이면 확인 안 된 정지를 확인된 것처럼 보인다 — 설계원칙 4).
   function globalStop() {
     cmd.stop();
-    if (sim === 'running') open('stopping');
   }
 
   return <div className="app" style={{ '--cmd-w': `${panelW}px` }}>

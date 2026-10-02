@@ -6,7 +6,7 @@ const EVENT = 'forstick:widget-prefs';
 let mem = '[]';
 
 function read() {
-  try { const v = window.localStorage.getItem(KEY); if (v !== null) mem = v; } catch { /* 막힘 → mem */ }
+  try { mem = window.localStorage.getItem(KEY) ?? '[]'; } catch { /* 막힘 → mem */ } // 지워졌으면(null) 기본값으로
   return mem;
 }
 function write(ids) {

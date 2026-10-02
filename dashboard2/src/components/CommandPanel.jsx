@@ -66,13 +66,15 @@ export default function CommandPanel({ now, sim, server }) {
   // 음성 입력. final만 명령으로 보낸다(대상 로봇 선택 유지) — partial·clarify는 보내지 않는다.
   const voice = useVoice({
     config: server && server.config, health: server && server.health,
-    onFinal: (utterance, stt) => { if (!sim.busy && !lockReason) sim.send(utterance, target && target.id, stt); },
+    // 입력을 받는 단계(대기·되묻기)에서만 보낸다 — 녹음 중 다른 명령으로 확인 카드가 떴으면 그 카드를 덮어쓰지 않는다.
+    onFinal: (utterance, stt) => { if (!sim.busy && !lockReason && (phase === 'idle' || phase === 'ask')) sim.send(utterance, target && target.id, stt); },
   });
   const { result, pending, job, goal } = sim;
   const [tone, label] = (result && DECISIONS[result.decision]) || ['info', result ? result.decision : ''];
   const remaining = sim.deadline ? Math.max(0, Math.ceil((sim.deadline - now.getTime()) / 1000)) : null;
   const expired = remaining === 0;
-  const running = (job && job.status === 'running') || (goal && ['running', 'stopping'].includes(goal.status));
+  // 조회가 끊겼으면(statusUnknown) 마지막 '실행 중'을 계속 보이지 않는다 — 오류 카드로 간다.
+  const running = !sim.statusUnknown && ((job && job.status === 'running') || (goal && ['running', 'stopping'].includes(goal.status)));
   const report = job && job.report;
   const [reportTone, resultLabel] = (report && RESULT_LABELS[report.status]) || ['warn', report ? report.status : ''];
   const resultTone = report ? reportTone : goal ? (goal.status === 'completed' ? 'ok' : goal.status === 'failed' ? 'danger' : 'warn') : 'warn';
@@ -80,7 +82,7 @@ export default function CommandPanel({ now, sim, server }) {
   // 피그마 Light CommandPanel(23:2517)의 상태: 입력 → 해석·승인/되묻기/차단… → 실행 중 → 완료.
   // 입력 칸은 대기·되묻기에서만 보이고, 나머지는 결과 카드 하나가 그 자리를 쓴다.
   // 판정·문구는 서버 값이고, 여기서는 상태별 톤만 고른다.
-  const phase = pending ? 'confirm' : running ? 'running' : (job || goal) ? 'done'
+  const phase = pending ? 'confirm' : running ? 'running' : sim.statusUnknown ? 'other' : (job || goal) ? 'done'
     : result && result.decision === 'ASK' ? 'ask' : (result || sim.error) ? 'other' : 'idle';
   const [statusTone, statusLabel] = {
     idle: ['muted', '명령 대기'],
@@ -96,7 +98,10 @@ export default function CommandPanel({ now, sim, server }) {
 
   function submit(event) {
     event.preventDefault();
-    if (!sim.busy && !lockReason && text.trim()) { sim.send(text, target && target.id); setText(''); }
+    if (!sim.busy && !lockReason && text.trim()) {
+      if (voice.status !== 'idle' && voice.status !== 'error') voice.cancel(); // 텍스트가 이긴다 — 듣던 음성은 버린다
+      sim.send(text, target && target.id); setText('');
+    }
   }
 
   // 해석 줄: 서버가 준 요약·사유만 보인다.
@@ -162,7 +167,7 @@ export default function CommandPanel({ now, sim, server }) {
         {progress.length > 0 && <ul className="plan">
           {progress.map((p) => <li key={p.key} className={p.done ? 'done' : ''}>{p.done ? <img src={checkSquare} alt="" width="14" height="14" /> : <Spinner size={14} decorative />}{p.text}</li>)}
         </ul>}
-        {running && <div className="run-bar" role="progressbar" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
+        {running && <div className="run-bar" role="progressbar" aria-label="작업 진행률" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
         {running && <small className="info">Gazebo에서 실행 중…</small>}
         {phase === 'done' && job && <b className={resultTone}>{resultLabel || `종료 코드 ${job.exit_code}`}</b>}
         {phase === 'done' && goal && !job && <small>목표 상태: {goal.status}</small>}

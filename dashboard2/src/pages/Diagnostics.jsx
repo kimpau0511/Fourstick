@@ -53,7 +53,7 @@ function buildServices(server, scene) {
     return f.available ? { status: 'ok', error: '' } : { status: 'fail', error: f.detail || `${label}을(를) 사용할 수 없습니다` };
   };
   const ros = (() => {
-    if (!live || !robots) return { status: 'none', error: '값 없음' };
+    if (!live || !robots || server.robotsFailing) return { status: 'none', error: server.robotsFailing ? '로봇 정보 조회 실패' : '값 없음' };
     if (!health.robot?.configured) return { status: 'fail', error: '로봇이 설정되지 않았습니다' };
     if (!robots.stop_diagnostics?.available) return { status: 'fail', error: '정지 진단을 사용할 수 없습니다' };
     return { status: 'ok', error: '' };
@@ -65,7 +65,7 @@ function buildServices(server, scene) {
   const checked = server.refreshedAt;
   // LATENCY: 사이드바 위젯과 같은 기준 — 서버 정지 정책의 취소 ACK 제한(초)보다 짧으면 정상.
   const ackLimitMs = config?.policies?.stop?.cancel_ack_timeout_sec * 1000;
-  const latency = typeof conn?.latencyMs !== 'number' || !Number.isFinite(ackLimitMs) ? { status: 'none', error: '값 없음' }
+  const latency = !live || typeof conn?.latencyMs !== 'number' || !Number.isFinite(ackLimitMs) ? { status: 'none', error: '값 없음' }
     : conn.latencyMs < ackLimitMs ? { status: 'ok', error: '' }
       : { status: 'warn', error: `응답 ${Math.round(conn.latencyMs)}ms — 기준 ${ackLimitMs}ms 이상` };
   return [
