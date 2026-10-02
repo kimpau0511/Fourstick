@@ -1,0 +1,10 @@
+# 정적 검사 설정만 둔다(패키지 빌드 설정 아님). 실행은 scripts/check.sh가 한다(CODE_RULES.md 10번).
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["dashboard2", "html", "reports", "md"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+exclude = ["**/node_modules", "**/__pycache__", ".venv", "dashboard2", "html", "reports", "md"]
