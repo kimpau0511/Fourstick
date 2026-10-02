@@ -282,6 +282,37 @@ humanoid/g1/run_nav.sh verify_roundtrip.py --trips 5 --stops 5
 - 물리 모델 차이: Gazebo(DART)에는 관절 armature가 없어 발목 링크 관성을 보행 정책 모델 값으로
   바꿔 쓴다(실제 값으로는 발목 PD가 발산). 상체 PD는 관절 유효 관성으로 수치 안정 한계를 적용한다.
 
+### 8. 관제 대시보드 (`dashboard2`, React + Vite)
+
+피그마 디자인으로 만든 관제 대시보드다. 백엔드(위 1장의 웹 서버)에 붙어서 쓴다.
+백엔드 코드는 가져다 쓰지 않고 HTTP·WebSocket API만 부른다. 다만 3D 화면이 옛 웹 화면의
+보간 계산 파일 `html/static/js/sim-view-core.js`를 그대로 import하므로, `dashboard2`만 따로
+떼어 내면 빌드되지 않는다(저장소 전체가 필요하다).
+Node.js가 필요하다(확인한 환경: Node 26.7.0 · npm 11.19.0, Windows).
+
+```bash
+cd dashboard2
+npm install                 # 처음 한 번, 의존성이 바뀐 뒤에도
+npm run dev                 # http://localhost:5175
+```
+
+- **백엔드 주소** — 기본값은 작업 셀 PC `https://192.168.0.175:8443`이다. 다른 서버에 붙이려면
+  `FORSTICK2_BACKEND_URL=https://주소:포트 npm run dev`. 개발 서버가 `/v1/sim-view`·`/v1/scene`·
+  `/v1/sim-demo`를 그 주소로 넘기므로 백엔드에 CORS를 열 필요가 없다(자체 서명 인증서 허용).
+- **이 PC에서만 열린다(`localhost`).** 백엔드에 인증이 없고 대시보드가 명령·확인·정지 API를
+  넘기기 때문이다. LAN이나 외부 데모로 열려면 인증부터 붙여야 한다.
+- **실제 서버 값을 쓰는 곳**
+  - 시뮬레이션 창: 3D 관측 화면(`/v1/sim-view/*`). 3D 모델을 받지 못하면 Gazebo 영상
+    (`/v1/scene/stream`)으로 대신한다. 화면 아래 DEMO 바의 "안전 검사 중"을 누르면 열린다.
+  - 명령 패널: 시연 명령 API(`/v1/sim-demo/*`)
+  - 나머지 카드(지표·로봇 목록·이력·알림 등)는 아직 목업 데이터다(`dashboard2/src/data.js`).
+- **검사·빌드**
+
+  ```bash
+  npm run lint                # ESLint
+  npm run build               # dist/ 생성
+  ```
+
 ## 경로 설정 — 본인 환경에 맞게 바꿔야 한다
 
 스크립트와 설정에 들어 있는 `/home/asd/...` 는 **개발 당시 로컬 경로이며 예시다.**
