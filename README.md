@@ -311,6 +311,8 @@ npm run dev                 # http://localhost:5175
   ```bash
   npm run lint                # ESLint
   npm run build               # dist/ 생성
+  npm run qa                  # 요구사항 QA(Playwright): 화면(가짜 응답) + 서버 API(읽기·취소만)
+  npm run qa:report           # 요구사항 ID별 결과 표
   ```
 
 ## 경로 설정 — 본인 환경에 맞게 바꿔야 한다

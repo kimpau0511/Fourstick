@@ -25,6 +25,7 @@
 | 공개 응답 필터 — **모든 응답이 지나며 실기 상태 키를 조용히 지운다** | `server/routes/common.py`의 `json_response` → `public_payload`, 제거 대상 `HIDDEN_HARDWARE_KEYS`(`real_hardware*`, `hardware_readiness`). 새 응답 필드 이름이 겹치면 사라진다. 의도된 동작(시뮬레이션 전용 서비스) |
 | 같은 API를 쓰는 화면 | 신 `dashboard2/src/simCommand.js`(표시 `App.jsx`), 구 웹 `html/static/js/` — 호출 `backend-http.js`, 처리 `main.js`, 상태 `state.js`, 표시 `render.js`·`sim-demo.js`, 모의 `backend-sim.js` |
 | 관제 대시보드 (React+Vite, `npm run dev`) | `dashboard2/` — 진입 `dashboard2/src/App.jsx`, 시연 API 호출 `dashboard2/src/simCommand.js` |
+| 요구사항 QA(대시보드 화면·서버 API·백엔드 테스트 대응) | `dashboard2/e2e/` — `npm run qa`·`qa:report`, 백엔드 대응 `dashboard2/e2e/backend_map.py`. 추적표·결과는 저장소 밖 `문서/QA_*.md`(로컬) |
 | 휴머노이드(G1) 실험 | `humanoid/g1/README.md` |
 | 테스트 | `tests/` (`unit` · `integration` · `contract` · `model` · `web`). `/v1/sim-demo/command`를 호출하는 단위 테스트는 `test_sim_demo_{commands,confirm,goals,context,arrangement}.py`에 더해 `test_material_colors.py`·`test_transfer_stages.py`·`test_public_payload.py`(공개 필터 검증), 화면은 `tests/web/*.mjs` |
 | 설계 문서 (docstring의 `md/...` 참조) | `md/` — 저장소에 없음(`.gitignore`), 로컬에만 있음 |

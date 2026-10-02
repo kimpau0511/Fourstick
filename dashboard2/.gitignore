@@ -1,3 +1,6 @@
 node_modules/
 dist/
 *.log
+e2e-results/
+playwright-report/
+test-results/
