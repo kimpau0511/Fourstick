@@ -121,7 +121,7 @@ export default function History({ server, log = [] }) {
     </div>
     <p className="note muted">{verify === '전체' ? '검증 전체' : verify} · {exec === 'STOP' ? 'STOP 조건 적용 중' : exec === '전체' ? '실행 전체' : `실행 ${exec}`} · {shown.length}건</p>
     <div className="card">
-      <table className="rec-table" aria-label="명령 기록">
+      <table className="data-table" aria-label="명령 기록">
         <thead><tr><th>요청 시각</th><th>로봇</th><th>명령 요약</th><th>요청자</th><th>검증 결과</th><th>실행 결과</th></tr></thead>
         <tbody>
           {shown.map((r) => <tr key={r.key} tabIndex={0} aria-selected={selected === r.key}

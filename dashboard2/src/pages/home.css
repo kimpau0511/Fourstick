@@ -9,8 +9,4 @@
 .state-shape[data-level="CRITICAL"] { background: var(--danger-subtle); color: var(--red); }
 .state-shape[data-level="NO_DATA"] { background: var(--panel-2); color: var(--muted); }
 .safety-line { padding: 8px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); color: var(--muted); font-size: 12px; }
-.jobs-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.jobs-table th, .jobs-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); }
-.jobs-table th { background: var(--panel-2); color: var(--muted); font-weight: 600; box-shadow: var(--inset); }
-.jobs-table tr:last-child td { border-bottom: 0; }
 .alert-ack { align-self: flex-start; padding: 2px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }

@@ -179,7 +179,7 @@ export default function Diagnostics({ server }) {
       <button type="button" className="rec-btn" onClick={exportData}>진단자료 내보내기</button>
     </div>
     {exportJobs.length > 0 && <div className="card">
-      <table className="rec-table" aria-label="진단자료 내보내기 작업">
+      <table className="data-table" aria-label="진단자료 내보내기 작업">
         <thead><tr><th>요청 시각</th><th>상태</th><th>결과</th></tr></thead>
         <tbody>{exportJobs.map((j) => <tr key={j.id}>
           <td>{clock(j.at)}</td><td>{j.state === '생성 중' ? <><Spinner size={14} label="생성 중" /> 생성 중</> : j.state}</td>
@@ -189,7 +189,7 @@ export default function Diagnostics({ server }) {
       </table>
     </div>}
     <div className="card">
-      <table className="rec-table" aria-label="서비스 목록">
+      <table className="data-table" aria-label="서비스 목록">
         <thead><tr><th>서비스</th><th>상태</th><th>최근 점검</th><th>마지막 정상</th><th>지속(이 화면 기준)</th><th>최근 오류</th></tr></thead>
         <tbody>{sorted.map((s) => <tr key={s.id} id={`svc-${s.id}`}>
           <td>{s.name}</td>
@@ -209,7 +209,7 @@ export default function Diagnostics({ server }) {
     <section>
       <h2>실패 이력 <small className="muted">이 화면이 열린 뒤 본 상태 변화</small></h2>
       <div className="card">
-        {track.history.length === 0 ? <p className="rec-empty">관측한 상태 변화가 없습니다</p> : <table className="rec-table" aria-label="상태 변화 이력">
+        {track.history.length === 0 ? <p className="rec-empty">관측한 상태 변화가 없습니다</p> : <table className="data-table" aria-label="상태 변화 이력">
           <thead><tr><th>시각</th><th>서비스</th><th>변화</th><th>사유</th></tr></thead>
           <tbody>{track.history.map((h) => <tr key={h.key}>
             <td>{clock(h.at)}</td><td>{h.name}</td><td>{STATUS[h.from][0]} → {STATUS[h.to][0]}</td>

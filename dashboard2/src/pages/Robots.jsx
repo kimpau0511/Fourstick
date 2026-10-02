@@ -22,6 +22,7 @@ export default function Robots({ server }) {
   const { health, config, robots, robotStatus } = server;
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState(TABS[0]);
+  const [open, setOpen] = useState(false); // 상세(개요·도구 장착 이력·프로파일 버전)는 버튼을 눌러야 펼친다
   const ids = Object.keys(robots?.robots || {});
   const id = ids.includes(selected) ? selected : ids[0];
   const profile = id ? robots.robots[id] : null;
@@ -29,13 +30,12 @@ export default function Robots({ server }) {
   const skills = profile?.supported_skills || robot?.supported_skills;
   const isServerRobot = !!id && health?.robot?.robot_id === id;
   const op = isServerRobot ? operability(server) : NONE;
-  const tool = robot ? (robot.has_gripper ? '그리퍼 장착' : '장착 도구 없음') : NONE;
 
   return <section>
     <h2>로봇 관리</h2>
     {!ids.length ? <p className="muted">{!robots && server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p> : <div className="robots-split">
       <div className="card table robots-list">
-        <table className="robots-table" aria-label="로봇 목록">
+        <table className="data-table" aria-label="로봇 목록">
           <thead><tr><th>이름</th><th>모델</th><th>셀</th><th>현재 도구</th><th>운용 여부</th></tr></thead>
           <tbody>{ids.map((rid) => {
             const r = config?.robot?.robot_id === rid ? config.robot : null;
@@ -50,14 +50,14 @@ export default function Robots({ server }) {
         </table>
       </div>
       <div className="card robots-detail" aria-label="로봇 상세">
+        {/* 왼쪽 목록에 있는 이름·모델·셀·도구·운용 여부는 되풀이하지 않는다. 목록에 없는 것만 둔다. */}
         <div className="detail-fixed">
-          <div><span>이름</span><b>{roleName(skills)}</b></div>
           <div><span>현재 상태</span><b>{isServerRobot ? robotStatus.label || LEVEL_LABELS.NO_DATA : NONE}</b></div>
-          <div><span>현재 도구</span><b>{tool}</b></div>
-          <div><span>현재 셀</span><b>{robot?.workcell?.workcell_id || NONE}</b></div>
           <div><span>지원 스킬</span><b>{skills?.join(', ') || NONE}</b></div>
-          <div><span>운용 가능 여부</span><b className={op === '운용 가능' ? 'ok' : 'warn'}>{op}</b></div>
+          {op !== '운용 가능' && op !== NONE && <div className="wide"><span>운용 불가 사유</span><b className="warn">{op.replace('운용 불가 — ', '')}</b></div>}
         </div>
+        <button type="button" className="detail-toggle" aria-expanded={open} aria-controls="robot-detail" onClick={() => setOpen((v) => !v)}>{open ? '상세 닫기' : '상세'}</button>
+        {open && <div id="robot-detail" className="detail-more">
         <div className="detail-tabs" role="tablist">
           {TABS.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}</button>)}
         </div>
@@ -74,6 +74,7 @@ export default function Robots({ server }) {
             <dt>설정 프로파일</dt><dd>{robot?.profile_id ? `${robot.profile_id} ${robot.profile_version || ''}` : NONE}</dd>
           </dl>}
         </div>
+        </div>}
       </div>
     </div>}
   </section>;

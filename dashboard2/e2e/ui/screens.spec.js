@@ -117,7 +117,18 @@ test.describe('로봇 관리', () => {
 
   test('[UI-ROBOTS-03][⑬-2] 상세 탭 3개: 개요·도구 장착 이력·프로파일 버전', async ({ page }) => {
     await page.goto('/#/robots');
+    // 2026-10-02 사용자 결정: 상세 탭은 우측 창의 '상세' 버튼을 눌러야 펼친다.
+    const more = page.getByRole('button', { name: '상세', exact: true });
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('tab')).toHaveCount(0);
+    await more.click();
     for (const tab of ['개요', '도구 장착 이력', '프로파일 버전']) await expect(page.getByRole('tab', { name: tab })).toBeVisible();
+  });
+  test('[UI-ROBOTS-04][2026-10-02 결정] 우측 창은 좌측 목록과 겹치는 항목(이름·셀·도구·운용 가능 여부)을 되풀이하지 않는다', async ({ page }) => {
+    await page.goto('/#/robots');
+    const detail = page.getByLabel('로봇 상세');
+    await expect(detail).toContainText('현재 상태');
+    for (const dup of ['현재 도구', '현재 셀', '운용 가능 여부']) await expect(detail).not.toContainText(dup);
   });
 });
 

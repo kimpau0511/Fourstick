@@ -49,7 +49,7 @@ function Personal() {
     </div>
     <div className="rec-split">
       <div className="card" style={{ flex: 1, minWidth: 0 }}>
-        {shown.length === 0 ? <p className="rec-empty">{routines.length ? '즐겨찾기한 루틴이 없습니다' : '저장한 루틴이 없습니다'}</p> : <table className="rec-table" aria-label="저장 루틴 목록">
+        {shown.length === 0 ? <p className="rec-empty">{routines.length ? '즐겨찾기한 루틴이 없습니다' : '저장한 루틴이 없습니다'}</p> : <table className="data-table" aria-label="저장 루틴 목록">
           <thead><tr><th>이름</th><th>명령</th><th>즐겨찾기</th></tr></thead>
           <tbody>{shown.map((r) => <tr key={r.id} tabIndex={0} aria-selected={selected === r.id}
             onClick={() => { setSelected(r.id); setConfirming(false); }}

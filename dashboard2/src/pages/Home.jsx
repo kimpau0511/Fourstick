@@ -59,7 +59,7 @@ export default function Home({ server }) {
     <section>
       <h2>최근 작업 내역</h2>
       <div className="card table">
-        {jobs?.length ? <table className="jobs-table" aria-label="최근 작업">
+        {jobs?.length ? <table className="data-table" aria-label="최근 작업">
           <thead><tr><th>시각</th><th>자재</th><th>작업</th><th>결과</th></tr></thead>
           <tbody>{jobs.map((j) => <tr key={j.job_id}>
             <td>{j.started_at ? hhmmss(j.started_at) : '기록 없음'}</td>

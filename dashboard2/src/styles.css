@@ -76,7 +76,7 @@ small { display: block; }
 
 /* ── 본문 ── */
 .body { display: flex; gap: 24px; align-items: flex-start; padding: 24px; }
-.col-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.col-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; padding-bottom: 72px; } /* 맨 아래 표가 고정된 DEMO 바(높이 약 44px + 아래 16px)에 가리지 않게 */
 .col-side { width: var(--cmd-w, 400px); flex: none; display: flex; flex-direction: column; gap: 24px; }
 section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .row3 { display: flex; gap: 16px; }
@@ -122,6 +122,12 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .robot-stats b { font-size: 13px; font-weight: 600; }
 
 .table { overflow: hidden; }
+/* 모든 화면의 표(기록·진단·설정·홈·로봇 관리)가 같은 모양을 쓴다 — 가운데 정렬, 같은 여백·머리줄·마감. */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th, .data-table td { padding: 12px 14px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--border); }
+.data-table th { background: var(--panel-2); color: var(--muted); font-weight: 600; white-space: nowrap; }
+.data-table tbody tr:last-child > * { border-bottom: 0; } /* 카드 아래 테두리와 겹쳐 두 줄로 보이지 않게 */
+.card:has(> .data-table) { overflow: hidden; } /* 머리줄 배경이 카드 둥근 모서리 밖으로 나가지 않게 */
 .tr { display: grid; grid-template-columns: 56px minmax(300px, 1fr) 96px 140px 60px; gap: 12px; align-items: center; padding: 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
 .tr:last-child { border-bottom: 0; }
 .tr.th { background: var(--panel-2); color: var(--muted); font-weight: 600; border-bottom: 0; box-shadow: var(--inset); }
