@@ -309,11 +309,13 @@ test.describe('서버 이력(/v1/history)', () => {
     sim_jobs: [
       { job_id: 'simjob_file1', action: 'transfer', action_label: '컨베이어로 이송', material: 'material_a', status: 'simulation_transfer_completed', written_at: new Date((now - 600) * 1000).toISOString() },
       { job_id: 'simjob_file2', action: 'transfer', action_label: '컨베이어로 이송', material: 'material_c', status: 'some_internal_code', written_at: new Date((now - 700) * 1000).toISOString() },
+      // 이력 API가 한국어 이름을 못 준 작업(action_label = 내부 이름)
+      { job_id: 'simjob_file3', action: 'spot', action_label: 'spot', material: 'material_b', status: 'spot_arrived', written_at: new Date((now - 800) * 1000).toISOString() },
     ],
   };
 
   test('[UI-RECORD-04][⑭·§14] 서버 요청 기록과 작업 결과 파일이 기록 표에 나오고, 판정·상태는 화면 용어로 바뀐다', async ({ page }) => {
-    await mockBackend(page, { overrides: { history } });
+    await mockBackend(page, { overrides: { history, simDemo: { action_labels: { ...fixture('simDemo').action_labels, spot: '지정 위치로 옮기기' } } } });
     await page.goto('/#/history');
     const table = page.getByRole('table', { name: '명령 기록' });
     const row = (name) => table.getByRole('row', { name });
@@ -325,6 +327,8 @@ test.describe('서버 이력(/v1/history)', () => {
     await expect(table).toContainText('A자재'); // 결과 파일 작업 — 자재 한국어 이름
     await expect(table).toContainText('결과 확인 안 됨'); // 표에 없는 결과 코드는 성공·실패로 지어내지 않는다
     await expect(table).not.toContainText('some_internal_code');
+    await expect(row(/지정 위치로 옮기기 · B자재/)).toContainText('지정 위치 도착'); // 내부 이름 spot 대신 서버 한국어 이름·결과
+    await expect(table).not.toContainText(/\bspot\b/);
     await expect(table).not.toContainText(/\ballow\b|\bblock\b|\bask\b/);
     // STOP 필터는 서버가 정지를 확인한 요청만 남긴다
     await page.getByRole('group', { name: '실행 결과' }).getByRole('button', { name: 'STOP' }).click();
@@ -346,6 +350,7 @@ test.describe('서버 이력(/v1/history)', () => {
     await page.getByRole('dialog').getByRole('button', { name: '명령 수정' }).click();
     await page.goto('/#/history');
     await expect(page.getByRole('table', { name: '명령 기록' }).getByRole('row', { name: new RegExp(sent) })).toHaveCount(1);
+    await expect(page.getByRole('table', { name: '명령 기록' }).getByRole('row', { name: new RegExp(sent) })).toContainText('실행 없음'); // 차단은 실행 자체가 없다
     await page.route('**/v1/history**', (route) => route.fulfill({ status: 500, json: {} }));
     await page.reload();
     await expect(page.getByText(/서버 이력 조회 실패/)).toBeVisible({ timeout: 15000 });

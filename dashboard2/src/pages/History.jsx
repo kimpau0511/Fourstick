@@ -80,7 +80,8 @@ function fromLog(e, robotFallback, jobsById) {
   return {
     key: `L${e.id}`, at: e.sentAt, robot: e.robot || robotFallback, text: e.text, requester: '이 화면',
     verify: decision ? decision.label : '확인 안 됨',
-    exec: exec || { label: decision ? '진행 중 또는 실행 전' : '확인 안 됨', kind: null },
+    // 차단·되묻기·계획 실패로 끝난 명령은 실행 자체가 없다.
+    exec: exec || { label: !decision ? '확인 안 됨' : ['실행 차단', '추가 확인 필요', '계획 실패', '시연 명령 아님'].includes(decision.label) ? '실행 없음' : '진행 중 또는 실행 전', kind: null },
     search: `${e.text} L${e.id}${job ? ` ${job.job_id}` : ''}`, entry: e, job,
   };
 }
@@ -103,9 +104,11 @@ function jobFromFile(f) {
     result_status: f.status, started_at: Number.isFinite(at) ? at / 1000 : null, fromFile: true };
 }
 
-function fromJob(j, robot, names) {
+function fromJob(j, robot, names, actionLabels = {}) {
   // 자재는 서버가 준 한국어 이름(simDemo.materials[].korean)으로 — 내부 id를 1차로 보이지 않는다.
-  const summary = [j.action_label || j.action, names[j.material] || j.material].filter(Boolean).join(' · ');
+  // 동작 이름: 이력 API가 한국어 이름을 못 주면(action_label이 내부 이름 그대로) /v1/sim-demo action_labels로.
+  const label = j.action_label && j.action_label !== j.action ? j.action_label : actionLabels[j.action] || '작업';
+  const summary = [label, names[j.material] || j.material].filter(Boolean).join(' · ');
   return {
     key: j.job_id, at: j.started_at * 1000, robot, text: summary, requester: '서버 기록', verify: '서버 기록 없음', exec: execFromJob(j),
     search: `${summary} ${j.job_id}`, job: j,
@@ -175,7 +178,7 @@ export default function History({ server, log = [] }) {
   const rows = [
     ...logRows,
     ...commands.map((c) => fromCommand(c, robotId)),
-    ...serverJobs.filter((j) => !linked.has(j.job_id)).map((j) => fromJob(j, robotId, names)),
+    ...serverJobs.filter((j) => !linked.has(j.job_id)).map((j) => fromJob(j, robotId, names, server?.simDemo?.action_labels || {})),
   ].sort((a, b) => b.at - a.at);
 
   const needle = q.trim().toLowerCase();

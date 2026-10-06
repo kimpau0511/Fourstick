@@ -22,6 +22,12 @@ export const RESULT_LABELS = {
   simulation_transfer_incomplete: ['danger', '이송 실패'],
   resume_failed: ['danger', '이어서 하기 실패'],
   return_failed: ['danger', '복귀 실패'],
+  // 지정 위치로 옮기기(spot) — scripts/demo_workcell_pick_place.py의 판정 코드
+  spot_arrived: ['ok', '지정 위치 도착'],
+  spot_stopped: ['danger', '지정 위치 이동 중 정지'],
+  spot_unstable: ['danger', '놓은 자재가 불안정'],
+  spot_failed: ['danger', '지정 위치 이동 실패'],
+  spot_not_started: ['warn', '지정 위치 이동 시작 안 함'],
 };
 
 // 판정 코드 → 기록용 사람 말(내부 코드를 화면에 쓰지 않는다).
