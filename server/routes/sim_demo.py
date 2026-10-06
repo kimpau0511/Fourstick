@@ -120,6 +120,14 @@ async def handle(
         payload = await ctx.read_body(receive)
         return command_response(ctx, payload)
 
+    if method == "POST" and path == "/v1/sim-demo/interpret":
+        # 해석 미리보기 — 샌드박스에서 같은 해석을 돌린다. 작업·확인·환경을 만들지 않는다.
+        import asyncio
+        from server.sim_demo_preview import preview
+        payload = await ctx.read_body(receive)
+        status, result = await asyncio.to_thread(preview, ctx.runtime, payload)
+        return json_response(result, status)
+
     if method == "POST" and path == "/v1/sim-demo/confirm":
         payload = await ctx.read_body(receive)
         return confirm_response(ctx, payload)
@@ -298,6 +306,27 @@ def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
     if result.intent == "transfer" and result.material_id is None:
         return fallback("어느 자재를 옮길지 알 수 없습니다 — A·B·C 자재 중 하나를"
                         " 말해 주세요", info, decision=ASK)
+    from server.sim_demo_places import SURFACE, resolve as resolve_place
+    target = resolve_place(places, result.destination_resource)
+    if result.intent == "transfer" and target is not None and target.kind == SURFACE:
+        # 분류기가 정한 것은 자재·표면뿐이다. 빈 위치는 서버가 계산·검증한다.
+        # 발화가 그 표면을 **말했을 때만** 받는다 — "바닥 빈 곳"을 작업대로 바꿔 읽은
+        # 실측(2026-10-02)이 있다. 말하지 않은 표면을 모델이 골라 주지 않는다.
+        from server.sim_free_spot import surface_aliases, surfaces_of
+        names = surface_aliases(surfaces_of(jobs)).get(target.id, ())
+        if not any(name.lower() in compact for name in names):
+            declared = ", ".join(str(spec.get("korean") or sid) for sid, spec in
+                                 (surfaces_of(jobs).get("surfaces") or {}).items()
+                                 if spec.get("placement") == "free_spot")
+            return fallback(f"말한 표면은 놓을 수 있는 표면으로 선언되지 않았습니다 — 놓을 수 있는"
+                            f" 표면: {declared or '없음'}", info, decision=ASK)
+        return _free_spot_answer(ctx, jobs, utterance=utterance, source=source,
+                                 detected={"surface_id": target.id, "surfaces": [target.id],
+                                           "material": result.material_id,
+                                           "materials": [result.material_id],
+                                           "stated_source": result.source_resource,
+                                           "via": "classifier"},
+                                 classifier=info)
     # 분류기는 **자재만** 정한다. 목적지는 intent가 정해져 있다
     # (transfer=컨베이어, return=원래 팔레트). 그래서 발화가 컨베이어를 말하지
     # 않았는데 transfer로 올리면 **목적지를 대신 골라 준 것**이 된다.
@@ -708,6 +737,54 @@ def _dialogue_for(ctx: RouteContext, payload: dict):
     return registry.get(session_id), "세션별 맥락"
 
 
+def _free_spot_answer(ctx: RouteContext, jobs, *, utterance: str, source: str,
+                      detected: dict, classifier: dict | None = None):
+    """표면 빈 위치 놓기 → 확인 카드(CONFIRM) 또는 ASK/BLOCK. (fields, status). 작업을 만들지 않는다.
+
+    규칙·분류기가 정하는 것은 자재와 표면뿐이다. 자리·자세는 서버가 계산·검증한다
+    (`server/sim_free_spot.py`).
+    """
+    service = getattr(ctx.runtime, "sim_free_spot", None)
+    store = getattr(ctx.runtime, "sim_demo_confirm", None)
+    base = {"intent": "spot", "material": detected.get("material"), "job_spec": None,
+            "intent_result": classifier, "free_spot": {"detected": detected}}
+    if service is None or store is None:
+        return {**base, "decision": "BLOCK",
+                "reason": "표면 빈 위치 놓기를 쓸 수 없습니다(표면 선언 또는 확인 기능 없음)"}, 409
+    if not detected.get("surface_id"):
+        return {**base, "decision": "ASK",
+                "reason": "어느 표면에 놓을지 하나로 말해 주세요"}, 200
+    if not detected.get("material"):
+        return {**base, "decision": "ASK",
+                "reason": "어느 자재를 놓을지 하나로 말해 주세요(A·B·C 자재)"}, 200
+    if source == "stt_final" and detected.get("stt_confidence_low"):
+        return {**base, "decision": "ASK", "reason": "다시 말해 주세요"}, 200
+    result = service.plan(material=detected["material"], surface_id=detected["surface_id"],
+                          stated_source=detected.get("stated_source"))
+    base["free_spot"] = {"detected": detected,
+                         **{k: result.get(k) for k in ("source", "selection", "why",
+                                                        "observed_source_gap_m")}}
+    if result["decision"] != "CONFIRM":
+        return {**base, "decision": result["decision"], "reason": result["reason"]}, (
+            200 if result["decision"] == "ASK" else 409)
+    spec = {"action": "spot", "material": detected["material"], "spot": result["spot"],
+            "surface_id": detected["surface_id"]}
+    status = jobs.status()
+    pending = store.create(
+        job_spec=spec, status=status, summary=result["summary"],
+        evidence={"surface_id": detected["surface_id"],
+                  "spot": {k: result["spot"].get(k) for k in ("spot_id", "center_m", "source")},
+                  "why": result["why"], "selection": result["selection"],
+                  "classifier": classifier,
+                  "material_korean": _material_korean(jobs, detected["material"]),
+                  "state": _state_brief(jobs, status),
+                  "recheck": "확인을 누르면 출발지·자리 빈 상태·도달·충돌·경로를 다시 보고,"
+                             " 실행기가 장면 동기화·사전 검사·경로 검사를 한 번 더 합니다"},
+        utterance=utterance, source=source)
+    return {**base, "decision": CONFIRM, "job_spec": spec, "reason": None,
+            "confirmation": pending.to_json(time.time())}, 200
+
+
 def command_response(ctx: RouteContext, payload: dict) -> Response:
     """발화 하나 → CONFIRM(확인 대기) / STOP / ASK / BLOCK. 작업은 만들지 않는다."""
     from server.sim_demo_commands import (
@@ -844,6 +921,13 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
         return answer(200, decision=ASK, intent=None, material=None,
                       reason="어느 자재를 어디로 옮길지 알 수 없습니다 — 자재 이름과 위치로"
                              " 말해 주세요")
+    # 표면만 말한 놓기("A자재를 작업대 빈 곳에 놔"). 자리는 서버가 계산한다.
+    from server.sim_free_spot import detect as detect_free_spot, surfaces_of
+    free_spot = detect_free_spot(normalized, workcell, surfaces_of(jobs))
+    if free_spot is not None:
+        fields, code = _free_spot_answer(ctx, jobs, utterance=utterance, source=source,
+                                         detected=free_spot)
+        return answer(code, **fields)
     # Collective commands have exactly one supported meaning. Resolve them
     # before the single-material parser/classifier so they cannot become a
     # free-form plan or an accidentally selected child job.
@@ -978,6 +1062,25 @@ def confirm_response(ctx: RouteContext, payload: dict) -> Response:
         return answer(409, decision=BLOCK, reason=taken.reason,
                       confirm_rejection=taken.code)
     spec = taken.job_spec
+    if spec.get("action") == "spot":
+        # 표면 빈 위치: 누른 시점의 관측으로 출발지·자리·MoveIt 검사를 다시 본다.
+        service = getattr(ctx.runtime, "sim_free_spot", None)
+        if service is None:
+            return answer(409, decision=BLOCK, reason="표면 빈 위치 놓기를 쓸 수 없습니다",
+                          confirm_rejection="not_allowed", job_spec=spec)
+        ok, why, recheck = service.recheck(spec)
+        if not ok:
+            return answer(409, decision=BLOCK, reason=f"실행 직전 재검사에서 막았습니다: {why}",
+                          confirm_rejection="recheck_failed", job_spec=spec,
+                          free_spot={"recheck": recheck})
+        try:
+            job = jobs.start("spot", spec["material"], spot=spec["spot"])
+        except SimDemoJobError as exc:
+            return answer(409, decision=BLOCK, reason=str(exc),
+                          confirm_rejection="not_allowed", job_spec=spec)
+        return answer(202, decision=RUN, intent="spot", material=spec["material"],
+                      job_spec=spec, job=job, utterance=taken.utterance,
+                      summary=taken.summary, free_spot={"recheck": recheck})
     from server.sim_demo_commands import requested_slot
     try:
         job = jobs.start(spec["action"], spec["material"],

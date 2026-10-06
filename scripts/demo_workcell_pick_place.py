@@ -116,6 +116,7 @@ from validation.simulation_demo_state import (  # noqa: E402
     CHECKPOINT_UNAVAILABLE,
     OBJECT_HELD,
     ON_PALLET,
+    ON_SURFACE,
     ORIGIN_TOLERANCE_M,
     POLICIES,
     POLICY_DEMO_HOLD,
@@ -792,6 +793,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="공통 transfer(팔레트가 끼는 경로)의 출발 위치(팔레트 id 또는 칸)")
     parser.add_argument("--route-to", default=None,
                         help="공통 transfer(팔레트가 끼는 경로)의 도착 위치(팔레트 id 또는 칸)")
+    parser.add_argument("--route-to-spot", default=None, metavar="SPOT_JSON",
+                        help="표면 빈 위치에 놓기: 서버가 계산·검증한 자리 파일. 실행기가 FK·관측·"
+                             "MoveIt으로 다시 검사한다")
     return parser
 
 
@@ -809,6 +813,7 @@ def main() -> int:
              else "resume_preflight" if args.resume_preflight
              else "return" if args.return_held_to_origin
              else "slot_move" if args.move_to_slot
+             else "spot" if args.route_to_spot
              else "transfer_route" if args.route_to
              else "restore" if args.restore_only else "forward")
     start_raw_log(label=label)
@@ -858,6 +863,8 @@ def main() -> int:
         return return_held_to_origin(args, data)
     if args.move_to_slot or args.move_from_slot:
         return move_between_slots(args, data)
+    if args.route_to_spot:
+        return transfer_to_spot(args, data)
     if args.route_to or args.route_from:
         return transfer_route(args, data)
 
@@ -3044,6 +3051,8 @@ def move_between_slots(args, data: dict) -> int:
             location_of[other] = record_slot(row)
         elif row.get("state") == ON_PALLET and row.get("pallet"):
             location_of[other] = row["pallet"]
+        elif row.get("state") == ON_SURFACE and (row.get("spot") or {}).get("id"):
+            location_of[other] = row["spot"]["id"]
         else:
             return blocked([(ReasonCode.EXEC_PERMIT_DENIED,
                              f"{other}의 기록이 확정되지 않았다({row.get('state')})")])
@@ -3235,7 +3244,7 @@ def sync_planning_scene(*, client, fixture, data: dict, grasp_file: dict,
     """
     from validation.conveyor_slots import record_slot
     from validation.scene_sync import plan_scene_sync, verify_scene_sync
-    from validation.simulation_demo_state import HELD_ON_TARGET, ON_PALLET
+    from validation.simulation_demo_state import HELD_ON_TARGET, ON_PALLET, ON_SURFACE
 
     materials = [m for m, item in data["models"].items() if item.get("kind") == "material"]
     records = SimulationDemoState().status().get("objects") or {}
@@ -3250,6 +3259,9 @@ def sync_planning_scene(*, client, fixture, data: dict, grasp_file: dict,
                     slot or "컨베이어(칸 미상)")
         if state == ON_PALLET and record.get("pallet"):
             return location_center(data, grasp_file, record["pallet"]), record["pallet"]
+        if state == ON_SURFACE and (record.get("spot") or {}).get("center_m"):
+            spot = record["spot"]
+            return tuple(float(v) for v in spot["center_m"]), str(spot.get("id"))
         return None, str(state)
 
     def blocked(problems):
@@ -3348,7 +3360,8 @@ def transfer_route(args, data: dict) -> int:
     from validation.conveyor_slots import RECORD_MATCH_TOLERANCE_M
     import math
 
-    from validation.simulation_demo_state import HELD_ON_TARGET, ON_PALLET, reset_command
+    from validation.simulation_demo_state import (HELD_ON_TARGET, ON_PALLET, ON_SURFACE,
+                                                  reset_command)
     from validation.transfer_stages import build_route_stages
 
     out = Path(args.out) if args.out != str(OUT) else ROUTE_OUT
@@ -3393,6 +3406,8 @@ def transfer_route(args, data: dict) -> int:
             location_of[other] = record_slot(row)
         elif state == ON_PALLET:
             location_of[other] = row.get("pallet")
+        elif state == ON_SURFACE and (row.get("spot") or {}).get("id"):
+            location_of[other] = row["spot"]["id"]
         else:
             return blocked([(ReasonCode.EXEC_PERMIT_DENIED,
                              f"{other}의 기록이 확정되지 않았다({state})")])
@@ -3524,6 +3539,283 @@ def transfer_route(args, data: dict) -> int:
           f" (허용 {attempt['tolerance_m']} m) · real_hardware_ready=False")
     return finish(0 if attempt["arrived"] else 1, status=status, reason_codes=codes,
                   attempt=attempt, stage_records=run["stage_records"],
+                  follow_samples=run["follow_samples"], attached=run["attached"],
+                  detached=run["detached"], simulation_demo=demo_state.status())
+
+
+#: 놓은 뒤 안정성 관측 창(s). 고정 장치 해제 뒤 자재가 멈춰 있는지 이 시간 동안 본다
+#: (계획 문서 `md/exec-plans/2026-10-02-free-spot-place.md`의 시험 기준).
+SPOT_STABILITY_WINDOW_SEC = 2.0
+#: 안정성 허용치: 위치 변화는 재개 자세 허용치(`RESUME_POSE_TOLERANCE_M`), 기울기는 IK 자세
+#: 허용치(`robots.moveit.chain_ik.ORIENTATION_TOLERANCE_RAD`)와 같은 값을 쓴다.
+SPOT_TILT_TOLERANCE_RAD = 0.05
+
+
+def _tilt_rad(pose7) -> float:
+    """자재 z축과 world z축 사이 각도(쿼터니언 x, y, z, w)."""
+    import math
+
+    qx, qy = float(pose7[3]), float(pose7[4])
+    r22 = 1.0 - 2.0 * (qx * qx + qy * qy)
+    return math.acos(max(-1.0, min(1.0, r22)))
+
+
+def spot_stability(fixture, model: str, *, window_sec: float) -> dict:
+    """해제 뒤 일정 시간 동안 위치·기울기가 그대로인가(관측 두 번)."""
+    import math
+
+    first = fixture.pose7_of(model, timeout_sec=3.0, fresh=True)
+    time.sleep(window_sec)
+    second = fixture.pose7_of(model, timeout_sec=3.0, fresh=True)
+    if first is None or second is None:
+        return {"observed": False, "stable": None, "detail": "자재 pose를 두 번 관측하지 못했다"}
+    drift = math.dist(first[:3], second[:3])
+    tilt = max(_tilt_rad(first), _tilt_rad(second))
+    stable = drift <= RESUME_POSE_TOLERANCE_M and tilt <= SPOT_TILT_TOLERANCE_RAD
+    return {"observed": True, "stable": stable, "window_sec": window_sec,
+            "drift_m": round(drift, 6), "drift_tolerance_m": RESUME_POSE_TOLERANCE_M,
+            "tilt_rad": round(tilt, 6), "tilt_tolerance_rad": SPOT_TILT_TOLERANCE_RAD,
+            "first_m": [round(v, 6) for v in first[:3]],
+            "second_m": [round(v, 6) for v in second[:3]]}
+
+
+def transfer_to_spot(args, data: dict) -> int:
+    """표면 **빈 위치**에 놓기. 자리·자세는 서버가 계산·검증해 파일로 준다.
+
+    이 실행기가 다시 보는 것(하나라도 어긋나면 움직이지 않는다):
+    FK(받은 관절값이 그 자리의 TCP인가) · 기록(자재가 출발지에 있는가) · 관측(출발지 자재
+    위치, 그 자리가 지지되고 비어 있는가) · 장면 동기화 · 단계 검사(든 물체 포함) · 경로 표본.
+    실행은 `_run_held_route`(복귀·칸 이동·경로 이송과 같다). 도착은 관측(자리 중심 0.02 m) +
+    놓은 뒤 안정성 관측으로만 판정한다. 순간 이동하지 않는다.
+    """
+    import math
+
+    from core.transfer_skill import PoseRef, PoseRole, RoutePoses
+    from robots.fr3_gazebo.free_spot import Fr3FreeSpotPlanner
+    from robots.fr3_gazebo.transfer_capability import Fr3TransferCapability
+    from validation.conveyor_slots import RECORD_MATCH_TOLERANCE_M
+    from validation.free_spot import still_free, surface_from_config
+    from validation.simulation_demo_state import HELD_ON_TARGET, SURFACE_SPOT, reset_command
+    from validation.transfer_stages import bind_route, build_route_stages
+
+    out = Path(args.out) if args.out != str(OUT) else ROUTE_OUT
+    demo_state = SimulationDemoState()
+    model = _model_of(data, args.object) or args.object
+    source = args.route_from
+    spot = json.loads(Path(args.route_to_spot).read_text(encoding="utf-8"))
+    spot_id = str(spot.get("spot_id") or "")
+    report: dict = {"schema": "forstick2.simulation_demo_spot/1", "mode": "spot",
+                    "skill": "transfer", "model": model, "source": source,
+                    "destination": spot_id, "spot": spot, "is_simulated": True,
+                    "real_hardware_ready": False, "real_hardware_verified": False}
+
+    def finish(code: int, **fields) -> int:
+        report.update(fields)
+        report.update(_raw_log_fields())
+        report["written_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                       encoding="utf-8")
+        print(f"기록: {out}")
+        return code
+
+    def blocked(findings) -> int:
+        for code, text in findings:
+            print(f"놓지 않았다: [{code}] {text}", file=sys.stderr)
+        closer = globals().get("_active_fixture")
+        if closer is not None:
+            closer.close()
+        return finish(1, status="spot_not_started",
+                      reason_codes=[str(c) for c, _ in findings],
+                      findings=[{"reason_code": str(c), "detail": t} for c, t in findings],
+                      simulation_demo=demo_state.status())
+
+    if not source or not spot_id or spot.get("source") != source:
+        return blocked([(ReasonCode.PLAN_UNKNOWN_RESOURCE, "출발지·자리 파일이 맞지 않는다")])
+    # ── 1. 기록: 자재가 출발지에 있고, 그 자리를 다른 자재가 기록상 차지하지 않았다 ──
+    capability = Fr3TransferCapability.from_files(ROOT)
+    location_of = {m: capability.origin_of(m) for m in capability.materials()}
+    for other, row in (demo_state.status().get("objects") or {}).items():
+        state = row.get("state")
+        if state == HELD_ON_TARGET:
+            location_of[other] = record_slot(row)
+        elif state == ON_PALLET:
+            location_of[other] = row.get("pallet")
+        elif state == ON_SURFACE and (row.get("spot") or {}).get("id"):
+            location_of[other] = row["spot"]["id"]
+        else:
+            return blocked([(ReasonCode.EXEC_PERMIT_DENIED,
+                             f"{other}의 기록이 확정되지 않았다({state})")])
+    if location_of.get(model) != source:
+        return blocked([(ReasonCode.PLAN_RESOURCE_MISMATCH,
+                         f"{model}의 기록 위치는 {location_of.get(model)}다 — {source}가 아니다")])
+    if any(m != model and where == spot_id for m, where in location_of.items()):
+        return blocked([(ReasonCode.EXEC_SIM_TARGET_OCCUPIED, f"{spot_id}에 다른 자재 기록이 있다")])
+    # ── 2. 자세: 받은 관절값이 그 자리의 것인가(FK), 출발 쪽은 계약의 것인가 ──
+    surfaces = json.loads((WORKCELL.parent / "fr3_2f85_workcell_surfaces.json")
+                          .read_text(encoding="utf-8"))
+    try:
+        surface = surface_from_config(data, surfaces, str(spot.get("surface_id")))
+    except ValueError as exc:
+        return blocked([(ReasonCode.PLAN_UNKNOWN_RESOURCE, str(exc))])
+    planner = Fr3FreeSpotPlanner.from_files(capability, ROOT, urdf=URDF)
+    problems = planner.fk_check(spot, surface_top_z=surface.top_z)
+    if problems:
+        return blocked([(ReasonCode.GEOMETRY_WORKSPACE_VIOLATION, p) for p in problems])
+    source_poses = capability.source_poses(model, source)
+    if not isinstance(source_poses, tuple):
+        return blocked([(_contract_reason(source_poses), source_poses.detail)])
+    source_approach, grasp = source_poses
+    if (source_approach.name, grasp.name) != (spot.get("source_approach"), spot.get("grasp")):
+        return blocked([(ReasonCode.PLAN_RESOURCE_MISMATCH,
+                         "자리 파일의 출발 자세가 지금 계약의 자세와 다르다")])
+    route = RoutePoses(
+        source_approach=source_approach, grasp=grasp,
+        destination_approach=PoseRef(spot["destination_approach"]["name"], PoseRole.APPROACH,
+                                     spot_id, dict(spot["destination_approach"]["joint_rad"])),
+        place=PoseRef(spot["place"]["name"], PoseRole.PLACE, spot_id,
+                      dict(spot["place"]["joint_rad"]),
+                      held_object_source=grasp.held_object_source))
+    resources = load_workcell_resources(WORKCELL, POSES, state_max_age_sec=0.5,
+                                        mounting_path=MOUNTING, grasp_path=GRASP)
+    grasp_file = json.loads(GRASP.read_text(encoding="utf-8"))
+    origin = origin_slot(data, model)
+    base = build_bindings(resources)
+    held = dict(grasp.held_object or {})
+    held["source"] = grasp.held_object_source
+    source_rid = source if not source.startswith("slot_") else "loc_conveyor"
+    bindings = dataclasses.replace(
+        base, attached={**base.attached, origin.object_id: held},
+        object_support={**base.object_support, origin.object_id: source_rid})
+    try:
+        bindings = bind_route(bindings, route)
+    except ValueError as exc:
+        return blocked([(ReasonCode.GEOMETRY_GRASP_POSE_UNAVAILABLE, str(exc))])
+    stages, stage_findings = build_route_stages(
+        bindings, object_id=origin.object_id, route=route,
+        source_resource_id=source_rid, destination_resource_id=spot_id)
+    if stage_findings:
+        return blocked(stage_findings)
+    src_center = location_center(data, grasp_file, source)
+    dst_center = tuple(float(v) for v in spot["center_m"])
+    if src_center is None:
+        return blocked([(ReasonCode.PLAN_UNKNOWN_RESOURCE, "출발 자리 중심을 모른다")])
+
+    profile_limits = {}
+    for joint in ET.parse(URDF).getroot().findall("joint"):
+        limit = joint.find("limit")
+        if limit is not None and joint.get("type") == "revolute":
+            profile_limits[joint.get("name")] = (float(limit.get("lower")),
+                                                 float(limit.get("upper")))
+    client, node, transport = scene_and_transport(resources, profile_limits)
+    objects = declarations_from_config(data["models"], data["frames"], source=str(WORKCELL))
+    fixture = GazeboObjectFixture(world_name=resources.world_name,
+                                  gz_partition=resources.gz_partition, objects=objects)
+    globals()["_active_fixture"] = fixture
+    latch = StopLatchFile(LATCH)
+    snapshot = client.snapshot()
+    if latch.latched() is not None:
+        released, detail = latch.release(
+            live_goals=transport.live_goals(), scene_hash=snapshot.content_hash,
+            latched_hash=latch.latched().get("scene_hash"))
+        print(f"[래치] {detail}")
+        if not released:
+            return blocked([(ReasonCode.EXEC_STOPPED, f"정지 래치가 걸려 있다 — {detail}")])
+        snapshot = client.snapshot()
+    report["scene_sync"], sync_problems = sync_planning_scene(
+        client=client, fixture=fixture, data=data, grasp_file=grasp_file)
+    if sync_problems:
+        return blocked(sync_problems)
+    snapshot = client.snapshot()
+
+    # ── 3. 관측: 출발지에 있고, 그 자리가 지지되고 비어 있다 ──
+    findings = []
+    observed = fixture.pose_of(model, timeout_sec=5.0, fresh=True)
+    if observed is None or math.dist(observed, src_center) > RECORD_MATCH_TOLERANCE_M:
+        findings.append((ReasonCode.PLAN_RESOURCE_MISMATCH,
+                         f"{model}이 관측상 {source}에 없다"
+                         f" (관측 {None if observed is None else [round(v, 4) for v in observed]})"))
+    others, sizes = {}, {}
+    for other, item in data["models"].items():
+        if item.get("kind") != "material":
+            continue
+        sizes[other] = item["size_m"]
+        if other != model:
+            others[other] = fixture.pose_of(other, timeout_sec=2.0, fresh=True)
+    free, why = still_free(surface, dst_center[:2], material_size_m=sizes[model],
+                           others=others, other_sizes=sizes)
+    report["spot_recheck"] = {"free": free, "detail": why,
+                              "others_m": {m: None if p is None else [round(v, 4) for v in p]
+                                           for m, p in others.items()}}
+    if not free:
+        findings.append((ReasonCode.EXEC_SIM_TARGET_OCCUPIED, why))
+    before = client.snapshot()
+    checks, check_findings = check_stages(stages, bindings=bindings, client=client)
+    after = client.snapshot()
+    if not (after.content_hash == before.content_hash == snapshot.content_hash):
+        findings.append((ReasonCode.GEOMETRY_SNAPSHOT_EXPIRED, "사전 검사 중 scene이 바뀌었다"))
+    findings.extend((f.reason_code, f.detail) for f in check_findings)
+    report["preflight"] = {"observed_pose_m": None if observed is None else list(observed),
+                           "checks": [c.to_dict() for c in checks],
+                           "stages": [_stage_row(st) for st in stages]}
+    if findings:
+        return blocked(findings)
+    report["path_check"], path_problems = path_preflight(
+        client=client, transport=transport, stages=stages, bindings=bindings)
+    if path_problems:
+        return blocked(path_problems)
+
+    # ── 4. 실행(경로 이송과 같은 실행부) ─────────────────────────────
+    zone = conveyor_zone_for(data, resources, "loc_conveyor", objects, model)
+    run = _run_held_route(
+        stages=stages, bindings=bindings, client=client, snapshot=snapshot,
+        transport=transport, fixture=fixture, model=model, object_id=origin.object_id,
+        latch=latch, zone=zone, stop_at=args.stop_at, grasp_file=grasp_file,
+        mode="spot", source_id=source_rid, destination_id=spot_id,
+        origin_slot_id=origin.support_id, origin_home_m=origin.home_pose_m,
+        source_slot=source if source.startswith("slot_") else None, destination_slot=None,
+        banner=f"[빈 위치 놓기] {model}: {source} → {spot_id} · scene {snapshot.content_hash[:12]}")
+
+    # ── 5. 관측으로 판정·기록(위치 + 놓은 뒤 안정성) ─────────────────
+    home_row = next((r for r in run["stage_records"] if r["stage"] == STAGE_HOME_END), {})
+    moved_ok = bool(run["follow_samples"]) and all(r["with_tool"] for r in run["follow_samples"])
+    completed = bool(not run["faults"] and not run["stop_requested"] and run["attached"]
+                     and run["detached"] and moved_ok and home_row.get("reached")
+                     and len(run["stage_records"]) == len(stages))
+    stability = (spot_stability(fixture, model, window_sec=SPOT_STABILITY_WINDOW_SEC)
+                 if completed else {"observed": False, "stable": None,
+                                    "detail": "이송이 끝나지 않아 보지 않았다"})
+    final_pose = fixture.pose_of(model, timeout_sec=3.0, fresh=True)
+    codes = [str(c) for c, _ in run["faults"]]
+    if final_pose is None:
+        codes.append(str(ReasonCode.EXEC_UNVERIFIABLE))
+    if completed and stability.get("stable") is not True:
+        codes.append(str(ReasonCode.EXEC_UNVERIFIABLE if stability.get("stable") is None
+                         else ReasonCode.EXEC_SIM_PLACEMENT_OUT_OF_ZONE))
+    spot_record = {"id": spot_id, "surface_id": spot.get("surface_id"),
+                   "center_m": [round(v, 6) for v in dst_center]}
+    attempt = demo_state.record_transfer(
+        model, source=source, destination=spot_id, destination_kind=SURFACE_SPOT,
+        destination_center_m=dst_center, own_origin=origin.support_id,
+        completed=completed, stop_requested=run["stop_requested"], attached=run["attached"],
+        final_pose_m=final_pose, reason_codes=codes,
+        detail=" · ".join(text for _, text in run["faults"]),
+        base={"scenario": f"{source}/{origin.object_id}->{spot_id}",
+              "object_id": origin.object_id, "support_id": origin.support_id,
+              "target_id": spot_id, "reset_command": reset_command(model)},
+        spot=spot_record, stable=stability.get("stable"))
+    if completed and not attempt["arrived"] and stability.get("stable") is True:
+        codes.append(str(ReasonCode.EXEC_SIM_PLACEMENT_OUT_OF_ZONE))
+    record_stop_checkpoint(demo_state, run["pending_checkpoint"])
+    shutdown_ros(transport=transport, fixture=fixture, node=node)
+    status = ("spot_arrived" if attempt["arrived"]
+              else "spot_stopped" if run["stop_requested"]
+              else "spot_unstable" if completed and stability.get("stable") is False
+              else "spot_failed")
+    print(f"\n판정: {status} · 자리 중심과 {attempt['gap_m']} m (허용 {attempt['tolerance_m']} m)"
+          f" · 안정 {stability.get('stable')} · real_hardware_ready=False")
+    return finish(0 if attempt["arrived"] else 1, status=status, reason_codes=codes,
+                  attempt=attempt, stability=stability, stage_records=run["stage_records"],
                   follow_samples=run["follow_samples"], attached=run["attached"],
                   detached=run["detached"], simulation_demo=demo_state.status())
 

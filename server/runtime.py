@@ -221,6 +221,10 @@ class Runtime:
     simulation_demo_state_path: Any = None
     #: 웹 시뮬레이션 시연 작업 실행기(`server/sim_demo_jobs.py`). 꺼져 있으면 None.
     sim_demo_jobs: Any = None
+    #: 일반 경로 pick/place 열기 판정(`server/sim_pick_place.py`). 시뮬레이션 셀이 아니면 None.
+    sim_pick_place: Any = None
+    #: 표면 빈 위치 놓기(`server/sim_free_spot.py`). 표면 선언이 없으면 None.
+    sim_free_spot: Any = None
     #: 시연 작업을 쓸 수 없는 이유(켜져 있으면 None).
     sim_demo_disabled_reason: str | None = "시뮬레이션 작업 셀이 아니다"
     #: 기동 시 띄운 기록↔관측 정합 작업의 결과(읽기 전용). 기록이 없으면
@@ -867,11 +871,20 @@ def _attach_sim_demo_jobs(runtime, config, manifest, workcell_path) -> None:
     if cell_execution is None:
         cell_execution = CellExecutionManager()
         runtime.cell_execution = cell_execution
+    # 빈 위치 놓기를 허용한 표면 선언. 매니페스트에 없거나 못 읽으면 그 기능만 꺼진다.
+    try:
+        surfaces_config = json.loads(workcell_path("surfaces").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        surfaces_config = {}
     runtime.sim_demo_jobs = SimDemoJobs(workcell=workcell,
                                         grasp_config=grasp_config,
                                         poses_config=poses_config,
                                         cell_execution=cell_execution,
+                                        surfaces_config=surfaces_config,
                                         **kwargs)
+    from server.sim_free_spot import FreeSpotService
+
+    runtime.sim_free_spot = FreeSpotService(runtime) if surfaces_config else None
     runtime.sim_demo_disabled_reason = None
     # 확인 대기함. 분류기가 없어도 만든다 — 확인 계약은 분류기와 별개다.
     from server.sim_demo_confirm import DEFAULT_TTL_SEC, ConfirmStore
@@ -1082,6 +1095,15 @@ def _record_profile(
         pass
 
 
+def _workcell_gripper_verification() -> dict | None:
+    """작업 셀 그리퍼 검증 보고서(시뮬레이션 관문의 open/close 근거). 없으면 None."""
+    path = ROOT / "reports/workcell/gripper_control.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def build_runtime(config: ServerConfig) -> Runtime:
     """설정을 읽어 런타임을 만든다. 실패한 기능은 사용 불가로 표시한다."""
     cfg = config.config_dir
@@ -1130,6 +1152,7 @@ def build_runtime(config: ServerConfig) -> Runtime:
     workcell_status: dict[str, object] | None = None
     runtime_declared_kind: list[str] = []
     workcell_extras: dict[str, Any] = {}
+    sim_pick_place = None
     if config.enable_workcell_robot:
         workcell_status = {
             "enabled": True, "registered": False, "is_simulated": True,
@@ -1151,6 +1174,19 @@ def build_runtime(config: ServerConfig) -> Runtime:
             entry = getattr(module, module.ADAPTER_ENTRY_POINT)
             workcell_profile = load_capability_profile(json.loads(
                 _workcell_path("capability_profile").read_text(encoding="utf-8")))
+            # 시뮬레이션 셀이면 Gazebo 측정 근거(시뮬레이션 전용 Profile)로 pick/place를 열 수
+            # 있는지 본다. 열면 Profile 버전이 바뀐다. 실물 Profile 파일은 건드리지 않는다.
+            if workcell_manifest.get("simulation_profile"):
+                from server.sim_pick_place import open_simulation_pick_place
+
+                sim_pick_place = open_simulation_pick_place(
+                    manifest=workcell_manifest,
+                    sim_profile_path=_workcell_path("simulation_profile"),
+                    profile_dir=config.robot_config_dir / "profiles",
+                    workcell_profile=workcell_profile,
+                    verification=_workcell_gripper_verification())
+                if sim_pick_place.profile is not None:
+                    workcell_profile = sim_pick_place.profile
             built = entry(
                 robot_id=workcell_profile.profile_id,
                 profile=workcell_profile,
@@ -1230,6 +1266,12 @@ def build_runtime(config: ServerConfig) -> Runtime:
         profile=profile,
     )
     runtime.workcell = workcell_status
+    # 작업 셀 어댑터 등록에 실패해 다른 로봇(Fake 등)으로 떨어졌으면 열지 않는다.
+    # 닫힌 판정(enabled=False)은 이유를 보여 주려고 남긴다 — 관문이 BLOCK으로 쓴다.
+    runtime.sim_pick_place = (
+        sim_pick_place if (workcell_status or {}).get("registered") and profile is not None
+        and sim_pick_place is not None
+        and (not sim_pick_place.enabled or sim_pick_place.profile is profile) else None)
     # 장면 영상: 작업 셀이 붙었고 장면 카메라가 켜져 있을 때만 둔다.
     if workcell_manifest and workcell_manifest.get("enabled"):
         from server.scene_view import SceneViewer
@@ -1318,7 +1360,10 @@ def build_runtime(config: ServerConfig) -> Runtime:
 
     # ── 계획 공급자 ─────────────────────────────────────────────────────
     try:
-        llm_config = load_llm_provider_config(_load(cfg, config.llm_config_name))
+        llm_config = load_llm_provider_config(
+            _load(cfg, config.llm_config_name),
+            base_url_override=config.llm_base_url_override,
+        )
     except Exception as exc:  # noqa: BLE001 — 설정이 없으면 기능을 끈다
         runtime.planning = FeatureState(False, f"LLM 설정을 읽을 수 없다: {exc}"[:200])
     else:
@@ -1353,7 +1398,7 @@ def build_runtime(config: ServerConfig) -> Runtime:
     else:
         try:
             stt_model_config = load_stt_model_config(
-                _load(cfg, "valid_stt_model_lowspec.json")
+                _load(cfg, config.stt_model_config_name)
             )
             from stt.faster_whisper_backend import FasterWhisperBackend
             from stt.silero_vad_backend import SileroVadBackend

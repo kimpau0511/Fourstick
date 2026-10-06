@@ -96,6 +96,10 @@ class Repository(ABC):
     def requests_for_session(self, session_id: str) -> Sequence[RequestRecord]:
         """세션의 요청을 시간순으로. 다른 세션의 요청은 포함하지 않는다."""
 
+    def recent_request_summaries(self, limit: int) -> Sequence[dict]:
+        """세션을 가리지 않는 최근 요청 요약(이력 화면용, 읽기 전용)."""
+        raise NotImplementedError
+
     # ── 요청 ────────────────────────────────────────────────────────────
     @abstractmethod
     def save_request(self, record: RequestRecord) -> None: ...

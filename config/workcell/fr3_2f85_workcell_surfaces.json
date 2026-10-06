@@ -1,0 +1,36 @@
+{
+  "schema": "forstick2.workcell_surfaces/1",
+  "note": [
+    "자재를 '빈 곳'에 놓을 수 있는 표면 선언. 좌표는 여기 두지 않는다 — 형상은 셀 설정의 부품에서,",
+    "빈 위치는 서버가 관측·형상·점유로 계산하고 로봇별 계산기가 IK·MoveIt으로 다시 거른다(validation/free_spot.py).",
+    "1차는 작업대 상판만 허용한다: 탐침(2026-10-02, IK + 실행기 단계 검사)으로 앞쪽 띠(x≈0.35~0.38)에서",
+    "놓기 자세가 나오는 것을 확인했다. 팔레트·컨베이어 칸은 기존 검증 자리라 여기 넣지 않는다."
+  ],
+  "surfaces": {
+    "surface_workbench": {
+      "korean": "작업대",
+      "aliases": [
+        "작업대",
+        "작업 테이블",
+        "작업테이블",
+        "작업 대"
+      ],
+      "model": "workbench",
+      "part": "top",
+      "placement": "free_spot",
+      "candidate_step_m": 0.005,
+      "candidate_step_source": "셀 설정 grasp.sweep_step_m(파지 높이 훑기 간격)과 같은 눈금",
+      "placement_region": {
+        "x_m": [
+          0.33,
+          0.42
+        ],
+        "y_m": [
+          -0.32,
+          0.32
+        ],
+        "source": "reports/workcell/free_spot_probe.json — 놓기 자세가 나온 앞쪽 띠(상판 앞 가장자리 ~ 팔레트 앞 가장자리). 그 밖은 도달 밖·팔레트 접촉으로 탐침에서 모두 실패했다. 이 안의 후보도 매번 IK·MoveIt으로 다시 거른다"
+      }
+    }
+  }
+}

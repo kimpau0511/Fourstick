@@ -5,7 +5,8 @@
     "공통 코드(server/·core/·validation/…)는 로봇·제조사 이름으로 분기하지",
     "않는다(계획.md 27장). 그래서 서버는 이 파일만 알고, 실제 모델·셀 이름은",
     "여기에만 적는다. 다른 셀로 바꾸려면 이 파일만 고친다.",
-    "경로는 이 파일 위치를 기준으로 해석한다."
+    "경로는 이 파일 위치를 기준으로 해석한다.",
+    "simulation_profile: 시뮬레이션 셀에서만 쓰는 Gazebo 측정 근거(실물 Profile null을 채우지 않는다)."
   ],
   "enabled": true,
   "adapter_module": "robots.fr3_gazebo",
@@ -14,5 +15,7 @@
   "resource_catalog": "fr3_2f85_workcell_resource_catalog.json",
   "capability_profile": "../profiles/fr3wms_2f85_workcell_capability.json",
   "is_simulated": true,
-  "real_hardware_verified": false
+  "real_hardware_verified": false,
+  "simulation_profile": "../profiles/simulation/fr3wms_2f85_gazebo_sim.json",
+  "surfaces": "fr3_2f85_workcell_surfaces.json"
 }

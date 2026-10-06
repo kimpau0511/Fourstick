@@ -36,7 +36,15 @@ UNSUPPORTED = (
     (re.compile(r"흔들"), "흔들기"), (re.compile(r"끼워|붙여|조립"), "끼우기·붙이기"),
     (re.compile(r"(?:들고|잡고|쥐고)(?:서)?\s*(?:기다|대기|있어|멈춰)"), "든 채 대기"),
     (re.compile(r"사이에"), "칸 사이에 놓기"),
+    (re.compile(r"떨어뜨|떨궈|(?:도중|중간)에\s*(?:놔|놓|내려)|(?:놔|내려놔|놓아)\s*버려"),
+     "옮기는 도중 내려놓기·떨어뜨리기"),
 )
+#: 실행 요청이 아니라 **가능한지 묻는** 말. 규칙이 그대로 실행하지 않고 되묻는다.
+#: "옮겨줄래"·"놔줄래"는 요청이라 넣지 않는다.
+QUESTION_FORMS = re.compile(r"수\s*(?:있|있을|있나|있어|있지|있겠)|가능(?:해|할까|한가|하니|하지|해요)?\s*\??$|"
+                            r"가능(?:해|할까|한가|하니|하지)|될까|되나|되니")
+#: 개수 지정. 자재는 종류마다 하나뿐이라 "두 개"를 한 개 이송으로 줄여 실행하지 않는다.
+QUANTITY = re.compile(r"(?:\d+|한|두|세|네|다섯|여러|몇)\s*개")
 POSITION_WORDS = ("맨앞", "맨뒤", "첫칸", "첫번째칸", "끝칸", "마지막칸", "가운데칸",
                   "중간칸", "왼쪽칸", "오른쪽칸")
 NUMBER_WORDS = {"일": 1, "이": 2, "삼": 3, "사": 4, "오": 5}
@@ -237,6 +245,14 @@ def resolve(text: str, *, facts: CellFacts, context: DialogueContext | None,
             return Resolution(res.text, decision="BLOCK",
                               reason=f"'{name}'은 지원하지 않는 동작입니다 — 지원하는 것은 자재를"
                                      " 원래 자리·컨베이어 칸으로 옮기는 것뿐입니다")
+    if QUANTITY.search(res.text):
+        return Resolution(res.text, decision="ASK",
+                          reason="자재는 종류마다 하나씩만 있습니다 — 옮길 자재를 A·B·C 중에서"
+                                 " 말해 주세요")
+    if QUESTION_FORMS.search(res.text):
+        return Resolution(res.text, decision="ASK",
+                          reason="가능한지 물으신 것으로 들었습니다 — 실행하려면 \"옮겨줘\"처럼"
+                                 " 말해 주세요")
     if any(w in compact for w in POSITION_WORDS):
         return Resolution(res.text, decision="ASK",
                           reason="'맨 앞' 같은 위치는 칸 번호로 정해져 있지 않습니다 — 1·2·3번 칸 중"

@@ -1,0 +1,23 @@
+{
+  "config_version": "turbo-gpu-1.0",
+  "profile_id": "turbo-cuda-float16",
+  "verification": "verified",
+  "model_name": "large-v3-turbo",
+  "device": "cuda",
+  "compute_type": "float16",
+  "language": "ko",
+  "sample_rate_hz": 16000,
+  "vad_threshold": 0.5,
+  "load_timeout_sec": 600.0,
+  "transcribe_timeout_sec": 60.0,
+  "cache_dir": null,
+  "retain_eval_audio": false,
+  "eval_audio_dir": null,
+  "provenance": {
+    "model_name": "large-v3-turbo — 2026-09-29 gTTS 합성 20건에서 평균 CER 5.9%(small/cpu 9.6%). 합성 음성 기준이며 실제 마이크 녹음 비교는 미완료",
+    "device": "cuda — RTX 4060 Ti 8GB, Gazebo 실행 중 기본 사용 약 2.2GB에서 로딩 후 약 +2.2GB. cuBLAS·cuDNN(CUDA 12)은 LD_LIBRARY_PATH로 공급해야 한다",
+    "compute_type": "float16 — 같은 측정에서 int8_float16(CER 7.2%)보다 정확했고 처리 시간은 평균 0.29초로 비슷했다",
+    "vad_threshold": "Silero 기본 0.5. 실측 미완료. turbo는 무음·잡음 직접 입력 5건 모두 환각 문장을 냈다(small 2건) — VAD가 막는 것이 전제다",
+    "verification": "2026-09-29 이 환경에서 실제 로딩(4.1초)과 전사 20건을 확인했다"
+  }
+}

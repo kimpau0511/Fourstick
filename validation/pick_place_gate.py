@@ -473,3 +473,82 @@ def _with_grasp_observation(
 def blocking_summary(result: GateResult) -> Sequence[str]:
     """화면·기록에 쓸 짧은 이유 목록."""
     return [f"{item.label}: {item.detail}" for item in result.blocking]
+
+
+# ── 시뮬레이션 셀 전용 판정 ─────────────────────────────────────────────
+#: 시뮬레이션 판정의 환경 표시. 실물 판정과 섞이지 않게 고정한다.
+SIMULATION_ENVIRONMENT = "simulation"
+
+
+def evaluate_simulation(
+    *,
+    mounting,
+    verification: Mapping[str, Any] | None,
+    simulation: Mapping[str, Any],
+) -> GateResult:
+    """**시뮬레이션 셀에서만** 쓰는 7개 조건 판정. 실물 판정(`evaluate`)은 바꾸지 않는다.
+
+    `mounting`은 시뮬레이션 전용 Profile을 적용한 사본이어야 한다(`core/sim_profile.py`).
+    `simulation`은 그 Profile의 `to_dict()`이고, 다음 세 조건만 시뮬레이션 근거로 판정한다.
+
+    - 2 질량/관성: Gazebo가 시뮬레이션하는 **모델 값**이 장착 Profile의 커플링 값과 같을 때
+    - 6 파지 관측: 이송 실행기의 고정 장치 붙임·해제 관측이 선언됐을 때
+    - 7 재검증: 실행 직전 재검증을 이송 실행기가 맡고, 실패하면 움직이지 않는다고 선언됐을 때
+
+    나머지(장착 변환·충돌 형상·TCP·open/close 제어)는 실물 판정과 같은 규칙이다.
+    결과의 `environment`는 항상 simulation이다 — 실기 판정으로 쓰지 않는다.
+    """
+    if simulation.get("environment") != SIMULATION_ENVIRONMENT or simulation.get(
+            "real_hardware_claim") is not False:
+        raise ValueError("시뮬레이션 판정에 시뮬레이션 Profile이 아닌 근거가 들어왔다")
+    base = {item.key: item for item in (
+        *_mounting_conditions(mounting), *_observation_conditions(verification))}
+    sim_id = f"{simulation.get('sim_profile_id')} {simulation.get('sim_profile_version')}"
+
+    coupling = dict(mounting.coupling or {})
+    model_mass = simulation.get("coupling_model_mass_kg")
+    declared = coupling.get("mass_kg")
+    mass_ok = model_mass is not None and declared is not None and float(model_mass) == float(declared)
+    base["masses_and_inertia"] = Condition(
+        key="masses_and_inertia", label="adapter·gripper 질량/관성 확보",
+        status=ConditionStatus.MET if mass_ok else ConditionStatus.UNVERIFIED,
+        reason_code=None if mass_ok else ReasonCode.CAPABILITY_PROFILE_INCOMPLETE,
+        detail=(f"시뮬레이션 모델 값 {model_mass} kg을 Gazebo가 그대로 쓴다(실물 질량 아님)"
+                if mass_ok else
+                f"시뮬레이션 모델 질량({model_mass})과 장착 Profile 값({declared})이 맞지 않는다"),
+        evidence={"simulation_profile": sim_id, "coupling_model_mass_kg": model_mass,
+                  "mounting_coupling_mass_kg": declared,
+                  "real_mass_status": coupling.get("mass_status")},
+    )
+
+    grasp = dict(simulation.get("grasp_observation") or {})
+    aperture = base["aperture_or_grasp_observation"]
+    grasp_ok = grasp.get("mode") == "gazebo_fixture_joint" and aperture.status is not ConditionStatus.FAILED
+    base["aperture_or_grasp_observation"] = Condition(
+        key=aperture.key, label=aperture.label,
+        status=ConditionStatus.MET if grasp_ok else aperture.status,
+        reason_code=None if grasp_ok else aperture.reason_code,
+        detail=(f"시뮬레이션 파지 관측: {grasp.get('detail', '')}" if grasp_ok else aperture.detail),
+        evidence={**dict(aperture.evidence), "simulation_grasp_observation": grasp,
+                  "counts_for_real_gate": False},
+    )
+
+    revalidation = dict(simulation.get("revalidation") or {})
+    reval_ok = bool(revalidation.get("executor")) and bool(revalidation.get("checks"))
+    base["plan_collision_revalidation"] = Condition(
+        key="plan_collision_revalidation", label="pick/place 계획·충돌·재검증 통과",
+        status=ConditionStatus.MET if reval_ok else ConditionStatus.MISSING,
+        reason_code=None if reval_ok else ReasonCode.EXEC_PERMIT_DENIED,
+        detail=(f"계획마다 공통 이송 계약을 관문에서 보고, 실행 직전 재검증은"
+                f" {revalidation.get('executor')}가 맡는다: {revalidation.get('detail', '')}"
+                if reval_ok else "실행 직전 재검증을 맡을 실행기가 선언되지 않았다"),
+        evidence={"simulation_profile": sim_id, "revalidation": revalidation},
+    )
+
+    order = [
+        "mounting_transform", "masses_and_inertia", "collision_geometry",
+        "tcp_defined_and_verified", "open_close_control",
+        "aperture_or_grasp_observation", "plan_collision_revalidation",
+    ]
+    return GateResult(conditions=tuple(base[key] for key in order),
+                      environment=SIMULATION_ENVIRONMENT)

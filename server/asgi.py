@@ -26,6 +26,7 @@ import urllib.parse
 
 from server.api import Api, ApiError
 from server.config import ServerConfig
+from server.exit_watchdog import arm_exit_watchdog
 from server.routes import (
     HTTP_ROUTES,
     execution as execution_routes,
@@ -91,6 +92,7 @@ class Application:
                 bridge = getattr(self.runtime, "humanoid_bridge", None)
                 if bridge is not None:
                     bridge.close()
+                arm_exit_watchdog()
                 await send({"type": "lifespan.shutdown.complete"})
                 return
 

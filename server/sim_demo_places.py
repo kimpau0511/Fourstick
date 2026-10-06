@@ -23,9 +23,9 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from validation.conveyor_slots import slot_label
 
-#: 자리 종류.
-PALLET, CONVEYOR_SLOT, CONVEYOR, SAFE = (
-    "pallet", "conveyor_slot", "conveyor", "safe")
+#: 자리 종류. `surface`는 **정확한 위치를 말하지 않은 표면**(빈 위치는 서버가 계산한다).
+PALLET, CONVEYOR_SLOT, CONVEYOR, SAFE, SURFACE = (
+    "pallet", "conveyor_slot", "conveyor", "safe", "surface")
 
 #: 자리 미지정 컨베이어. `resource_map`의 컨베이어 자원 id와 같은 값을 쓴다.
 CONVEYOR_ID = "loc_conveyor"
@@ -73,7 +73,8 @@ def _pallets(workcell: Mapping[str, Any]) -> list[Place]:
 
 def declared_places(workcell: Mapping[str, Any],
                     slots: Sequence[Any] = (),
-                    poses: Mapping[str, Any] | None = None) -> tuple[Place, ...]:
+                    poses: Mapping[str, Any] | None = None,
+                    surfaces: Mapping[str, Any] | None = None) -> tuple[Place, ...]:
     """이 셀에서 말할 수 있는 자리 전부. 순서는 화면·프롬프트에 그대로 쓴다.
 
     `poses`는 셀의 자세 설정(`*_poses.json`)이다. 안전 위치는 거기 선언된
@@ -99,6 +100,12 @@ def declared_places(workcell: Mapping[str, Any],
     declared = config.get("safe_home") or (config.get("poses") or {}).get("safe_home")
     if declared is not None:
         places.append(Place(id=SAFE_ID, kind=SAFE, label=SAFE_LABEL))
+    # 빈 위치 놓기를 허용한 표면(`*_surfaces.json`). 좌표가 아니라 표면 이름이다.
+    for surface_id, spec in ((surfaces or {}).get("surfaces") or {}).items():
+        if spec.get("placement") == "free_spot":
+            places.append(Place(id=str(surface_id), kind=SURFACE,
+                                label=f"{spec.get('korean') or surface_id} (빈 곳 — 위치 미지정)",
+                                model=spec.get("model")))
     return tuple(places)
 
 
@@ -127,6 +134,8 @@ def prompt_lines(places: Iterable[Place]) -> str:
     for place in places:
         note = {PALLET: "팔레트", CONVEYOR_SLOT: "컨베이어의 지정된 자리",
                 CONVEYOR: "컨베이어 — 자리를 말하지 않은 경우",
-                SAFE: "로봇 안전 자세 — 자재를 두는 자리가 아니다"}.get(place.kind, "")
+                SAFE: "로봇 안전 자세 — 자재를 두는 자리가 아니다",
+                SURFACE: "표면 — 정확한 위치를 말하지 않고 그 표면의 빈 곳에 놓으라는 경우"
+                }.get(place.kind, "")
         rows.append(f"- {place.id}: {place.label}" + (f" ({note})" if note else ""))
     return "\n".join(rows)

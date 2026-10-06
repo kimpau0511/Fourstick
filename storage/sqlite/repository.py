@@ -337,6 +337,37 @@ class SqliteRepository(Repository):
         ).fetchall()
         return tuple(self._request_from_row(r) for r in rows)
 
+    def recent_request_summaries(self, limit: int) -> Sequence[dict]:
+        """대시보드 이력용 **읽기 전용** 요약. 세션을 가리지 않고 최근 요청부터.
+
+        요청마다 마지막 검증 판정과 마지막 실행의 최종 상태만 붙인다.
+        """
+        rows = self._conn.execute(
+            """
+            SELECT r.request_id, r.utterance, r.created_at, r.session_id,
+                   (SELECT v.decision FROM validations v JOIN plans p ON p.plan_id = v.plan_id
+                     WHERE p.request_id = r.request_id
+                     ORDER BY v.evaluated_at DESC LIMIT 1) AS decision,
+                   e.execution_id, e.is_simulated, e.started_at,
+                   (SELECT x.state FROM execution_results x WHERE x.execution_id = e.execution_id
+                     ORDER BY x.seq DESC LIMIT 1) AS final_state
+              FROM requests r
+              LEFT JOIN executions e ON e.execution_id = (
+                   SELECT e2.execution_id FROM executions e2 WHERE e2.request_id = r.request_id
+                    ORDER BY e2.started_at DESC LIMIT 1)
+             ORDER BY r.created_at DESC, r.request_id
+             LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+        return tuple({
+            "request_id": row["request_id"], "utterance": row["utterance"],
+            "created_at": row["created_at"], "session_id": row["session_id"],
+            "decision": row["decision"], "execution_id": row["execution_id"],
+            "is_simulated": None if row["is_simulated"] is None else bool(row["is_simulated"]),
+            "execution_started_at": row["started_at"], "final_state": row["final_state"],
+        } for row in rows)
+
     # ── 요청 ────────────────────────────────────────────────────────────
     @staticmethod
     def _request_from_row(row: sqlite3.Row) -> RequestRecord:

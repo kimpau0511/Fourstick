@@ -10,6 +10,7 @@
     "config/valid_stop_policy.json",
     "config/valid_stt_model_candidate.json",
     "config/valid_stt_model_lowspec.json",
+    "config/valid_stt_model_turbo_gpu.json",
     "config/valid_stt_policy.json",
     "config/valid_stt_profiles.json",
     "stt/valid_final.json",
