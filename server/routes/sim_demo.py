@@ -239,11 +239,41 @@ def _candidates(jobs) -> list[dict]:
             for model, spec in jobs.materials.items()]
 
 
-def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
-              rule_decision: str, rule_reason: str | None):
-    """모호한 자재 작업 발화 → 분류기 → 서버 검증 → 확인 대기 한 건.
+def _color_materials(registry, words) -> dict[str, list[str]]:
+    """발화에 남은 색 낱말 → 그 색으로 **등록된** 자재들. 등록되지 않은 색은 빈 목록."""
+    from server.material_colors import canonical_color
 
-    돌려주는 것은 `(fields, status)`다. **작업을 만들지 않는다.**
+    by_color = getattr(registry, "by_color", None) or {}
+    return {word: list(by_color.get(canonical_color(word) or "", ())) for word in words}
+
+
+def _material_locations(jobs) -> dict[str, str | None]:
+    """자재 → 지금 기록된 자리 id(팔레트·컨베이어 칸·표면 빈 위치). 모르면 None."""
+    try:
+        world = jobs.transfer_world()
+    except Exception:  # noqa: BLE001 — 위치를 모르면 모른다고 둔다(서버 검사가 막는다)
+        world = None
+    location_of = getattr(world, "location_of", None) or {}
+    return {model: location_of.get(model) for model in jobs.materials}
+
+
+def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
+              rule_decision: str, rule_reason: str | None, *,
+              said: str | None = None, registry=None, dialogue=None,
+              original: str | None = None):
+    """규칙이 끝내지 못한 자재 작업 발화 → Qwen → 서버 검증 → 확인 대기 한 건.
+
+    돌려주는 것은 `(fields, status)`다. **작업을 만들지 않는다.** Qwen 결과는 그대로
+    실행하지 않고 아래를 모두 다시 본다. 하나라도 어긋나면 되묻는다(ASK)·막는다(BLOCK).
+
+    - 자재·자리 id가 이 셀의 목록에 있는가(`sim_demo_intent.validate`)
+    - 발화의 이름·색이 고른 자재와 맞는가, 둘 다 없으면 대화 맥락의 자재인가
+    - 말한 출발지가 자재의 지금 위치와 맞는가
+    - 지원하는 동작인가 · confidence가 기준 이상인가
+    - 지금 시연 상태에서 할 수 있는가(`decide`: 목적지 점유·체크포인트·실행 중 작업 등)
+
+    `said`는 색·맥락 치환을 거친 발화(색 낱말이 남아 있을 수 있다), `utterance`는
+    정규화한 발화다.
     """
     from server.sim_demo_commands import (
         ASK,
@@ -278,17 +308,43 @@ def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
                         + str(getattr(ctx.runtime, "sim_demo_intent_disabled_reason",
                                       "") or "이유 미기록"))
     places = getattr(jobs, "places", ()) or ()
-    result = classifier.classify(utterance, _candidates(jobs), places)
+    from server.sim_demo_places import place_label
+
+    locations = _material_locations(jobs)
+    candidates = [{**row, "location": locations.get(row["model"]),
+                   "location_label": (place_label(places, locations.get(row["model"]))
+                                      if locations.get(row["model"]) else None)}
+                  for row in _candidates(jobs)]
+    focus = list(dialogue.current_focus()) if dialogue is not None else []
+
+    def choices(models=None) -> str:
+        """되물을 때 보여 줄 자재 후보: 이름(색, 지금 위치)."""
+        rows = []
+        for row in candidates:
+            if models is not None and row["model"] not in models:
+                continue
+            color = "·".join(row.get("korean_colors") or ())
+            where = row.get("location_label") or "위치 확인 안 됨"
+            rows.append(f"{row.get('korean') or row['model']}({color + ', ' if color else ''}{where})")
+        return " / ".join(rows)
+
+    def which(reason: str, models=None) -> str:
+        return f"{reason} — 어느 자재인지 말해 주세요: {choices(models)}"
+
+    result = classifier.classify(utterance, candidates, places, context={"focus": focus},
+                                 original=original)
     info = {"intent": result.intent, "material_id": result.material_id,
             "source_resource": result.source_resource,
             "destination_resource": result.destination_resource,
             "confidence": result.confidence, "ok": result.ok,
             "failure": result.failure, "reason": result.reason,
+            "model_reason": getattr(result, "model_reason", ""),
             "model_id": result.model_id, "raw": result.raw,
             "latency_sec": result.latency_sec,
             "min_confidence": classifier.min_confidence}
     if not result.ok:
-        return fallback(result.reason, info)
+        # 호출 실패·형식 오류·시간 초과·낮은 확신·unknown — 실행하지 않고 되묻는다.
+        return fallback(which(result.reason), info)
     # 모델은 오인식 보정 후보를 낼 수 있지만, 발화에 명시된 자재와 충돌하면
     # 어느 쪽이 맞는지 사람이 다시 말해야 한다. 확인 카드도 만들지 않는다.
     workcell = getattr(jobs, "workcell", None) or {}
@@ -299,16 +355,62 @@ def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
                              or result.material_id not in spoken_materials):
         return fallback("제가 이렇게 들었습니다: " + utterance
                         + ". 해석한 자재가 발화와 달라 다시 확인해 주세요", info)
-    if source == "stt_final" and result.intent in ("transfer", "return") \
-            and not spoken_materials:
+    # 색으로 가리켰으면 그 색으로 **등록된** 자재여야 한다. 같은 색이 여럿이면 고르지 않는다.
+    from server.material_colors import stray_color_words
+    colored: set[str] = set()
+    for word, models in _color_materials(registry, stray_color_words(said or utterance)).items():
+        if not models:
+            return fallback(f"'{word}'이 어느 자재인지 정할 수 없습니다 — 자재 이름이나 등록된"
+                            " 색으로 말해 주세요", info)
+        colored.update(models)
+    if not spoken_materials and colored:
+        names = ", ".join(str((jobs.materials.get(m) or {}).get("korean") or m)
+                          for m in sorted(colored))
+        if len(colored) != 1:
+            return fallback(which(f"말한 색에 맞는 자재가 여럿입니다({names})", colored), info)
+        if result.material_id not in colored:
+            return fallback(f"해석한 자재가 말한 색과 다릅니다 — 말한 색의 자재는 {names}입니다."
+                            " 다시 말해 주세요", info)
+    # 이름도 색도 없이 고른 자재는 대화 맥락(직전에 말한 자재 하나)일 때만 받는다.
+    grounded = bool(spoken_materials or colored)
+    if (not grounded and result.material_id is not None
+            and focus != [result.material_id]):
+        return fallback(which("발화에 자재 이름·색이 없고 대화 맥락으로도 정할 수 없습니다"), info)
+    if not grounded and result.material_id is None and result.intent in ("transfer", "move_slot"):
+        return fallback(which("옮길 자재를 정할 수 없습니다"), info)
+    # 말한 출발지가 지금 위치와 다르면 옮기지 않는다(관측·기록이 기준이다).
+    current = locations.get(result.material_id) if result.material_id else None
+    if result.source_resource and current and result.source_resource != current:
+        return fallback(f"말한 출발지({place_label(places, result.source_resource)})와 자재의 지금"
+                        f" 위치({place_label(places, current)})가 다릅니다 — 위치를 확인해 다시"
+                        " 말해 주세요", info)
+    if source == "stt_final" and result.intent in ("transfer", "return", "move_slot") \
+            and not grounded:
         return fallback("제가 이렇게 들었습니다: " + utterance
                         + ". 어느 자재인지 다시 말해 주세요", info)
     if result.intent == "transfer" and result.material_id is None:
         return fallback("어느 자재를 옮길지 알 수 없습니다 — A·B·C 자재 중 하나를"
                         " 말해 주세요", info, decision=ASK)
-    from server.sim_demo_places import SURFACE, resolve as resolve_place
+    from server.sim_demo_places import (
+        CONVEYOR,
+        CONVEYOR_SLOT,
+        PALLET,
+        SURFACE,
+        resolve as resolve_place,
+    )
     target = resolve_place(places, result.destination_resource)
-    if result.intent == "transfer" and target is not None and target.kind == SURFACE:
+    intent = result.intent
+    if intent == "move_slot":
+        # 빈자리 이동은 기존 동작으로만 바꾼다 — 새 실행 경로를 만들지 않는다.
+        here = resolve_place(places, current)
+        if target is None or target.kind not in (SURFACE, CONVEYOR_SLOT, CONVEYOR):
+            return fallback("어느 빈자리로 옮길지 알 수 없습니다 — 컨베이어 몇 번 칸이나"
+                            " 작업대 빈 곳처럼 말해 주세요", info)
+        if target.kind != SURFACE and (here is None or here.kind != PALLET):
+            return fallback("컨베이어 칸 사이 이동은 'C자재를 컨베이어 3번 칸으로 옮겨줘'처럼"
+                            " 자재 이름과 칸을 말해 주세요", info)
+        intent = "transfer"
+    if intent == "transfer" and target is not None and target.kind == SURFACE:
         # 분류기가 정한 것은 자재·표면뿐이다. 빈 위치는 서버가 계산·검증한다.
         # 발화가 그 표면을 **말했을 때만** 받는다 — "바닥 빈 곳"을 작업대로 바꿔 읽은
         # 실측(2026-10-02)이 있다. 말하지 않은 표면을 모델이 골라 주지 않는다.
@@ -334,11 +436,11 @@ def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
     # 목적지를 **모델이 말했거나 발화가 말했을 때만** 이송으로 올린다. 둘 다
     # 없으면 목적지를 서버가 대신 골라 준 것이 된다(실측: "작업대에 올려줘"가
     # "컨베이어 1번 위치로 옮기겠습니다"로 바뀌었다).
-    if result.intent == "transfer" \
+    if intent == "transfer" \
             and result.destination_resource is None \
             and not mentions_conveyor(utterance, workcell):
         return fallback(SIM_TARGET_HINT, info, decision=ASK)
-    if source == "stt_final" and result.intent == "transfer":
+    if source == "stt_final" and intent == "transfer":
         spoken = spoken_places(utterance, workcell, jobs.slots)
         if not spoken["conveyor"] and not spoken["slot"]:
             return fallback("제가 이렇게 들었습니다: " + utterance
@@ -347,14 +449,14 @@ def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
     # 아니고, 확인 카드도 만들지 않는다.
     # 발화가 부른 팔레트를 그대로 넘긴다 — 규칙 경로와 같은 "엉뚱한 팔레트"
     # 검사를 분류기 경로에서도 받게 한다(빈 dict를 넘기면 그 검사가 꺼진다).
-    checked = decide({"intent": result.intent, "decision": RUN,
+    checked = decide({"intent": intent, "decision": RUN,
                       "material": result.material_id,
                       "source": result.source_resource,
                       "destination": result.destination_resource,
                       "mentioned_pallets": named_pallets(utterance, workcell)},
                      jobs.status(), jobs.materials, jobs.slots, places)
     if checked.get("decision") != RUN:
-        return ({"decision": checked.get("decision", BLOCK), "intent": result.intent,
+        return ({"decision": checked.get("decision", BLOCK), "intent": intent,
                  "material": checked.get("material") or result.material_id,
                  "reason": checked.get("reason"), "job_spec": None,
                  "intent_result": info},
@@ -861,6 +963,12 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
         return answer(403, decision=BLOCK,
                       reason="시뮬레이션 시연을 쓸 수 없다: "
                              + str(getattr(ctx.runtime, "sim_demo_disabled_reason", "")))
+    from server.sim_demo_commands import is_stop_command
+    if is_stop_command(normalized):
+        # 정지는 **다른 모든 해석보다 먼저**다 — 색·맥락·배치 해석과 Qwen을 거치지 않는다.
+        # (전에는 맥락 해석이 "그거 멈춰"를 ASK로 먼저 끝낼 수 있었다.)
+        return answer(200, decision=STOP, intent="stop",
+                      stop=jobs.request_stop(reason="sim_demo_command_stop"))
     workcell = getattr(jobs, "workcell", None) or {}
     places = getattr(jobs, "places", ()) or ()
     # 색으로 가리킨 자재 → 셀이 선언한 자재 이름. 정하지 못하면 고르지 않고 묻는다.
@@ -893,8 +1001,19 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
                               if resolution.applied else None}
     if resolution.decision:
         reason = resolution.reason
-        return answer(200 if resolution.decision == ASK else 409,
-                      decision=resolution.decision, intent=None, material=None,
+        if resolution.decision == ASK:
+            # 맥락 해석이 끝내지 못했다("그거"·"저쪽" 등). 바로 끝내지 않고 Qwen에 묻는다.
+            # 서버 검증을 통과해 확인 카드가 나올 때만 그것을 쓰고, 아니면 원래 질문 그대로
+            # 되묻는다 — 맥락 해석이 걸어 둔 되묻기(빈칸 채우기) 흐름을 깨지 않는다.
+            classified, code = _classify(
+                ctx, jobs, normalized, source, ASK, reason, said=utterance,
+                registry=registry, dialogue=dialogue,
+                original=str(payload.get("utterance") or ""))
+            if classified.get("decision") == CONFIRM:
+                return answer(code, **classified)
+            return answer(200, decision=ASK, intent=None, material=None, reason=reason,
+                          intent_result=classified.get("intent_result"))
+        return answer(409, decision=resolution.decision, intent=None, material=None,
                       reason=reason)
     if resolution.applied:
         utterance = resolution.text
@@ -916,11 +1035,17 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
             and any(v in compact for v in MOVE_VERBS)
             and "자재" not in compact
             and not re.search(r"컨베이어|팔레트|\d+번", compact)):
-        # 자재도 목적지도 없이 지시어만으로 옮기라는 말은 무엇·어디를 정할 수 없다.
-        # 목적지가 있는 지시어("그거 컨베이어로")는 기존대로 분류기 + 확인 카드다.
-        return answer(200, decision=ASK, intent=None, material=None,
-                      reason="어느 자재를 어디로 옮길지 알 수 없습니다 — 자재 이름과 위치로"
-                             " 말해 주세요")
+        # 자재도 목적지도 없이 지시어만으로 옮기라는 말 — 규칙으로는 정할 수 없다.
+        # 바로 끝내지 않고 Qwen에 대화 맥락과 함께 묻는다. 서버가 근거(이름·색·맥락)를
+        # 다시 보므로, 가리킬 자재가 없으면 결국 되묻는다(실행하지 않는다).
+        vague_reason = "어느 자재를 어디로 옮길지 알 수 없습니다 — 자재 이름과 위치로 말해 주세요"
+        classified, status_code = _classify(
+            ctx, jobs, normalized, source, ASK, vague_reason,
+            said=utterance, registry=registry, dialogue=dialogue,
+            original=str(payload.get("utterance") or ""))
+        return answer(status_code, **{"decision": ASK, "intent": None, "material": None,
+                                      "reason": vague_reason, "job_spec": None,
+                                      **classified})
     # 표면만 말한 놓기("A자재를 작업대 빈 곳에 놔"). 자리는 서버가 계산한다.
     from server.sim_free_spot import detect as detect_free_spot, surfaces_of
     free_spot = detect_free_spot(normalized, workcell, surfaces_of(jobs))
@@ -987,21 +1112,34 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
     decision = decide(parsed, jobs.status(), jobs.materials, jobs.slots, places)
     fields = {k: decision.get(k) for k in ("decision", "intent", "material", "reason",
                                            "job_spec")}
+    from server.material_colors import stray_color_words
+    stray = stray_color_words(utterance)
+    colored = _color_materials(registry, stray)
+    color_models = {m for models in colored.values() for m in models}
+    if (decision.get("decision") == RUN and color_models
+            and (decision.get("job_spec") or {}).get("material") not in color_models):
+        # 규칙이 자재를 정했지만 발화의 색과 맞지 않는다(예: 자재 없는 복귀가 컨베이어의
+        # 다른 자재를 고른 경우). 규칙 결과를 쓰지 않고 Qwen 해석·검증으로 넘긴다.
+        decision = {**decision, "decision": ASK, "job_spec": None,
+                    "reason": "말한 색과 규칙이 고른 자재가 다릅니다"}
+        fields = {k: decision.get(k) for k in ("decision", "intent", "material", "reason",
+                                               "job_spec")}
     if decision.get("decision") in (ASK, PASS_THROUGH):
         # 모호한 **자재 작업** 발화만 분류기로 보낸다. 자재 작업처럼 보이지 않으면
         # 그대로 둔다 — PASS_THROUGH는 화면이 기존 계획 생성으로 가져간다.
-        if looks_like_material_work(normalized, workcell):
-            from server.material_colors import stray_color_words
-            stray = stray_color_words(utterance)
-            if stray:
+        if looks_like_material_work(normalized, workcell) or colored:
+            unknown = [word for word in stray if not colored.get(word)]
+            if unknown:
                 # 등록되지 않은 색 표현을 LLM이 자재로 고르게 두지 않는다.
                 return answer(200, **{**fields, "decision": ASK,
-                                      "reason": f"'{stray[0]}'이 어느 자재인지 정할 수"
+                                      "reason": f"'{unknown[0]}'이 어느 자재인지 정할 수"
                                                 " 없습니다 — 자재 이름이나 등록된 색으로"
                                                 " 말해 주세요"})
+            # 규칙이 끝내지 못한 자재 작업(ASK·PASS_THROUGH) — Qwen에 묻고 서버가 검증한다.
             classified, status_code = _classify(
                 ctx, jobs, normalized, source, decision["decision"],
-                decision.get("reason"))
+                decision.get("reason"), said=utterance, registry=registry,
+                dialogue=dialogue, original=str(payload.get("utterance") or ""))
             return answer(status_code, **{**fields, **classified})
         return answer(200, **fields)
     if decision.get("decision") != RUN:

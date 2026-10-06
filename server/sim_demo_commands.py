@@ -154,6 +154,12 @@ def spoken_places(text: str, workcell: Mapping[str, Any],
             "conveyor": mentions_conveyor(text, workcell)}
 
 
+def is_stop_command(text: str) -> bool:
+    """정지 낱말("멈춰"·"정지"·"스톱")이 있는가. 다른 해석보다 먼저 본다 — LLM을 거치지 않는다."""
+    normalized = _normalize(text)
+    return bool(normalized) and any(word in normalized for word in _STOP_WORDS)
+
+
 def parse_command(text: str, workcell: Mapping[str, Any],
                   slots: Sequence[Any] = ()) -> dict:
     """발화만 보고 의도와 **말한 자리**를 정한다. 상태는 보지 않는다(`decide`)."""
@@ -161,7 +167,7 @@ def parse_command(text: str, workcell: Mapping[str, Any],
     if not normalized:
         return {"intent": None, "decision": PASS_THROUGH, "material": None,
                 "reason": "발화가 비어 있다"}
-    if any(word in normalized for word in _STOP_WORDS):
+    if is_stop_command(normalized):
         # 정지는 다른 해석보다 먼저다. 계획·LLM을 거치지 않는다.
         return {"intent": "stop", "decision": STOP, "material": None}
     aliases = material_aliases(workcell)
@@ -241,7 +247,10 @@ def _spoken_route(intent: str, spoken: Mapping[str, Any]) -> dict:
 #: 자연어 이송을 분류기로 보내기 위해서다. "복귀"는 여전히 없다(일반 명령의
 #: "안전 위치로 복귀"와 구분되지 않는다).
 _MATERIAL_WORK_HINTS = ("자재", "컨베이어", "블록", "물건", "박스", "자리",
+                        "물체", "모형", "벨트",
                         "이어서", "이어가", "재개", "계속해")
+#: 분류기로 보낼지 정할 때만 더 보는 옮김 동사. 규칙 해석(`_TRANSFER_VERBS`)은 바꾸지 않는다.
+_CLASSIFIER_ONLY_VERBS = ("보내", "치워")
 
 
 #: 컨베이어 자원 id. 셀 설정이 선언한 한글 이름을 여기서 찾는다.
@@ -291,6 +300,7 @@ def looks_like_material_work(text: str, workcell: Mapping[str, Any]) -> bool:
         return True
     hinted = any(word in normalized for word in _MATERIAL_WORK_HINTS)
     acting = (any(verb in normalized for verb in _TRANSFER_VERBS)
+              or any(verb in normalized for verb in _CLASSIFIER_ONLY_VERBS)
               or any(word in normalized for word in _BARE_RETURN_WORDS))
     return hinted and acting
 

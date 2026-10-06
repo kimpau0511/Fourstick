@@ -51,15 +51,18 @@ def body(payload):
 def answer(content):
     """분류기가 낼 JSON 한 줄.
 
-    스키마는 **선언형 작업 다섯 칸**이다(`server/sim_demo_intent.FIELDS`).
-    테스트를 읽기 쉽게 `intent`로 적어도 `action`으로 옮겨 주고, 말하지 않은
-    자리는 `None`으로 채운다 — 자리를 시험하는 테스트는 직접 적는다.
+    스키마는 **선언형 작업 여섯 칸**이다(`server/sim_demo_intent.FIELDS`).
+    예전 이름(`action`·`source_resource`·`destination_resource`)으로 적어도 새 이름으로
+    옮기고, 말하지 않은 자리는 `None`, 근거는 빈 문자열로 채운다.
     """
     payload = dict(content)
-    if "intent" in payload:
-        payload["action"] = payload.pop("intent")
-    payload.setdefault("source_resource", None)
-    payload.setdefault("destination_resource", None)
+    for old, new in (("action", "intent"), ("source_resource", "source_id"),
+                     ("destination_resource", "destination_id")):
+        if old in payload:
+            payload[new] = payload.pop(old)
+    payload.setdefault("source_id", None)
+    payload.setdefault("destination_id", None)
+    payload.setdefault("reason", "")
     return json.dumps(payload, ensure_ascii=False)
 
 
@@ -276,7 +279,7 @@ class RoutingTest(ClockBase):
 
 
 class ConfirmFlowTest(ClockBase):
-    AMBIGUOUS = "팔레트에 있는 물건 하나 컨베이어로 옮겨줘"
+    AMBIGUOUS = "주황 모형을 컨베이어로 옮겨줘"
 
     def ask_for_confirmation(self, confidence=0.91):
         self.with_classifier(answer({"intent": "transfer",
@@ -383,7 +386,7 @@ class ConfirmFlowTest(ClockBase):
 
 
 class ClassifierFailureTest(ClockBase):
-    AMBIGUOUS = "팔레트에 있는 물건 하나 컨베이어로 옮겨줘"
+    AMBIGUOUS = "주황 모형을 컨베이어로 옮겨줘"
 
     def assert_no_job(self, payload, decision):
         self.assertEqual(payload["decision"], decision)
@@ -731,7 +734,7 @@ class SlotAssignmentTest(ClockBase):
         self.with_classifier(answer({"intent": "transfer",
                                      "material_id": "material_a",
                                      "confidence": 0.95}))
-        _, payload = self.command("팔레트에 있는 물건 하나 컨베이어로 옮겨줘")
+        _, payload = self.command("주황 모형을 컨베이어로 옮겨줘")
         self.assertEqual(payload["decision"], "CONFIRM")
         self.assertEqual(self.job_count, 0)
         pending = payload["confirmation"]
@@ -746,7 +749,7 @@ class SlotAssignmentTest(ClockBase):
         self.with_classifier(answer({"intent": "transfer",
                                      "material_id": "material_a",
                                      "confidence": 0.95}))
-        _, payload = self.command("팔레트에 있는 물건 하나 컨베이어로 옮겨줘")
+        _, payload = self.command("주황 모형을 컨베이어로 옮겨줘")
         _, confirmed = self.confirm(payload["confirmation"]["token"])
         self.assertEqual(confirmed["decision"], "RUN")
         self.assertEqual(confirmed["slot"], "slot_1")
@@ -795,7 +798,7 @@ class NaturalPlaceTest(SlotAssignmentTest):
     def test_every_verified_slot_can_be_named_from_speech(self):
         for name in ("slot_1", "slot_2", "slot_3"):
             with self.subTest(slot=name):
-                status, payload = self.task("저 자리에 올려줘", destination=name)
+                status, payload = self.task("주황 모형을 저 자리에 올려줘", destination=name)
                 self.assertEqual(payload["decision"], "CONFIRM")
                 self.assertEqual(payload["slot"], name)
                 self.confirm(payload["confirmation"]["token"], "cancel")
@@ -877,7 +880,7 @@ class ReadinessTest(SlotAssignmentTest):
     검사하지 않은 것을 통과로 보여 주면 근거 없이 확인을 누르게 된다.
     """
 
-    def ready_for(self, utterance="팔레트에 있는 물건 하나 컨베이어로 옮겨줘", material="material_a"):
+    def ready_for(self, utterance="주황 모형을 컨베이어로 옮겨줘", material="material_a"):
         self.with_classifier(answer({"intent": "transfer",
                                      "material_id": material, "confidence": 0.95}))
         _, payload = self.command(utterance)
@@ -933,7 +936,7 @@ class ReadinessTest(SlotAssignmentTest):
             self.hold(model, slot)
         self.with_classifier(answer({"intent": "transfer",
                                      "material_id": "material_a", "confidence": 0.95}))
-        _, payload = self.command("팔레트에 있는 물건 하나 컨베이어로 옮겨줘")
+        _, payload = self.command("주황 모형을 컨베이어로 옮겨줘")
         self.assertEqual(payload["decision"], "BLOCK")
         self.assertIsNone(payload["confirmation"])
         self.assertIn("모두 찼습니다", payload["reason"])
@@ -984,7 +987,6 @@ class DestinationSubstitutionTest(SlotAssignmentTest):
     def test_naming_the_conveyor_still_works(self):
         """검증된 발화는 그대로 통과한다 — 회귀 방지."""
         for utterance in ("주황색 거 컨베이어에 올려줘",
-                          "팔레트에 있는 물건 하나 컨베이어로 옮겨줘",
                           "아직 안 옮긴 주황 물건 컨베이어 쪽에 갖다 놔줘"):
             with self.subTest(utterance=utterance):
                 self.classified_transfer()
