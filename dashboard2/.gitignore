@@ -7,3 +7,6 @@ test-results/
 # 이 PC 전용 설정(예: VITE_COMMAND_MODE=general) — 팀 기본값을 바꾸지 않는다
 .env.local
 .env.*.local
+# nginx 실행 중 생기는 파일
+deploy/logs/
+deploy/temp/
