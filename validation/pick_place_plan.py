@@ -673,8 +673,14 @@ def stage_attachment(stage: PickPlaceStage, bindings: CellBindings):
 
 def check_stages(
     stages: Sequence[PickPlaceStage], *, bindings: CellBindings, client,
+    obstacles: Sequence[Any] = (),
 ) -> tuple[tuple[StageCheck, ...], tuple[PlanFinding, ...]]:
-    """단계별로 관절 제한·충돌을 planning scene에 묻는다."""
+    """단계별로 관절 제한·충돌을 planning scene에 묻는다.
+
+    `obstacles`: planning scene을 바꾸지 않고 함께 넣는 탐침(로봇에 붙인 `AttachedObject`,
+    닿아도 되는 링크 없음). scene이 실제 자재 위치를 아직 반영하지 않았을 때(예: 다른 자재가
+    방금 놓인 자리) 그 자재를 장애물로 넣는다. 탐침과의 접촉은 모두 충돌이다.
+    """
     checks: list[StageCheck] = []
     findings: list[PlanFinding] = []
     for stage in stages:
@@ -697,8 +703,11 @@ def check_stages(
             ))
             continue
         try:
-            validity = (client.check_state(joints, attached=[attached])
-                        if attached is not None else client.check_state(joints))
+            extra = list(obstacles)
+            validity = (client.check_state(joints, attached=[attached, *extra])
+                        if attached is not None
+                        else client.check_state(joints, attached=extra) if extra
+                        else client.check_state(joints))
         except Exception as exc:  # noqa: BLE001 — 검사 실패를 통과로 쓰지 않는다
             checks.append(StageCheck(
                 stage=stage.stage, label=stage.label, checked=False,
@@ -822,6 +831,7 @@ def check_path(
     stages: Sequence[PickPlaceStage], *, bindings: CellBindings, client,
     start_joints: Mapping[str, float] | None = None,
     step_rad: float = PATH_STEP_RAD,
+    obstacles: Sequence[Any] = (),
 ) -> tuple[tuple[StageCheck, ...], tuple[PlanFinding, ...], int]:
     """단계 사이 경로 표본을 `check_stages`와 **같은 규칙**으로 검사한다.
 
@@ -830,7 +840,8 @@ def check_path(
     from dataclasses import replace as dc_replace
 
     samples = path_samples(stages, start_joints=start_joints, step_rad=step_rad)
-    checks, findings = check_stages(samples, bindings=bindings, client=client)
+    checks, findings = check_stages(samples, bindings=bindings, client=client,
+                                    obstacles=obstacles)
     # 사유 문구에는 표본 이름("… 경로 i/n")이 들어 있다.
     tagged = tuple(dc_replace(f, key=f"path:{f.key}") for f in findings)
     return checks, tagged, len(samples)

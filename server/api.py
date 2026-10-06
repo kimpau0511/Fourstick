@@ -43,6 +43,8 @@ from core.geometry import GeometryDecision, GeometryRequest, GeometryVerdict
 from planning.attempt_runner import persist_attempts, run_planning
 from planning.slot_extractor import extract_slots
 from server.runtime import Runtime
+from server.sim_pick_place import POLL_SEC as TRANSFER_POLL_SEC
+from server.sim_pick_place import execute_transfer, gate_transfer, transfer_units
 from storage.records import (
     ApprovalDecision,
     ApprovalRecord,
@@ -67,6 +69,7 @@ from validation.execution_permit import PermitContext, check_execution_permit
 from validation.geometry_check import check_geometry, geometry_rule_result
 from validation.place_intent import evaluate_place_intent
 from validation.outcome_verifier import (
+    HoldOutcome,
     StopOutcome,
     finalize_plan_result,
     hold_requirement,
@@ -232,6 +235,32 @@ class GateOutcome:
             "geometry": self.geometry.to_dict(),
             "bindings": dict(self.bindings),
         }
+
+
+def _release_goal_when_idle(jobs, goal_id: str) -> None:
+    """이송 작업이 끝날 때까지 기다렸다가 예약을 푼다(작업 중에는 풀지 않는다).
+
+    확인 간격은 이송 실행 중 상태를 읽는 간격과 같다(`sim_pick_place.POLL_SEC`).
+    """
+    while not jobs.release_goal(goal_id):
+        if jobs.running() is None and jobs._goal_reservation != goal_id:
+            return
+        time.sleep(TRANSFER_POLL_SEC)
+
+
+def _transfer_rule(transfer: dict) -> dict:
+    """transfer 판정 → 관문 규칙 표의 한 줄. 화면·기록이 같은 형식으로 본다."""
+    status = {"ALLOW": RuleStatus.PASS, "ASK": RuleStatus.INSUFFICIENT_DATA,
+              "BLOCK": RuleStatus.BLOCK}[transfer["decision"]]
+    reason = transfer.get("reason")
+    return {
+        "code": "C-TRANSFER", "status": status.value, "message": transfer["detail"],
+        "reason_code": None if reason is None else reason.value,
+        "recoverable": transfer["decision"] == "ASK",
+        "transfer": {k: v for k, v in transfer.items()
+                     if k in ("unit", "material_model", "source", "destination", "route",
+                              "payload", "findings")},
+    }
 
 
 def _aggregate_gate(
@@ -773,6 +802,18 @@ class Api:
         decision, reason, detail = _aggregate_gate(
             safety_decision, consistency.to_dict(), capability_status, geometry
         )
+        # pick/place는 transfer 한 단위로 묶어 공통 이송 계약·적재 범위로 판정한다
+        # (`server/sim_pick_place.py`). 더 강한 판정을 낮추지 않는다.
+        transfer = gate_transfer(runtime, plan)
+        if transfer is not None:
+            capability_rules.append(_transfer_rule(transfer))
+            verdict = transfer["decision"]
+            if verdict == "BLOCK" and decision is not ValidationDecision.BLOCK:
+                decision = ValidationDecision.BLOCK
+                reason, detail = transfer["reason"], transfer["detail"]
+            elif verdict == "ASK" and decision is ValidationDecision.ALLOW:
+                decision = ValidationDecision.ASK
+                reason, detail = transfer["reason"], transfer["detail"]
         # 놓기(place) 요청인데 놓을 물체가 확인되지 않았으면 되묻는다.
         #
         # 발화가 "…에 내려놔"처럼 놓기 의도인데 모델이 물체를 빼고 단순 이동
@@ -1278,22 +1319,43 @@ class Api:
                 "전체 정지가 걸려 있다 — 새 계획을 요청하면 정지 래치가 풀린다",
             )
 
-        lease = runtime.cell_execution.try_acquire(
-            owner="general_execute", operation_id=plan_id)
-        if lease is None:
-            active = runtime.cell_execution.current()
-            active_detail = ""
-            if active is not None:
-                active_detail = (f" (owner={active.owner}, "
-                                 f"operation_id={active.operation_id})")
-            raise ApiError(
-                409, ReasonCode.EXEC_GOAL_REJECTED,
-                f"다른 작업 셀 실행이 진행 중이다{active_detail}"
-                " — 로봇은 하나이므로 동시에 실행하지 않는다",
-            )
+        # pick/place가 있는 계획은 이송 실행기(별도 프로세스)가 transfer를 맡는다. 셀 임대는
+        # 그 실행기의 **부모 예약**으로 잡아, 이송 작업이 같은 임대 아래에서 돈다(시연
+        # 목표 실행과 같은 방식). 예약은 이송이 끝난 뒤에만 풀린다.
+        transfer_goal = None
+        lease = None
+        opened = getattr(runtime, "sim_pick_place", None)
+        if opened is not None and opened.enabled and transfer_units(plan.steps).units:
+            jobs = runtime.sim_demo_jobs
+            transfer_goal = f"genexec_{plan_id}"
+            if jobs is None or not jobs.reserve_goal(transfer_goal, owner="general_execute"):
+                transfer_goal = None
+                active = runtime.cell_execution.current()
+                raise ApiError(
+                    409, ReasonCode.EXEC_GOAL_REJECTED,
+                    "이송 실행기를 예약하지 못했다 — 다른 작업 셀 실행이 진행 중이거나"
+                    " 복구 확인이 필요하다"
+                    + ("" if active is None
+                       else f" (owner={active.owner}, operation_id={active.operation_id})"),
+                )
+        else:
+            lease = runtime.cell_execution.try_acquire(
+                owner="general_execute", operation_id=plan_id)
+            if lease is None:
+                active = runtime.cell_execution.current()
+                active_detail = ""
+                if active is not None:
+                    active_detail = (f" (owner={active.owner}, "
+                                     f"operation_id={active.operation_id})")
+                raise ApiError(
+                    409, ReasonCode.EXEC_GOAL_REJECTED,
+                    f"다른 작업 셀 실행이 진행 중이다{active_detail}"
+                    " — 로봇은 하나이므로 동시에 실행하지 않는다",
+                )
         try:
             return self._run_execution(
-                session_id=session_id, bundle=bundle, approval=approval
+                session_id=session_id, bundle=bundle, approval=approval,
+                transfer_goal=transfer_goal,
             )
         finally:
             finished = self.running_execution_id
@@ -1301,7 +1363,16 @@ class Api:
                 if finished is not None:
                     self._active_executions.pop(finished, None)
             self.running_execution_id = None
-            runtime.cell_execution.release(lease)
+            if transfer_goal is not None:
+                jobs = runtime.sim_demo_jobs
+                if not jobs.release_goal(transfer_goal):
+                    # 이송 작업이 아직 돈다(예외로 빠져나온 경우) — 셀을 열지 않고, 작업이
+                    # 끝난 뒤에만 예약을 푼다.
+                    threading.Thread(target=_release_goal_when_idle,
+                                     args=(jobs, transfer_goal), daemon=True,
+                                     name=f"release-{transfer_goal}").start()
+            else:
+                runtime.cell_execution.release(lease)
 
     def _require_matching_bindings(
         self, approval: ApprovalRecord, gate: GateOutcome
@@ -1345,7 +1416,8 @@ class Api:
                 )
 
     def _run_execution(
-        self, *, session_id: str, bundle: PlanBundle, approval: ApprovalRecord
+        self, *, session_id: str, bundle: PlanBundle, approval: ApprovalRecord,
+        transfer_goal: str | None = None,
     ) -> dict:
         runtime = self.runtime
         plan = bundle.plan
@@ -1508,6 +1580,11 @@ class Api:
                     return ReasonCode.EXEC_CANCELED
             return None
 
+        # pick/place 묶음(transfer)은 이송 실행기가 한 번에 실행한다. 덮는 계획 스텝마다
+        # 같은 결과를 기록한다 — 스텝을 따로 실행했다고 적지 않는다(`executed_by`).
+        shape = transfer_units(plan.steps) if transfer_goal is not None else None
+        unit = shape.units[0] if shape is not None and shape.units else None
+        transfer_result: ExecutionResult | None = None
         for index, step in enumerate(plan.steps, start=1):
             interrupted = interruption()
             if interrupted is not None:
@@ -1515,7 +1592,13 @@ class Api:
                 motion_completed = False
                 target_reached = False
                 break
-            result = _run_step(adapter, step)
+            if unit is not None and index in unit.steps:
+                if transfer_result is None:
+                    transfer_result = execute_transfer(
+                        runtime, unit, goal_id=transfer_goal, interruption=interruption)
+                result = transfer_result
+            else:
+                result = _run_step(adapter, step)
             runtime.repository.append_result(execution_id, result, self.now())
             row = {
                 "index": index, "skill": step.skill, "args": dict(step.args),
@@ -1543,6 +1626,12 @@ class Api:
                                 ExecutionState.STOPPED):
                 break
 
+        # 이송 실행기가 정지로 끝났으면(다른 경로의 정지 요청 포함) 정지로 기록한다.
+        if (interrupted is None and transfer_result is not None
+                and transfer_result.state is ExecutionState.STOPPED):
+            interrupted, step_ran = ReasonCode.EXEC_STOPPED, True
+            interrupted_step = unit.steps[0]
+            motion_completed = target_reached = False
         if interrupted is not None:
             go(ExecutionState.STOPPING, interrupted)
             final = ExecutionResult(
@@ -1562,9 +1651,21 @@ class Api:
             # 요구되지 않으면 `adapter.state()`를 호출하지 않는다 — 없는 관측을
             # 확인 불가로 적지도, 성공으로 바꾸지도 않기 위해서다(8-09).
             requirement = hold_requirement(plan, runtime.skill_catalog)
-            snapshot = adapter.state() if requirement.required else None
-            hold_observation_performed = snapshot is not None
-            outcome = verify_terminal_hold(plan, snapshot)
+            if transfer_result is not None:
+                # 이송 실행기가 놓기(고정 장치 해제)와 최종 위치를 관측으로 확인했다.
+                # 시뮬레이션 관측이며, 이 계획의 목표 파지 상태(없음)와 대조한다.
+                snapshot = None
+                hold_observation_performed = True
+                released = (transfer_result.task_succeeded
+                            and transfer_result.evidence.get("detached") is True)
+                outcome = HoldOutcome(
+                    verified=released, matched=released and plan.terminal_hold is None,
+                    expected=plan.terminal_hold, observed=None,
+                    reason=None if released else ReasonCode.EXEC_UNVERIFIABLE)
+            else:
+                snapshot = adapter.state() if requirement.required else None
+                hold_observation_performed = snapshot is not None
+                outcome = verify_terminal_hold(plan, snapshot)
             # 정지 관측: 스텝 결과에서 모은다(요청 접수가 아니라 관측 기준).
             stop_rows = [row for row in step_results
                          if (row.get("evidence") or {}).get("stop_request")

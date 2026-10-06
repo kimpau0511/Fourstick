@@ -546,7 +546,9 @@ class LlmProviderModel(BaseModel):
     provenance: dict[str, str]
 
 
-def load_llm_provider_config(payload: dict[str, Any]) -> LlmProviderConfig:
+def load_llm_provider_config(
+    payload: dict[str, Any], *, base_url_override: str | None = None,
+) -> LlmProviderConfig:
     """LLM 공급자 접속 설정을 읽는다.
 
     **API Key를 받지 않는다.** 키가 들어 있는 환경변수 이름(`api_key_env`)만
@@ -574,9 +576,18 @@ def load_llm_provider_config(payload: dict[str, Any]) -> LlmProviderConfig:
                 f"structured_output이 {raw!r}다 — 허용: {allowed}",
             ) from None
 
+    # 모델 서버 주소는 배치(같은 PC·다른 PC)에 따라 바뀐다. 서버 경계에서 받은
+    # 명시적 값을 쓰고, 덮어쓴 사실은 근거에 남긴다. 로더가 환경을 직접 읽지 않는다.
+    base_url = m.base_url
+    provenance = dict(m.provenance)
+    override = (base_url_override or "").strip()
+    if override:
+        base_url = override
+        provenance["base_url"] = f"서버 설정으로 덮어씀 (파일 값 {m.base_url})"
+
     return _meaning(
         lambda: LlmProviderConfig(
-            config_version=m.config_version, base_url=m.base_url,
+            config_version=m.config_version, base_url=base_url,
             model_id=m.model_id, quantization=m.quantization,
             max_model_len=m.max_model_len, max_tokens=m.max_tokens,
             request_timeout_sec=m.request_timeout_sec,
@@ -584,7 +595,7 @@ def load_llm_provider_config(payload: dict[str, Any]) -> LlmProviderConfig:
             thinking_mode=thinking(m.thinking_mode),
             structured_output=structured(m.structured_output),
             api_key_env=m.api_key_env, verify_model_id=m.verify_model_id,
-            provenance=dict(m.provenance),
+            provenance=provenance,
         ),
         "llm_provider",
     )

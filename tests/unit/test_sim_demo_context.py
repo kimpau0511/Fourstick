@@ -47,6 +47,18 @@ class ResolveTest(unittest.TestCase):
         self.assertIsNone(resolve("A자재를 원래 자리로 돌려놔", facts=facts(material_a="slot_1"),
                                   context=None).decision)
 
+    def test_drop_midway_question_and_quantity_do_not_run(self):
+        # 규칙만으로 RUN이 되던 문장(2026-09-30 실측).
+        self.assertEqual(resolve("A자재 컨베이어로 옮기다가 중간에 놔버려", facts=facts(),
+                                 context=None).decision, "BLOCK")
+        for text in ("A자재를 컨베이어에 올려놓을 수 있을까", "C자재 컨베이어에 놔줄 수 있지?",
+                     "A자재 두 개 컨베이어에 올려", "C자재 3개 컨베이어로"):
+            with self.subTest(text=text):
+                self.assertEqual(resolve(text, facts=facts(), context=None).decision, "ASK")
+        # 요청형 "~줄래"는 되묻지 않는다.
+        self.assertIsNone(resolve("B자재를 컨베이어로 옮겨줄래", facts=facts(),
+                                  context=None).decision)
+
     def test_stt_uncertainty_asks(self):
         low = resolve("B 자재를 컨베이어 2번에 놓아줘", facts=facts(), context=None,
                       source="stt_final", stt_confidence=0.42)

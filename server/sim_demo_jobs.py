@@ -44,8 +44,9 @@ from validation.simulation_demo_state import (
     DEFAULT_PATH,
     HELD_ON_TARGET,
     ON_PALLET,
-    OBJECT_HELD,
+    ON_SURFACE,
     SimulationDemoState,
+    checkpoint_resumable,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,7 +55,7 @@ JOBS_DIR = ROOT / "reports" / "workcell" / "sim_demo_jobs"
 #: 시연 스크립트가 보는 외부 정지 요청 파일(`demo_workcell_pick_place.STOP_REQUEST`).
 STOP_REQUEST = Path("/tmp/forstick2_workcell/sim_demo_stop_request.json")
 
-ACTIONS = ("transfer", "return", "move", "route", "resume_preflight", "resume",
+ACTIONS = ("transfer", "return", "move", "route", "spot", "resume_preflight", "resume",
            "restore", "reconcile")
 #: 자재를 고르지 않는 셀 전체 작업. 로봇에 명령을 보내지 않는다.
 CELL_ACTIONS = ("reconcile",)
@@ -63,6 +64,7 @@ ACTION_LABELS = {
     "return": "원래 슬롯 복귀",
     "move": "컨베이어 칸 → 다른 칸 직접 이송",
     "route": "팔레트가 끼는 이송(다른 팔레트·팔레트↔칸)",
+    "spot": "표면 빈 위치에 놓기(서버가 계산·검증한 자리)",
     "resume_preflight": "resume 사전검증",
     "resume": "체크포인트에서 이어서 이송",
     "restore": "원래 자리로 복구(순간 이동)",
@@ -190,6 +192,7 @@ def available_actions(status: Mapping[str, Any], model: str,
     checkpoint = status.get("checkpoint") or {}
     has_checkpoint = (checkpoint.get("model") == model
                       and model in (status.get("checkpoints") or []))
+    resumable = has_checkpoint and checkpoint_resumable(checkpoint)[0]
     available = status.get("available") is True
     any_checkpoint = bool(status.get("checkpoints"))
     if slots:
@@ -202,15 +205,16 @@ def available_actions(status: Mapping[str, Any], model: str,
     return {
         "transfer": can_transfer,
         "return": row.get("state") == HELD_ON_TARGET,
-        "resume_preflight": has_checkpoint and checkpoint.get("object_state") == OBJECT_HELD,
-        "resume": has_checkpoint and checkpoint.get("object_state") == OBJECT_HELD,
+        "resume_preflight": resumable,
+        "resume": resumable,
         "restore": bool(row) or has_checkpoint
                    or model in (status.get("checkpoint_unavailable") or {}),
     }
 
 
 def build_argv(action: str, material: Mapping[str, Any] | None,
-               checkpoint_id: str | None, slot: str | None = None) -> list[str]:
+               checkpoint_id: str | None, slot: str | None = None,
+               spot_path: str | None = None, source: str | None = None) -> list[str]:
     """시연 스크립트 인자. **슬롯은 서버가 정해서 넘긴다** — 스크립트가 고르지
     않고, 모델(LLM)이 좌표를 만들 자리도 없다."""
     if action == "reconcile":
@@ -224,6 +228,12 @@ def build_argv(action: str, material: Mapping[str, Any] | None,
     if action == "return":
         return [material["support_model"], model, "--return-held-to-origin",
                 *slot_args]
+    if action == "spot":
+        # 자리·자세는 서버가 계산·검증해 파일로 넘긴다. 실행기가 FK·관측·MoveIt으로 다시 본다.
+        if not spot_path or not source:
+            raise ValueError("빈 위치 놓기에는 출발지와 자리 파일이 필요하다")
+        return [material["support_model"], model, "--route-from", source,
+                "--route-to-spot", spot_path]
     if action in ("move", "route"):
         # slot = "출발>도착". 서버가 잠금 안에서 기록·점유·계약으로 정한 값이다.
         source, _, destination = str(slot or "").partition(">")
@@ -240,6 +250,22 @@ def build_argv(action: str, material: Mapping[str, Any] | None,
     if action == "restore":
         return [material["support_model"], model, "--restore-only"]
     raise ValueError(action)
+
+
+#: 실행기가 정지 요청 기준 시각(`EXTERNAL_STOP.since`)을 정한 **바로 뒤** 콘솔에 찍는 줄
+#: (`scripts/demo_workcell_pick_place.py` main). 이 줄 뒤에 쓴 정지 요청은 인정된다.
+EXECUTOR_ARMED_MARK = "[원본 로그]"
+#: 정지 요청을 다시 쓰는 간격(s). 실행기가 기준 시각을 정하기까지(실측 약 0.26 s)보다 길고,
+#: 단계 사이 정지 확인 주기보다 짧게 둔다.
+STOP_REASSERT_SEC = 0.5
+
+
+def _executor_armed(job: Mapping[str, Any]) -> bool:
+    try:
+        return EXECUTOR_ARMED_MARK in Path(job["console_path"]).read_text(
+            encoding="utf-8", errors="replace")
+    except (OSError, KeyError, TypeError):
+        return False
 
 
 def parse_progress(console: str) -> list[dict]:
@@ -270,6 +296,7 @@ class SimDemoJobs:
                  grasp_config: Mapping[str, Any] | None = None,
                  poses_config: Mapping[str, Any] | None = None,
                  cell_execution: CellExecutionManager | None = None,
+                 surfaces_config: Mapping[str, Any] | None = None,
                  process_identity: Callable[[int], dict] = _linux_process_identity,
                  process_probe: Callable[[Mapping[str, Any]],
                                          tuple[str, str]] = _probe_process_identity):
@@ -283,7 +310,9 @@ class SimDemoJobs:
         self.slots = load_slots(grasp_config or {})
         # 자연어 pick/place에서 **말할 수 있는 자리**의 전부. 셀 설정과 검증된
         # 슬롯에서만 만든다 — 여기 없는 자리는 존재하지 않는 자리다.
-        self.places = declared_places(workcell, self.slots, poses_config)
+        # 빈 위치 놓기를 허용한 표면 선언(매니페스트 `surfaces`). 없으면 그 기능이 꺼진다.
+        self.surfaces = dict(surfaces_config or {})
+        self.places = declared_places(workcell, self.slots, poses_config, self.surfaces)
         self.state = SimulationDemoState(state_path)
         self.jobs_dir = Path(jobs_dir)
         self.stop_request = Path(stop_request)
@@ -465,8 +494,11 @@ class SimDemoJobs:
             name=f"sim-demo-recovered-{job_id}", daemon=True)
         watcher.start()
 
-    def reserve_goal(self, goal_id: str) -> bool:
-        """Atomically reserve the sim-demo runner and shared cell for a goal."""
+    def reserve_goal(self, goal_id: str, *, owner: str = "sim_demo_goal") -> bool:
+        """Atomically reserve the sim-demo runner and shared cell for a goal.
+
+        ``owner`` names who holds the shared cell lease (the general ``/v1/execute``
+        path reserves with its own owner while its transfer child job runs)."""
         if not goal_id:
             raise ValueError("goal_id is required")
         with self._lock:
@@ -477,7 +509,7 @@ class SimDemoJobs:
             if self._current is not None or self._goal_reservation is not None:
                 return False
             lease = self.cell_execution.try_acquire(
-                owner="sim_demo_goal", operation_id=goal_id)
+                owner=owner, operation_id=goal_id)
             if lease is None:
                 return False
             self._goal_reservation = goal_id
@@ -569,6 +601,10 @@ class SimDemoJobs:
                 location_of[model] = record_slot(row)
             elif row.get("state") == ON_PALLET:
                 location_of[model] = row.get("pallet")
+            elif row.get("state") == ON_SURFACE and (row.get("spot") or {}).get("id"):
+                # 표면 빈 위치. 선언된 자리가 아니므로 이 자재를 출발지로 쓰는 이송은
+                # 계약이 막는다(자리 모름) — 다른 자재의 도착 점유 판단에만 쓰인다.
+                location_of[model] = row["spot"]["id"]
             else:
                 return None
         return WorldView(location_of=location_of, blocked=frozenset(blocked),
@@ -632,7 +668,8 @@ class SimDemoJobs:
     def start(self, action: str, material: str | None = None,
               checkpoint_id: str | None = None, slot: str | None = None,
               *, requested_slot: str | None = None,
-              goal_id: str | None = None, route: tuple[str, str] | None = None) -> dict:
+              goal_id: str | None = None, route: tuple[str, str] | None = None,
+              spot: Mapping[str, Any] | None = None) -> dict:
         """Start one job with its conveyor slot decided under the cell lease.
 
         ``slot`` is retained as an internal compatibility argument, but it is never
@@ -731,6 +768,20 @@ class SimDemoJobs:
                         if plan is None:
                             raise SimDemoJobError(409, f"{found[0].code}: {found[0].detail}")
                         slot = f"{route[0]}>{route[1]}"
+                    elif action == "spot":
+                        # 확인 뒤 기록이 바뀌었으면 시작하지 않는다(출발지·자리 점유).
+                        if not spot or not spot.get("spot_id") or not spot.get("source"):
+                            raise SimDemoJobError(400, "빈 위치 계획이 없다")
+                        world = self.transfer_world()
+                        if world is None:
+                            raise SimDemoJobError(409, "확정되지 않은 자재 기록이 있다")
+                        if world.location_of.get(material) != spot["source"]:
+                            raise SimDemoJobError(
+                                409, f"{material}의 기록 위치가 {spot['source']}가 아니다"
+                                     f"({world.location_of.get(material)}) — 다시 말해 주세요")
+                        if any(m != material and where == spot["spot_id"]
+                               for m, where in world.location_of.items()):
+                            raise SimDemoJobError(409, "그 빈 위치를 다른 자재가 차지했다")
                     elif action in ("resume", "resume_preflight") and \
                             (objects.get(material) or {}).get("pallet"):
                         # 팔레트로 가던 이송의 재개 — 목적지는 체크포인트에 묶여 있다.
@@ -744,13 +795,23 @@ class SimDemoJobs:
                 self.jobs_dir.mkdir(parents=True, exist_ok=True)
                 report_path = self.jobs_dir / f"{job_id}.json"
                 console_path = self.jobs_dir / f"{job_id}.console"
+                spot_path = None
+                if action == "spot":
+                    spot_path = self.jobs_dir / f"{job_id}_spot.json"
+                    spot_path.write_text(json.dumps(dict(spot), ensure_ascii=False, indent=1),
+                                         encoding="utf-8")
                 argv = [str(self.script),
-                        *build_argv(action, spec, checkpoint_id, slot),
+                        *build_argv(action, spec, checkpoint_id, slot,
+                                    spot_path=None if spot_path is None else str(spot_path),
+                                    source=(spot or {}).get("source")),
                         "--out", str(report_path)]
                 job = {"job_id": job_id, "action": action,
                        "action_label": ACTION_LABELS[action], "material": material,
                        "goal_id": goal_id,
                        "checkpoint_id": checkpoint_id, "slot": slot,
+                       "spot": None if spot is None else {
+                           k: spot.get(k) for k in ("spot_id", "surface_id", "center_m",
+                                                    "source")},
                        "slot_label": (None if not slot else " → ".join(
                            slot_label(part) for part in str(slot).split(">"))),
                        "argv": argv,
@@ -863,21 +924,48 @@ class SimDemoJobs:
                                if not line.startswith(("[INFO", "[WARN"))][-console_lines:]
         return job
 
+    def _write_stop_request(self, job_id: str, reason: str) -> dict:
+        request = {"request_id": f"simstopreq_{uuid.uuid4().hex[:12]}",
+                   "requested_at": self._clock(), "reason": reason, "job_id": job_id}
+        self.stop_request.parent.mkdir(parents=True, exist_ok=True)
+        # 쓰는 쪽이 여럿일 수 있다(요청 경로·재전송 스레드) — 임시 파일 이름을 겹치지 않게 한다.
+        temp = self.stop_request.with_suffix(f".{request['request_id']}.tmp")
+        temp.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
+        os.replace(temp, self.stop_request)
+        return request
+
     def request_stop(self, *, reason: str) -> dict:
-        """실행 중인 시연 작업에 정지를 **요청**한다. 프로세스를 죽이지 않는다."""
+        """실행 중인 시연 작업에 정지를 **요청**한다. 프로세스를 죽이지 않는다.
+
+        실행기는 **자기 시작 시각 뒤에 쓰인** 요청만 인정한다(오래된 요청 무시). 작업을 띄운
+        직후(실측 약 0.26 s) 쓴 요청은 버려지므로, 실행기가 기준 시각을 정한 것(콘솔
+        `EXECUTOR_ARMED_MARK`)이 보일 때까지 다시 쓰고, 보인 뒤 한 번 더 쓴다
+        (2026-10-02 독립 검증 MAJOR-1, 시연 경로 실측 재현).
+        """
         running = self.running()
         if running is None:
             return {"requested": False, "detail": "실행 중인 시연 작업이 없다"}
-        request = {"request_id": f"simstopreq_{uuid.uuid4().hex[:12]}",
-                   "requested_at": self._clock(), "reason": reason,
-                   "job_id": running["job_id"]}
-        self.stop_request.parent.mkdir(parents=True, exist_ok=True)
-        temp = self.stop_request.with_suffix(".tmp")
-        temp.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
-        os.replace(temp, self.stop_request)
+        request = self._write_stop_request(running["job_id"], reason)
         with self._lock:
             self._jobs[running["job_id"]]["stop_requested"] = request
+        if not _executor_armed(running):
+            threading.Thread(target=self._reassert_stop, args=(running["job_id"], reason),
+                             daemon=True, name=f"stop-{running['job_id']}").start()
         return {"requested": True, **request}
+
+    def _reassert_stop(self, job_id: str, reason: str) -> None:
+        while True:
+            time.sleep(STOP_REASSERT_SEC)
+            with self._lock:
+                job = dict(self._refresh(job_id)) if job_id in self._jobs else None
+            if job is None or job["status"] != "running":
+                return
+            armed = _executor_armed(job)
+            request = self._write_stop_request(job_id, reason)
+            with self._lock:
+                self._jobs[job_id]["stop_requested"] = request
+            if armed:
+                return
 
     # ── 상태 ────────────────────────────────────────────────────────────
     def status(self) -> dict:

@@ -13,6 +13,15 @@ ADAPTER_ENTRY_POINT = "build_workcell_adapter"
 TRANSFER_CAPABILITY_ENTRY_POINT = "build_transfer_capability"
 #: 3D 작업 셀 화면(읽기 전용)의 이 로봇 몫(URDF·메시·관절 이름).
 VIEW_SOURCE_ENTRY_POINT = "build_view_source"
+#: 표면 빈 위치 놓기 자세 계산·검증기(`robots/fr3_gazebo/free_spot.py`).
+FREE_SPOT_ENTRY_POINT = "build_free_spot_planner"
+
+
+def build_free_spot_planner(*, capability=None):
+    """빈 위치 놓기 계산기. 출발 쪽 자세는 이 셀의 transfer Capability가 준다."""
+    from robots.fr3_gazebo.free_spot import Fr3FreeSpotPlanner
+
+    return Fr3FreeSpotPlanner.from_files(capability or build_transfer_capability())
 
 
 def build_view_source() -> dict:
@@ -89,6 +98,13 @@ def build_workcell_adapter(
                 pose_name = resources.safe_home_pose
             elif skill == "move":
                 target = args.get("to") or args.get("from")
+                if target:
+                    pose_name = resources.move_pose.get(target)
+            elif skill in ("pick", "place"):
+                # 일반 경로의 pick/place는 이송 실행기가 한 단위로 실행한다. 스텝 단위 기하
+                # 검사에는 그 위치의 **접근 자세**만 넘긴다 — 파지·놓기 단계(든 물체 포함
+                # 충돌·경로 표본)는 이송 실행기가 실행 직전에 다시 검사한다.
+                target = args.get("from") if skill == "pick" else args.get("to")
                 if target:
                     pose_name = resources.move_pose.get(target)
             elif skill == "stop":

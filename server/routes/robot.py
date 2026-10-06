@@ -39,6 +39,10 @@ async def handle(
         "simulation_e2e": runtime.simulation_e2e,
         # 사용자 시연 셀 상태(상태 유지·수동 reset 필요). 위 E2E 요약과 별도다.
         "simulation_demo": runtime.simulation_demo_status(),
+        # 일반 경로 pick/place를 **시뮬레이션 셀에서만** 열었는지와 그 근거(시뮬레이션 전용
+        # Profile·관문). 위 `declared`의 실물 구성 판정과 다른 축이다.
+        "simulation_pick_place": (None if getattr(runtime, "sim_pick_place", None) is None
+                                  else runtime.sim_pick_place.to_dict()),
         # 시뮬레이터 검증 기록(목표 vs 관측). 실제 로봇 실행과 섞지 않는다.
         "verifications": [
             record.to_dict()

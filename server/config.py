@@ -4,8 +4,9 @@
 바꿀 수 있고, 기본 바인딩은 **localhost**다 — 개발용 서버를 실수로 네트워크에
 열지 않기 위해서다.
 
-LLM 접속 설정은 여기 없다. `examples/config/valid_llm_provider_qwen3.json`처럼
-공급자 설정 파일에서 읽고, **브라우저에는 내려보내지 않는다.**
+LLM 접속 계약은 `examples/config/valid_llm_provider_qwen3.json` 같은 공급자 설정
+파일에서 읽는다. 배치마다 다른 주소만 환경변수로 덮어쓸 수 있으며, 어느 값도
+**브라우저에는 내려보내지 않는다.**
 """
 
 from __future__ import annotations
@@ -36,12 +37,16 @@ class ServerConfig:
     db_path: Path = ROOT / "reports" / "web.sqlite3"
     #: LLM 공급자 설정 파일 이름. 없으면 계획 생성을 사용할 수 없는 상태로 둔다.
     llm_config_name: str = "valid_llm_provider_qwen3.json"
+    #: 배치마다 다른 LLM 서버 주소. None이면 공급자 설정 파일 값을 쓴다.
+    llm_base_url_override: str | None = None
     #: 실제 로봇 Profile 파일. 없으면 '로봇 미설정'으로 표시한다.
     robot_profile_name: str | None = None
     #: 개발용 Fake Adapter를 등록할지. 실제 로봇이 없을 때 흐름을 시험하기 위함.
     enable_fake_robot: bool = True
     #: STT 실제 모델을 쓸지. 끄면 STT를 사용할 수 없는 상태로 표시한다.
     enable_stt: bool = True
+    #: STT 모델 계약 파일 이름. 기본은 검증된 저사양 구성이다.
+    stt_model_config_name: str = "valid_stt_model_lowspec.json"
     #: 세션 유휴 만료 시간(초). 넘으면 만료로 표시하고 계획을 복원하지 않는다.
     #: 개발용 기본값이며 운영 정책이 정해지면 정책 파일로 옮긴다.
     session_idle_timeout_sec: float = 3600.0
@@ -97,6 +102,7 @@ class ServerConfig:
             llm_config_name=os.environ.get(
                 "FORSTICK2_LLM_CONFIG", "valid_llm_provider_qwen3.json"
             ),
+            llm_base_url_override=os.environ.get("FORSTICK2_LLM_BASE_URL") or None,
             robot_profile_name=os.environ.get("FORSTICK2_ROBOT_PROFILE") or None,
             enable_fake_robot=flag("FORSTICK2_FAKE_ROBOT", True),
             enable_workcell_robot=flag("FORSTICK2_WORKCELL_ROBOT", False),
@@ -104,6 +110,9 @@ class ServerConfig:
                 "FORSTICK2_WORKCELL_MANIFEST",
                 ROOT / "config" / "workcell" / "active.json"),
             enable_stt=flag("FORSTICK2_STT", True),
+            stt_model_config_name=os.environ.get(
+                "FORSTICK2_STT_MODEL_CONFIG", "valid_stt_model_lowspec.json"
+            ),
             session_idle_timeout_sec=float(
                 os.environ.get("FORSTICK2_SESSION_IDLE_SEC", "3600")
             ),

@@ -125,6 +125,20 @@ class Fr3TransferCapability:
         return RoutePoses(source_approach=src_approach, grasp=grasp,
                           destination_approach=dst_approach, place=place)
 
+    def source_poses(self, material_id: str, source: str) -> tuple[PoseRef, PoseRef] | Finding:
+        """출발지 접근·파지 자세(검증된 것만). 도착지가 선언된 자리가 아닐 때(표면 빈 위치)
+        출발 쪽만 계약에서 받는다 — 도착 쪽 자세는 그 자리에서 따로 계산·검증한다."""
+        where = self._locations.get(source)
+        if where is None:
+            return Finding("BLOCK", "plan.unknown_resource", f"셀에 없는 출발지다: {source}")
+        grasp = self._grasp_at(material_id, where)
+        if isinstance(grasp, Finding):
+            return grasp
+        approach = self._approach_at(where)
+        if isinstance(approach, Finding):
+            return approach
+        return approach, grasp
+
     # ── 자세(검증된 것만) ─────────────────────────────────────────
     def _missing(self, what: str, material: str, where: Location) -> Finding:
         return Finding("BLOCK", "geometry.grasp_pose_unavailable",

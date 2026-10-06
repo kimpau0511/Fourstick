@@ -15,12 +15,14 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import dataclasses
 import json
+import os
 import sys
 import tempfile
 import threading
 import time
 import types
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -478,6 +480,17 @@ class RoutesTest(JobsBase):
 
         self.assertTrue(ServerConfig.from_env().enable_sim_demo_web)
         self.assertTrue(ServerConfig().enable_sim_demo_web)
+
+    def test_deployment_model_settings_are_collected_by_server_config(self):
+        from server.config import ServerConfig
+
+        with patch.dict(os.environ, {
+            "FORSTICK2_LLM_BASE_URL": "http://model-host:8000/v1",
+            "FORSTICK2_STT_MODEL_CONFIG": "valid_stt_model_turbo_gpu.json",
+        }):
+            config = ServerConfig.from_env()
+        self.assertEqual(config.llm_base_url_override, "http://model-host:8000/v1")
+        self.assertEqual(config.stt_model_config_name, "valid_stt_model_turbo_gpu.json")
 
     def test_attach_gate(self):
         from server.runtime import _attach_sim_demo_jobs

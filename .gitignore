@@ -16,3 +16,4 @@ html/임시.txt
 
 # 측정 산출물 — 스크립트로 재생성된다
 reports/
+config/local.env

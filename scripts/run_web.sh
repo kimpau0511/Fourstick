@@ -10,6 +10,21 @@
 # 포트가 이미 쓰이고 있으면 **임의로 종료하지 않고** 점유 프로세스를 보고한다.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# 이 PC 전용 설정(LLM 주소·STT 모델 등). Git에 넣지 않는다 — 예시는 config/local.env.example.
+# 파일 안에서 ${VAR:-기본값} 형태로 쓰므로 명령줄에서 준 값이 우선한다.
+if [[ -f "$ROOT/config/local.env" ]]; then
+  set -a; source "$ROOT/config/local.env"; set +a
+  echo "[run_web] 로컬 설정 적용: config/local.env"
+fi
+# STT GPU 추론용 CUDA 라이브러리(cuBLAS·cuDNN) 경로.
+if [[ -n "${FORSTICK2_CUDA_LIB_DIR:-}" ]]; then
+  for d in cublas cudnn cuda_nvrtc; do
+    [[ -d "$FORSTICK2_CUDA_LIB_DIR/$d/lib" ]] \
+      && LD_LIBRARY_PATH="$FORSTICK2_CUDA_LIB_DIR/$d/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  done
+  export LD_LIBRARY_PATH
+fi
 HOST="${FORSTICK2_HOST:-127.0.0.1}"
 PORT="${FORSTICK2_PORT:-8092}"
 
@@ -30,4 +45,5 @@ echo "[run_web] http://${HOST}:${PORT}  (Ctrl+C로 종료)"
 exec "$ROOT/.venv/bin/python" -m uvicorn \
   --factory server.asgi:create_app \
   --host "$HOST" --port "$PORT" \
-  --ws wsproto --no-access-log --app-dir "$ROOT"
+  --ws wsproto --no-access-log --app-dir "$ROOT" \
+  --timeout-graceful-shutdown "${FORSTICK2_GRACEFUL_SHUTDOWN_SEC:-5}"

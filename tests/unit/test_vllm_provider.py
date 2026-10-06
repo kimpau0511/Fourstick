@@ -164,6 +164,17 @@ def make_context(utterance="1번 팔레트에서 A자재를 집어서 들고 있
     )
 
 
+class TestProviderConfigOverride(unittest.TestCase):
+    def test_server_boundary_can_override_only_the_base_url(self):
+        original = load("valid_llm_provider_qwen3.json")
+        config = load_llm_provider_config(
+            original, base_url_override="http://model-host:8000/v1",
+        )
+        self.assertEqual(config.base_url, "http://model-host:8000/v1")
+        self.assertIn(original["base_url"], config.provenance["base_url"])
+        self.assertEqual(config.model_id, original["model_id"])
+
+
 class TestModelIdVerification(unittest.TestCase):
     def test_served_model_is_accepted(self):
         provider = make_provider(FakeTransport())
