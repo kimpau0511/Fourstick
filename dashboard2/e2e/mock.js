@@ -46,6 +46,8 @@ export async function mockBackend(page, { command, confirm, jobs = [], overrides
     ? route.fulfill({ json: fixture('health', overrides.health) }) : route.fallback()));
   await page.route('**/v1/config', (route) => route.fulfill({ json: fixture('config', overrides.config) }));
   await page.route('**/v1/robots', (route) => route.fulfill({ json: fixture('robots', overrides.robots) }));
+  // 서버 이력(/v1/history) — 기본은 빈 목록. overrides.history로 바꾼다.
+  await page.route('**/v1/history**', (route) => route.fulfill({ json: { is_simulated: true, commands: [], sim_jobs: [], ...(overrides.history || {}) } }));
   await page.route((url) => url.pathname.startsWith('/v1/sim-view/'), (route) => (
     pathOf(route.request().url()) === '/v1/sim-view/state'
       ? route.fulfill({ json: fixture('simState', overrides.simState) }) // 3D 모델(/model)은 계속 503 — Gazebo 대체 검사용

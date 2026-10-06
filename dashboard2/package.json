@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "qa": "playwright test",
     "qa:ui": "playwright test --project=ui",
+    "qa:general": "playwright test --project=ui-general",
     "qa:api": "playwright test --project=api",
     "qa:report": "node e2e/report.mjs"
   },

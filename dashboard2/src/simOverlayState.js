@@ -11,7 +11,9 @@ export function overlayOf(cmd) {
   const stopAsked = !!stopNote && stopNote.tone === 'ok';
   const running = (job && job.status === 'running') || (goal && ['running', 'stopping'].includes(goal.status));
   if (running) return stopAsked ? { state: 'stopping', confirmed: false, key: `stopping:${seq}` } : { state: 'running', key: `running:${seq}` };
-  const hit = job && job.report && RESULT_LABELS[job.report.status];
+  // 일반 경로는 실행 최종 상태(job.general.state)가 서버 근거다 — 'stopped'만 정지 확인.
+  if (stopAsked && job && job.general && job.general.state === 'stopped') return { state: 'stopping', confirmed: true, key: `stopped:${seq}`, resultLabel: job.general.label };
+  const hit = job && !job.general && job.report && RESULT_LABELS[job.report.status];
   if (stopAsked && hit && /정지/.test(hit[1])) return { state: 'stopping', confirmed: true, key: `stopped:${seq}`, resultLabel: hit[1] };
   // 목표(여러 단계)는 서버가 최종 status 'stopped'로 끝낸다(server/sim_demo_goals.py FINAL).
   if (stopAsked && !job && goal && goal.status === 'stopped') return { state: 'stopping', confirmed: true, key: `stopped:${seq}`, resultLabel: '목표 정지' };

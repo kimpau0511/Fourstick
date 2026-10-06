@@ -8,7 +8,12 @@ import SimOverlay from './components/SimOverlay.jsx';
 import { NAV } from './nav.js';
 import { useServer } from './server.js';
 import { overlayOf } from './simOverlayState.js';
+import { useGeneralCommand } from './planCommand.js';
 import { useSimCommand } from './simCommand.js';
+
+// 명령 경로. 기본은 시연 명령(결정 1). VITE_COMMAND_MODE=general(이 PC의 .env.local)이면 일반 경로(계획·안전 관문·승인·실행).
+// 빌드마다 고정이라 훅 호출 순서는 바뀌지 않는다.
+const useCommand = import.meta.env.VITE_COMMAND_MODE === 'general' ? useGeneralCommand : useSimCommand;
 import Diagnostics from './pages/Diagnostics.jsx';
 import History from './pages/History.jsx';
 import Home from './pages/Home.jsx';
@@ -61,7 +66,7 @@ function PanelSeparator({ width, onChange }) {
 export default function App() {
   const [closedKey, setClosedKey] = useState(null); // 닫은 시뮬레이션 창의 상태 key — 같은 상태 동안은 다시 열지 않는다
   const server = useServer();
-  const cmd = useSimCommand();
+  const cmd = useCommand();
   const now = useNow();
   const page = usePage();
   const [panelW, setPanelW] = useState(PANEL.def);

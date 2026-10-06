@@ -297,3 +297,57 @@ test.describe('진단·설정·공통', () => {
     await expect(page.locator('body')).toContainText(/제어권|제어중|운전 모드|REMOTE|원격/);
   });
 });
+
+test.describe('서버 이력(/v1/history)', () => {
+  const now = Math.floor(Date.now() / 1000);
+  const history = {
+    commands: [
+      { request_id: 'req-1', utterance: '팔레트 1의 A자재를 집어 컨베이어에 놓아줘', created_at: now - 120, decision: 'allow', execution_id: 'exe-1', execution_started_at: now - 110, final_state: 'stopped' },
+      { request_id: 'req-2', utterance: '금지 구역으로 옮겨', created_at: now - 300, decision: 'block', execution_id: null, execution_started_at: null, final_state: null },
+      { request_id: 'req-3', utterance: '관측 끊긴 실행', created_at: now - 400, decision: 'allow', execution_id: 'exe-3', execution_started_at: now - 390, final_state: 'unknown' },
+    ],
+    sim_jobs: [
+      { job_id: 'simjob_file1', action: 'transfer', action_label: '컨베이어로 이송', material: 'material_a', status: 'simulation_transfer_completed', written_at: new Date((now - 600) * 1000).toISOString() },
+      { job_id: 'simjob_file2', action: 'transfer', action_label: '컨베이어로 이송', material: 'material_c', status: 'some_internal_code', written_at: new Date((now - 700) * 1000).toISOString() },
+    ],
+  };
+
+  test('[UI-RECORD-04][⑭·§14] 서버 요청 기록과 작업 결과 파일이 기록 표에 나오고, 판정·상태는 화면 용어로 바뀐다', async ({ page }) => {
+    await mockBackend(page, { overrides: { history } });
+    await page.goto('/#/history');
+    const table = page.getByRole('table', { name: '명령 기록' });
+    const row = (name) => table.getByRole('row', { name });
+    await expect(row(/A자재를 집어 컨베이어에 놓아줘/)).toContainText('안전 확인됨');
+    await expect(row(/A자재를 집어 컨베이어에 놓아줘/)).toContainText('정지 확인됨');
+    await expect(row(/금지 구역으로 옮겨/)).toContainText('실행 차단');
+    await expect(row(/금지 구역으로 옮겨/)).toContainText('실행 없음');
+    await expect(row(/관측 끊긴 실행/)).toContainText('확인 안 됨'); // unknown을 성공으로 바꾸지 않는다
+    await expect(table).toContainText('A자재'); // 결과 파일 작업 — 자재 한국어 이름
+    await expect(table).toContainText('결과 확인 안 됨'); // 표에 없는 결과 코드는 성공·실패로 지어내지 않는다
+    await expect(table).not.toContainText('some_internal_code');
+    await expect(table).not.toContainText(/\ballow\b|\bblock\b|\bask\b/);
+    // STOP 필터는 서버가 정지를 확인한 요청만 남긴다
+    await page.getByRole('group', { name: '실행 결과' }).getByRole('button', { name: 'STOP' }).click();
+    // 기본 fixture의 '복귀 중 정지' 작업 + 이 요청 — 정지를 확인한 것만 남고 차단·확인 안 됨 요청은 빠진다
+    await expect(table.locator('tbody tr:not(.row-detail)')).toHaveCount(2);
+    await expect(row(/금지 구역으로 옮겨/)).toHaveCount(0);
+    await expect(row(/관측 끊긴 실행/)).toHaveCount(0);
+    await row(/A자재를 집어 컨베이어에 놓아줘/).click();
+    const timeline = page.locator('.timeline');
+    await expect(timeline).toContainText('명령 원문: 팔레트 1의 A자재를 집어 컨베이어에 놓아줘');
+    await expect(timeline.locator('li[data-state="stop"]')).toHaveCount(1);
+  });
+
+  test('[UI-RECORD-05][⑭] 이 화면에서 보낸 명령이 서버 요청 기록에도 있으면 한 줄만, 이력 조회 실패는 표시', async ({ page }) => {
+    const sent = '두 번 나오면 안 되는 명령';
+    await mockBackend(page, { command: { decision: 'BLOCK', reason: 'QA' }, overrides: { history: { commands: [{ request_id: 'req-x', utterance: sent, created_at: Math.floor(Date.now() / 1000), decision: 'block', execution_id: null, final_state: null }] } } });
+    await page.goto('/');
+    await sendCommand(page, sent);
+    await page.getByRole('dialog').getByRole('button', { name: '명령 수정' }).click();
+    await page.goto('/#/history');
+    await expect(page.getByRole('table', { name: '명령 기록' }).getByRole('row', { name: new RegExp(sent) })).toHaveCount(1);
+    await page.route('**/v1/history**', (route) => route.fulfill({ status: 500, json: {} }));
+    await page.reload();
+    await expect(page.getByText(/서버 이력 조회 실패/)).toBeVisible({ timeout: 15000 });
+  });
+});
