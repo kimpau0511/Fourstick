@@ -25,7 +25,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
-from typing import Any, Callable, Sequence
+from typing import Callable, Sequence
 
 from core.capability_profile import CapabilityProfile
 from core.policy import PlanningPolicy
@@ -192,7 +192,6 @@ def run_planning(
     evaluation_run_id: str | None = None,
     evaluation_label: str | None = None,
     evaluation_case_id: str | None = None,
-    slot_grounder: Callable[[Any], Any] | None = None,
 ) -> PlanningRun:
     """정책 안에서 계획을 만든다. 시도마다 기록을 남긴다.
 
@@ -223,7 +222,6 @@ def run_planning(
                     plan_id_factory=plan_id_factory, created_at=started_utc,
                     ttl_sec=ttl_sec, stop_keywords=stop_keywords,
                     schema_version=schema_version, references=references,
-                    slot_grounder=slot_grounder,
                 )
 
             try:

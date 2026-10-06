@@ -741,6 +741,30 @@ CREATE INDEX ix_sim_verification_scene
 """
 
 
+#: 일반 경로 이송 요청의 검증된 작업 의도(`core/task_intent.py`). 요청당 하나, 추가만 한다(트리거 메시지에 END가 든 낱말을 쓰지 않는다 — 문장 분리기가 BEGIN·END 수로 트리거 본문을 묶는다).
+#: 실행 직전 재검증이 계획을 만들 때와 **같은 의도**를 다시 읽는다(모델을 다시 부르지 않는다).
+MIGRATION_0017 = """
+CREATE TABLE request_intents (
+    request_id   TEXT PRIMARY KEY REFERENCES requests(request_id),
+    intent_json  TEXT NOT NULL,
+    interpreter  TEXT NOT NULL,
+    created_at   REAL NOT NULL
+);
+
+CREATE TRIGGER trg_request_intents_no_update
+BEFORE UPDATE ON request_intents
+BEGIN
+    SELECT RAISE(ABORT, '작업 의도 기록은 고칠 수 없다(추가만 한다)');
+END;
+
+CREATE TRIGGER trg_request_intents_no_delete
+BEFORE DELETE ON request_intents
+BEGIN
+    SELECT RAISE(ABORT, '작업 의도 기록은 지울 수 없다(추가만 한다)');
+END;
+"""
+
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "요청·계획·검증·허가·실행·이력 초기 스키마", MIGRATION_0001),
     (2, "확정 요청의 STT 메타데이터 컬럼 추가", MIGRATION_0002),
@@ -758,6 +782,7 @@ MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (14, "시뮬레이터 검증 실행 기록 추가", MIGRATION_0014),
     (15, "MoveIt2 계획·충돌 검사 관측 연결 추가", MIGRATION_0015),
     (16, "STT 원문과 정규화 전사 분리", "ALTER TABLE stt_inferences ADD COLUMN raw_transcript TEXT;"),
+    (17, "일반 경로 검증된 작업 의도 기록 추가", MIGRATION_0017),
 )
 
 CREATE_MIGRATIONS_TABLE = """

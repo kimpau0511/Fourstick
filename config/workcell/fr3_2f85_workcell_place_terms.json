@@ -1,0 +1,24 @@
+{
+  "schema": "forstick2.place_terms/1",
+  "note": [
+    "일반 경로(/v1/plan) 이송 의도에서 쓰는 **상징 목적지**의 등록 표현. 위치 별칭(resource_catalog)과 같은 성격의 선언이다.",
+    "해석(Qwen)이 목적지를 origin·free_slot으로 골라도, 서버는 그 목적지 표현이 여기 등록된 표현을 포함할 때만 받는다(server/plan_intent.py).",
+    "등록되지 않은 표현(예: 셀에 없는 장소 이름)을 상징 목적지로 바꿔 읽지 않게 하기 위해서다 — 2026-10-06 실측: '창고로'를 free_slot으로 읽어 컨베이어로 해소했다.",
+    "free_slot은 일반 경로에서 **컨베이어 빈 칸**만 뜻한다. 발화가 컨베이어를 함께 말해야 받는다(작업대 빈 곳은 일반 경로 밖)."
+  ],
+  "symbols": {
+    "origin": {
+      "meaning": "그 자재의 원래 팔레트(셀 설정의 프레임 부모 = 등록 정보)",
+      "terms": ["원래 자리", "원래 위치", "원래 팔레트", "원위치", "제자리", "처음 자리", "처음 위치"]
+    },
+    "free_slot": {
+      "meaning": "컨베이어의 빈 칸(상태 기록). 칸 번호는 실행 전 검사가 고른다",
+      "requires_location": "loc_conveyor",
+      "terms": ["빈자리", "빈 칸", "비어 있는 자리", "비어 있는 칸"]
+    }
+  },
+  "provenance": {
+    "terms": "시연 명령 규칙(server/sim_demo_commands.py의 복귀 낱말)과 사용자 시험 발화(2026-10-06 8096)에서 모았다. 늘릴 때는 이 파일만 고친다",
+    "free_slot.requires_location": "일반 경로 카탈로그의 빈 칸 개념은 컨베이어 칸뿐이다(fr3_2f85_workcell_resource_catalog.json)"
+  }
+}

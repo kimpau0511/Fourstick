@@ -666,11 +666,31 @@ class Api:
         except StorageError as exc:
             raise ApiError(500, exc.reason, str(exc)) from None
 
-        grounder = self._grounding()
+        # 이송 요청이면 의도 하나로 해석·검증한다(server/plan_intent.py). 계획 생성과 요청↔계획
+        # 일치 검증이 이 의도를 같이 쓴다. 이송이 아니면(위치 이동·홈) 기존 계획 생성 그대로다.
+        decision = self._interpret_intent(text)
+        intent = None
+        provider = runtime.provider
+        if decision is not None and decision.kind in ("ask", "block"):
+            return self._intent_failure(session_id, request_id, text, decision)
+        if decision is not None and decision.kind == "intent":
+            from server.plan_intent import IntentPlanProvider
+
+            intent = decision.intent
+            try:
+                runtime.repository.save_request_intent(
+                    request_id, intent.to_dict(), interpreter=intent.interpreter,
+                    created_at=created_at)
+            except (IntegrityViolation, StorageError) as exc:
+                raise ApiError(500, exc.reason, f"작업 의도를 저장할 수 없다: {exc}") from None
+            termination = getattr(runtime.provider, "termination", None)
+            provider = IntentPlanProvider(
+                intent, final_skill=getattr(termination, "final_skill", None),
+                latency_sec=(decision.interpretation or {}).get("latency_sec"))
         run = run_planning(
             text, request_id=request_id, catalog=runtime.resource_catalog,
             skill_catalog=runtime.skill_catalog, profile=runtime.profile,
-            provider=runtime.provider, policy=runtime.planning_policy,
+            provider=provider, policy=runtime.planning_policy,
             robot_id=runtime.robot_id,
             plan_id_factory=lambda: self._uid("plan"),
             attempt_id_factory=lambda n: f"pa_{request_id}_{n}",
@@ -680,7 +700,6 @@ class Api:
             schema_version=TASK_PLAN_SCHEMA_VERSION,
             stt_inference_id=stt_inference_id,
             execution_path=PlanningExecutionPath.OPERATIONAL,
-            slot_grounder=grounder,
         )
         persist_attempts(runtime.repository, run.attempts)
         attempt_id = run.attempts[-1].planning_attempt_id if run.attempts else None
@@ -731,7 +750,7 @@ class Api:
             if latch_cleared:
                 with self._flag_lock:
                     self._stop_requested = False
-        self._store_validation(plan, run.outcome.slots)
+        self._store_validation(plan, run.outcome.slots, intent)
         bundle = self.bundle_for(
             session_id=session_id, request_id=request_id, plan_id=plan.plan_id
         )
@@ -766,7 +785,7 @@ class Api:
         return None
 
     # ── 관문 (안전 + 리소스 일치 + Capability + 기하) ──────────────────
-    def gate_for(self, plan: TaskPlan, slots) -> GateOutcome:
+    def gate_for(self, plan: TaskPlan, slots, intent=None) -> GateOutcome:
         """네 검증을 같은 입력으로 다시 계산한다. **저장하지 않는다.**
 
         저장된 판정을 읽지 않고 매번 계산하는 이유: 판정의 근거(정책·카탈로그·
@@ -777,7 +796,7 @@ class Api:
         rule_results = evaluate(plan, runtime.safety_policy, runtime.resource_catalog)
         safety_decision = aggregate(rule_results)
         consistency = check_request_plan_consistency(
-            plan=plan, slots=slots, catalog=runtime.resource_catalog
+            plan=plan, slots=slots, catalog=runtime.resource_catalog, intent=intent
         )
         safety_rules = [_rule_dict(r) for r in rule_results]
         safety_rules.append(dict(as_rule_result(consistency), recoverable=False))
@@ -982,13 +1001,13 @@ class Api:
             # 만들지 않기 위해서다.
             raise ApiError(500, exc.reason, f"검증 기록을 남길 수 없다: {exc}") from None
 
-    def _store_validation(self, plan: TaskPlan, slots) -> None:
+    def _store_validation(self, plan: TaskPlan, slots, intent=None) -> None:
         """안전 검증 + 요청↔계획 리소스 일치 검증을 한 묶음으로 저장한다."""
         runtime = self.runtime
         rule_results = evaluate(plan, runtime.safety_policy, runtime.resource_catalog)
         decision = aggregate(rule_results)
         consistency = check_request_plan_consistency(
-            plan=plan, slots=slots, catalog=runtime.resource_catalog
+            plan=plan, slots=slots, catalog=runtime.resource_catalog, intent=intent
         )
         records = [
             RuleResultRecord(
@@ -1077,11 +1096,14 @@ class Api:
             request.utterance, self.runtime.resource_catalog,
             stop_keywords=self.runtime.stt_policy.stop_keywords,
         )
-        # 계획을 만들 때와 같은 근거(등록 색·현재 위치)를 **지금 상태로** 다시 붙인다.
-        grounder = self._grounding()
-        if grounder is not None and not slots.stop_keyword_hit:
-            slots = grounder(slots)
-        gate = self.gate_for(plan, slots)
+        # 계획을 만들 때 저장한 **같은 작업 의도**로 다시 대조한다(모델을 다시 부르지 않는다).
+        stored = self.runtime.repository.get_request_intent(request_id)
+        intent = None
+        if stored is not None:
+            from core.task_intent import TaskIntent
+
+            intent = TaskIntent.from_dict(stored)
+        gate = self.gate_for(plan, slots, intent)
         attempt = repository.planning_attempt_for_plan(plan_id)
         return PlanBundle(
             session_id=session_id, request_id=request_id, plan=plan,
@@ -1768,29 +1790,43 @@ class Api:
         return {"ok": True, **_execution_dict(record, repository)}
 
     # ── 정지와 취소 (계약상 구분) ───────────────────────────────────────
-    def _grounding(self):
-        """서버 검증 근거(등록 색 → 유일한 자재, 현재 위치)를 슬롯에 붙이는 함수. 없으면 None.
-
-        시연 작업 실행기(셀 설정·자재 기록)가 없으면 근거를 더하지 않는다 — 기존 별칭
-        확인만 쓴다. 위치 기록이 확정되지 않았으면 현재 위치 근거를 더하지 않는다.
-        """
+    def _interpret_intent(self, text: str):
+        """이송 의도 해석·검증. 셀 정보(시연 작업 실행기)나 모델 client가 없으면 None(기존 경로)."""
         runtime = self.runtime
         jobs = getattr(runtime, "sim_demo_jobs", None)
-        if jobs is None:
+        client = getattr(runtime.provider, "client", None)
+        if jobs is None or not getattr(jobs, "workcell", None) or client is None:
             return None
-        workcell = getattr(jobs, "workcell", None)
-        if not workcell:
-            return None
-        from server.plan_grounding import ground_slots, object_facts
+        from planning.intent_interpreter import IntentInterpreter
+        from server.plan_intent import cell_facts, decide_intent
 
-        try:
-            world = jobs.transfer_world()
-        except Exception:  # noqa: BLE001 — 위치를 모르면 위치 근거를 더하지 않는다
-            world = None
-        locations = dict(getattr(world, "location_of", None) or {})
-        facts = object_facts(runtime.resource_catalog, workcell, locations)
-        catalog = runtime.resource_catalog
-        return lambda slots: ground_slots(slots, catalog=catalog, facts=facts)
+        from server.plan_intent import load_place_terms
+
+        facts = cell_facts(runtime.resource_catalog, jobs)
+        facts["symbols"] = load_place_terms(runtime.config.workcell_manifest)
+        interp = IntentInterpreter(client=client).interpret(
+            text, facts["materials"], facts["locations"])
+        return decide_intent(interp, text, facts,
+                             min_confidence=runtime.config.sim_demo_intent_min_confidence)
+
+    def _intent_failure(self, session_id: str, request_id: str, text: str, decision) -> dict:
+        """의도 해석·검증에서 끝난 요청(되묻기·차단). 계획을 만들지 않는다 — 실행할 것이 없다."""
+        reason = decision.reason_code or ReasonCode.PLAN_CLARIFICATION_REQUIRED
+        payload = {
+            "ok": False, "session_id": session_id, "request_id": request_id,
+            "planning_attempt_id": None, "reason_code": reason.value,
+            "detail": decision.detail, "clarification": decision.clarification,
+            "decision": "BLOCK" if decision.kind == "block" else "ASK",
+            "recoverable": recoverable(reason),
+            "slots": _slots_dict(extract_slots(
+                text, self.runtime.resource_catalog,
+                stop_keywords=self.runtime.stt_policy.stop_keywords)),
+            "draft_steps": [],
+            "blocked": None, "plan_validation": None,
+            "intent_interpretation": dict(decision.interpretation or {}),
+        }
+        self.emit({"type": "plan_failed", "payload": payload}, session_id=session_id)
+        return payload
 
     def _stop_from_utterance(self, session_id: str, text: str) -> dict:
         """정지 발화 → 전체 정지 요청. `/v1/stop` 라우트와 같은 범위(일반 실행 + 시연 작업)."""

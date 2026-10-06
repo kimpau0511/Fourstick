@@ -412,6 +412,33 @@ class SqliteRepository(Repository):
                 ),
             )
 
+    def save_request_intent(self, request_id: str, intent: dict, *, interpreter: str,
+                            created_at: float) -> None:
+        import json as _json
+
+        payload = _json.dumps(intent, ensure_ascii=False, sort_keys=True)
+        existing = self._conn.execute(
+            "SELECT intent_json FROM request_intents WHERE request_id = ?", (request_id,)
+        ).fetchone()
+        if existing is not None:
+            if existing["intent_json"] == payload:
+                return
+            raise IntegrityViolation(ReasonCode.CONFIG_INVALID,
+                                     f"이미 다른 작업 의도가 저장된 요청: {request_id!r}")
+        self.get_request(request_id)          # 없는 요청을 가리키는 의도를 만들지 않는다
+        with self._tx() as conn:
+            conn.execute(
+                "INSERT INTO request_intents (request_id, intent_json, interpreter, created_at)"
+                " VALUES (?,?,?,?)", (request_id, payload, interpreter, created_at))
+
+    def get_request_intent(self, request_id: str) -> dict | None:
+        import json as _json
+
+        row = self._conn.execute(
+            "SELECT intent_json FROM request_intents WHERE request_id = ?", (request_id,)
+        ).fetchone()
+        return None if row is None else _json.loads(row["intent_json"])
+
     def get_request(self, request_id: str) -> RequestRecord:
         return self._request_from_row(
             self._one(

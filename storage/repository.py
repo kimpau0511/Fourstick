@@ -107,6 +107,16 @@ class Repository(ABC):
     @abstractmethod
     def get_request(self, request_id: str) -> RequestRecord: ...
 
+    # ── 검증된 작업 의도 (append-only, 요청당 하나) ─────────────────────
+    def save_request_intent(self, request_id: str, intent: dict, *, interpreter: str,
+                            created_at: float) -> None:
+        """이송 요청의 검증된 작업 의도를 남긴다. 같은 요청에 다른 내용이면 IntegrityViolation."""
+        raise NotImplementedError
+
+    def get_request_intent(self, request_id: str) -> dict | None:
+        """저장된 작업 의도(dict). 이송 의도가 없는 요청이면 None."""
+        raise NotImplementedError
+
     # ── STT 실행 기록 ───────────────────────────────────────────────────
     # append-only. 갱신·삭제 메서드를 두지 않는다 — 재전사와 모델 교체는 새
     # 기록을 더하고, 어떤 시도가 채택됐는지는 requests가 가리킨다.
