@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { DetailRow, ExpandButton } from '../components/ExpandRow.jsx';
+import { useExpand } from '../components/useExpand.js';
 import Spinner from '../components/Spinner.jsx';
 import { useWidgetPrefs } from '../widgetPrefs.js';
 import './records.css';
@@ -10,6 +12,11 @@ const STATUS = {
   ok: ['정상', 'ok', '●'], warn: ['경고', 'warn', '▲'], fail: ['장애', 'danger', '■'], none: ['수신 없음', 'muted', '?'],
 };
 const WIDGET_ROWS = [['ros2', 'ROS 2'], ['planner', 'PLANNER'], ['safety-plc', 'SAFETY PLC'], ['latency', 'LATENCY']]; // StatusWidget 행 id
+// 내보내기에 넣을 항목(⑲-5). payload의 키는 항목마다 정해져 있다.
+const EXPORT_ITEMS = [
+  ['connection', '연결 상태'], ['services', '서비스 상태'], ['state_changes', '상태 변화 이력'],
+  ['server', '서버 상태(health·정지 진단)'], ['policies', '정책'], ['recent_jobs', '최근 작업'],
+];
 const ORDER = { fail: 0, warn: 1, none: 2, ok: 3 }; // 문제 있는 것 위로
 const stamp = () => Date.now(); // 이벤트 시점 시각(렌더 순수성 규칙 때문에 렌더 밖 함수로 둔다)
 const clock = (ms) => (ms == null ? '—' : new Date(ms).toTimeString().slice(0, 8));
@@ -89,12 +96,15 @@ export default function Diagnostics({ server }) {
     if (id) document.getElementById(`svc-${id}`)?.scrollIntoView({ block: 'center' });
   }, []);
   const services = buildServices(server, scene);
-  const sig = services.map((s) => `${s.id}:${s.status}`).join('|');
+  // 정상인 서비스는 원시값도 sig에 넣는다 — 정상인 동안 바뀐 값도 '마지막 정상' 샘플로 갱신되게(상태가 바뀔 때만이 아니라).
+  const sig = services.map((s) => `${s.id}:${s.status}${s.status === 'ok' ? `:${JSON.stringify(s.raw ?? null)}` : ''}`).join('|');
   const [now, setNow] = useState(() => Date.now());
   // track: 서비스별 현재 상태가 시작된 시각·마지막 정상 시각, 상태 변화 이력(이 화면이 본 것만).
-  const [track, setTrack] = useState({ sig: '', prev: {}, since: {}, lastOk: {}, history: [] });
+  const [track, setTrack] = useState({ sig: '', prev: {}, since: {}, lastOk: {}, lastOkRaw: {}, history: [] });
   const [open, setOpen] = useState({}); // 원시 샘플 펼침(자동으로 펼치지 않는다)
   const [exportJobs, setExportJobs] = useState([]);
+  const [include, setInclude] = useState(() => Object.fromEntries(EXPORT_ITEMS.map(([k]) => [k, true])));
+  const expand = useExpand();
   const urls = useRef([]);
 
   useEffect(() => {
@@ -104,7 +114,7 @@ export default function Diagnostics({ server }) {
   }, []);
 
   if (track.sig !== sig) { // 렌더 중 상태 갱신(React 공식 패턴) — 변화가 있을 때만
-    const next = { sig, prev: { ...track.prev }, since: { ...track.since }, lastOk: { ...track.lastOk }, history: track.history };
+    const next = { sig, prev: { ...track.prev }, since: { ...track.since }, lastOk: { ...track.lastOk }, lastOkRaw: { ...track.lastOkRaw }, history: track.history };
     services.forEach((s) => {
       const before = track.prev[s.id];
       if (before !== s.status) {
@@ -113,7 +123,7 @@ export default function Diagnostics({ server }) {
           next.history = [{ key: `${s.id}-${now}`, at: now, name: s.name, from: before, to: s.status, error: s.error, raw: s.raw, rawBefore: track.rawPrev?.[s.id] }, ...next.history].slice(0, 100);
         }
       }
-      if (s.status === 'ok') next.lastOk[s.id] = now;
+      if (s.status === 'ok') { next.lastOk[s.id] = now; next.lastOkRaw[s.id] = s.raw; } // 이 화면이 본 마지막 정상 원시값(서버 이력 아님)
       else if (before === 'ok') next.lastOk[s.id] = now; // 정상이던 마지막 순간
       next.prev[s.id] = s.status;
     });
@@ -125,6 +135,7 @@ export default function Diagnostics({ server }) {
   const problem = services.some((s) => s.status !== 'ok');
 
   // 서버 API가 아니라 브라우저가 지금 가진 값으로 JSON을 만든다(Blob). 대기→생성 중→완료/실패.
+  const chosen = EXPORT_ITEMS.filter(([k]) => include[k]).map(([k]) => k);
   function exportData() {
     const id = stamp();
     const update = (patch) => setExportJobs((jobs) => jobs.map((j) => (j.id === id ? { ...j, ...patch } : j)));
@@ -133,16 +144,19 @@ export default function Diagnostics({ server }) {
       update({ state: '생성 중' });
       setTimeout(() => {
         try {
+          const all = {
+            connection: { connection: server.conn },
+            services: { services: services.map(({ id, name, status, error, checked, raw }) => ({ id, name, status, error, checked, raw })) },
+            state_changes: { state_changes: track.history },
+            server: { health: server.health, stop_diagnostics: server.robots?.stop_diagnostics },
+            policies: { policies: server.config?.policies },
+            recent_jobs: { recent_jobs: server.simDemo?.recent_jobs },
+          };
           const payload = {
             exported_at: new Date().toISOString(),
             note: '이 화면이 본 값의 사본입니다(서버 내보내기 아님)',
-            connection: server.conn,
-            services: services.map(({ id, name, status, error, checked, raw }) => ({ id, name, status, error, checked, raw })),
-            state_changes: track.history,
-            health: server.health,
-            stop_diagnostics: server.robots?.stop_diagnostics,
-            policies: server.config?.policies,
-            recent_jobs: server.simDemo?.recent_jobs,
+            included: chosen,
+            ...Object.assign({}, ...chosen.map((k) => all[k])),
           };
           const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
@@ -176,7 +190,12 @@ export default function Diagnostics({ server }) {
     </div>
     <div className="rec-head">
       <h2>서비스 상태{problem ? ' · 확인이 필요한 항목이 있습니다' : ''}</h2>
-      <button type="button" className="rec-btn" onClick={exportData}>진단자료 내보내기</button>
+      <div className="rec-group">
+        <div role="group" aria-label="내보낼 항목" className="rec-group">
+          {EXPORT_ITEMS.map(([k, label]) => <label key={k} className="rec-check"><input type="checkbox" checked={include[k]} onChange={(e) => setInclude((v) => ({ ...v, [k]: e.target.checked }))} /> {label}</label>)}
+        </div>
+        <button type="button" className="rec-btn" onClick={exportData} disabled={chosen.length === 0}>진단자료 내보내기</button>
+      </div>
     </div>
     {exportJobs.length > 0 && <div className="card">
       <table className="data-table" aria-label="진단자료 내보내기 작업">
@@ -190,20 +209,26 @@ export default function Diagnostics({ server }) {
     </div>}
     <div className="card">
       <table className="data-table" aria-label="서비스 목록">
-        <thead><tr><th>서비스</th><th>상태</th><th>최근 점검</th><th>마지막 정상</th><th>지속(이 화면 기준)</th><th>최근 오류</th></tr></thead>
-        <tbody>{sorted.map((s) => <tr key={s.id} id={`svc-${s.id}`}>
-          <td>{s.name}</td>
+        <thead><tr><th>서비스</th><th>상태</th><th className="col-extra">최근 점검</th><th className="col-extra">마지막 정상</th><th className="col-extra">지속(이 화면 기준)</th><th>최근 오류</th></tr></thead>
+        <tbody>{sorted.map((s) => {
+          const lastOkText = s.status === 'ok' ? '지금' : track.lastOk[s.id] ? clock(track.lastOk[s.id]) : '이 화면이 본 적 없음';
+          const sinceText = track.since[s.id] ? span(now - track.since[s.id]) : '—';
+          return <Fragment key={s.id}><tr id={`svc-${s.id}`}>
+          <td><ExpandButton open={expand.isOpen(s.id)} onToggle={() => expand.toggle(s.id)} />{s.name}</td>
           <td>{badge(s.status)}</td>
-          <td>{clock(s.checked)}</td>
-          <td>{s.status === 'ok' ? '지금' : track.lastOk[s.id] ? clock(track.lastOk[s.id]) : '이 화면이 본 적 없음'}</td>
-          <td>{track.since[s.id] ? span(now - track.since[s.id]) : '—'}</td>
+          <td className="col-extra">{clock(s.checked)}</td>
+          <td className="col-extra">{lastOkText}</td>
+          <td className="col-extra">{sinceText}</td>
           <td>{s.id === 'camera' && scene.at == null ? <><Spinner size={14} label="카메라 확인 중" /> 확인 중</> : s.error || '—'}
             {s.status !== 'ok' && <div>
               <button type="button" className="rec-btn" aria-expanded={!!open[s.id]} onClick={() => toggle(s.id)}>문제 전후 원시 샘플 보기</button>
-              {open[s.id] && <pre className="rec-pre">{JSON.stringify(s.raw ?? null, null, 2)}</pre>}
+              {open[s.id] && <pre className="rec-pre">{JSON.stringify({ '마지막 정상': track.lastOkRaw[s.id] ?? '이 화면이 본 적 없음', 현재: s.raw ?? null }, null, 2)}</pre>}
             </div>}
           </td>
-        </tr>)}</tbody>
+        </tr>
+        <DetailRow open={expand.isOpen(s.id)} span={3} items={[['최근 점검', clock(s.checked)], ['마지막 정상', lastOkText], ['지속(이 화면 기준)', sinceText]]} />
+        </Fragment>;
+        })}</tbody>
       </table>
     </div>
     <section>

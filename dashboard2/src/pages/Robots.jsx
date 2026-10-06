@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import { DetailRow, ExpandButton } from '../components/ExpandRow.jsx';
+import { useExpand } from '../components/useExpand.js';
 import Spinner from '../components/Spinner.jsx';
 import { LEVEL_LABELS } from '../server.js';
 import './robots.css';
@@ -13,6 +15,8 @@ function operability(server) {
   const why = [];
   if (!health?.robot?.configured) why.push('로봇 미설정');
   if (robots?.stop_diagnostics?.stop_latch_active) why.push('정지 래치 활성');
+  if (server.robotsFailing) why.push('로봇 정보 조회 실패');
+  if (robots?.stop_diagnostics?.available !== true) why.push('정지 진단 확인 안 됨');
   if (conn.status !== 'ok') why.push('서버 연결 확인 안 됨');
   if (!simState || simState.stale) why.push('3D 관측 신선하지 않음');
   return why.length ? `운용 불가 — ${why.join(', ')}` : '운용 가능';
@@ -22,6 +26,7 @@ export default function Robots({ server }) {
   const { health, config, robots, robotStatus } = server;
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState(TABS[0]);
+  const expand = useExpand();
   const [open, setOpen] = useState(false); // 상세(개요·도구 장착 이력·프로파일 버전)는 버튼을 눌러야 펼친다
   const ids = Object.keys(robots?.robots || {});
   const id = ids.includes(selected) ? selected : ids[0];
@@ -36,16 +41,22 @@ export default function Robots({ server }) {
     {!ids.length ? <p className="muted">{!robots && server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p> : <div className="robots-split">
       <div className="card table robots-list">
         <table className="data-table" aria-label="로봇 목록">
-          <thead><tr><th>이름</th><th>모델</th><th>셀</th><th>현재 도구</th><th>운용 여부</th></tr></thead>
+          <thead><tr><th>이름</th><th className="col-extra">모델</th><th className="col-extra">셀</th><th className="col-extra">현재 도구</th><th>운용 여부</th></tr></thead>
           <tbody>{ids.map((rid) => {
             const r = config?.robot?.robot_id === rid ? config.robot : null;
-            return <tr key={rid} aria-selected={rid === id} onClick={() => setSelected(rid)}>
-              <td><button type="button" onClick={() => setSelected(rid)}>{roleName(robots.robots[rid].supported_skills)}</button></td>
-              <td>{robots.robots[rid].profile_id || rid}</td>
-              <td>{r?.workcell?.workcell_id || NONE}</td>
-              <td>{r ? (r.has_gripper ? '그리퍼 장착' : '장착 도구 없음') : NONE}</td>
-              <td>{health?.robot?.robot_id === rid ? (operability(server) === '운용 가능' ? '운용 가능' : '운용 불가') : NONE}</td>
-            </tr>;
+            const model = robots.robots[rid].profile_id || rid;
+            const cell = r?.workcell?.workcell_id || NONE;
+            const tool = r ? (r.has_gripper ? '그리퍼 장착' : '장착 도구 없음') : NONE;
+            return <Fragment key={rid}>
+              <tr aria-selected={rid === id} onClick={() => setSelected(rid)}>
+                <td><ExpandButton open={expand.isOpen(rid)} onToggle={() => expand.toggle(rid)} /><button type="button" onClick={() => setSelected(rid)}>{roleName(robots.robots[rid].supported_skills)}</button></td>
+                <td className="col-extra">{model}</td>
+                <td className="col-extra">{cell}</td>
+                <td className="col-extra">{tool}</td>
+                <td>{health?.robot?.robot_id === rid ? (operability(server) === '운용 가능' ? '운용 가능' : '운용 불가') : NONE}</td>
+              </tr>
+              <DetailRow open={expand.isOpen(rid)} span={2} items={[['모델', model], ['셀', cell], ['현재 도구', tool]]} />
+            </Fragment>;
           })}</tbody>
         </table>
       </div>

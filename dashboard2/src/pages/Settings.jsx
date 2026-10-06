@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import { DetailRow, ExpandButton } from '../components/ExpandRow.jsx';
+import { useExpand } from '../components/useExpand.js';
 import Spinner from '../components/Spinner.jsx';
 import './records.css';
 
@@ -20,19 +22,36 @@ function saveRoutines(list) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch { /* 저장 불가(사생활 보호 창 등) — 이번 화면에서만 유지 */ }
 }
 
-function Personal() {
+// 로봇 이름은 역할 우선(이송 가능하면 "이송 로봇") — 명령 패널과 같은 규칙.
+const robotName = (id, profile) => ((profile?.supported_skills || []).some((k) => k === 'pick' || k === 'place') ? '이송 로봇' : id);
+
+// 사용 스킬은 화면 추정이다 — 문장을 서버가 해석하기 전에는 알 수 없고, 실행 때 서버가 다시 판정한다.
+function skillGuess(text, materials) {
+  const t = text || '';
+  if (materials.some((m) => m.korean && t.includes(m.korean)) && (t.includes('원래 자리') || t.includes('돌려'))) return '복귀';
+  if (t.includes('컨베이어')) return '이송';
+  return '실행 시 판정';
+}
+
+function Personal({ server }) {
   const [routines, setRoutinesState] = useState(loadRoutines);
   const [selected, setSelected] = useState(null);
   const [favOnly, setFavOnly] = useState(false);
+  const [q, setQ] = useState('');
+  const expand = useExpand();
   const [confirming, setConfirming] = useState(false);
   const setRoutines = (list) => { setRoutinesState(list); saveRoutines(list); };
   const current = routines.find((r) => r.id === selected);
   const patch = (change) => setRoutines(routines.map((r) => (r.id === selected ? { ...r, ...change } : r)));
-  const shown = routines.filter((r) => !favOnly || r.fav);
+  const needle = q.trim().toLowerCase();
+  const shown = routines.filter((r) => (!favOnly || r.fav) && (!needle || `${r.name} ${r.text}`.toLowerCase().includes(needle)));
+  const robotMap = server?.robots?.robots || {};
+  const materials = server?.simDemo?.materials || [];
+  const targetName = (id) => (!id ? '실행 시 선택' : robotMap[id] ? robotName(id, robotMap[id]) : `목록에 없음(${id})`);
 
   const add = () => {
     const id = `r${Date.now()}`;
-    setRoutines([...routines, { id, name: '새 루틴', text: '', fav: false }]);
+    setRoutines([...routines, { id, name: '새 루틴', text: '', fav: false, defaultRobot: '' }]);
     setSelected(id); setConfirming(false);
   };
   const remove = () => {
@@ -43,24 +62,40 @@ function Personal() {
   return <>
     <div className="rec-head"><h2>저장 루틴 <small className="muted">이 브라우저에만 저장됩니다</small></h2>
       <div className="rec-group">
+        <input className="rec-input" type="search" aria-label="루틴 검색" placeholder="이름·명령 검색" value={q} onChange={(e) => setQ(e.target.value)} />
         <button type="button" className="rec-chip" aria-pressed={favOnly} onClick={() => setFavOnly(!favOnly)}>즐겨찾기만</button>
         <button type="button" className="rec-btn" onClick={add}>새 루틴</button>
       </div>
     </div>
     <div className="rec-split">
       <div className="card" style={{ flex: 1, minWidth: 0 }}>
-        {shown.length === 0 ? <p className="rec-empty">{routines.length ? '즐겨찾기한 루틴이 없습니다' : '저장한 루틴이 없습니다'}</p> : <table className="data-table" aria-label="저장 루틴 목록">
-          <thead><tr><th>이름</th><th>명령</th><th>즐겨찾기</th></tr></thead>
-          <tbody>{shown.map((r) => <tr key={r.id} tabIndex={0} aria-selected={selected === r.id}
-            onClick={() => { setSelected(r.id); setConfirming(false); }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(r.id); setConfirming(false); } }}>
-            <td>{r.name}</td><td>{r.text || '—'}</td><td>{r.fav ? '★' : '☆'}</td>
-          </tr>)}</tbody>
+        {shown.length === 0 ? <p className="rec-empty">{!routines.length ? '저장한 루틴이 없습니다' : needle ? '검색 결과가 없습니다' : '즐겨찾기한 루틴이 없습니다'}</p> : <table className="data-table" aria-label="저장 루틴 목록">
+          <thead><tr><th>이름</th><th>명령</th><th className="col-extra">사용 스킬</th><th className="col-extra">적용 가능 로봇</th><th className="col-extra">즐겨찾기</th></tr></thead>
+          <tbody>{shown.map((r) => {
+            const skill = skillGuess(r.text, materials);
+            const target = targetName(r.defaultRobot);
+            return <Fragment key={r.id}>
+              <tr tabIndex={0} aria-selected={selected === r.id}
+                onClick={() => { setSelected(r.id); setConfirming(false); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(r.id); setConfirming(false); } }}>
+                <td><ExpandButton open={expand.isOpen(r.id)} onToggle={() => expand.toggle(r.id)} />{r.name}</td><td>{r.text || '—'}</td>
+                <td className="col-extra">{skill}</td><td className="col-extra">{target}</td><td className="col-extra">{r.fav ? '★' : '☆'}</td>
+              </tr>
+              <DetailRow open={expand.isOpen(r.id)} span={2} items={[['사용 스킬', skill], ['적용 가능 로봇', target], ['즐겨찾기', r.fav ? '★' : '☆']]} />
+            </Fragment>;
+          })}</tbody>
         </table>}
       </div>
       {current && <div className="card rec-pad" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }} aria-label="루틴 상세" role="group">
         <label className="rec-field">이름<input className="rec-input" value={current.name} onChange={(e) => patch({ name: e.target.value })} /></label>
         <label className="rec-field">명령 문장<input className="rec-input" value={current.text} onChange={(e) => patch({ text: e.target.value })} /></label>
+        <label className="rec-field">기본 대상
+          <select className="rec-input" aria-label="기본 대상" value={current.defaultRobot || ''} onChange={(e) => patch({ defaultRobot: e.target.value })}>
+            <option value="">지정 안 함</option>
+            {Object.keys(robotMap).map((id) => <option key={id} value={id}>{robotName(id, robotMap[id])}</option>)}
+            {current.defaultRobot && !robotMap[current.defaultRobot] && <option value={current.defaultRobot}>목록에 없음({current.defaultRobot})</option>}
+          </select>
+        </label>
         <div className="rec-group">
           <button type="button" className="rec-chip" aria-pressed={!!current.fav} onClick={() => patch({ fav: !current.fav })}>즐겨찾기</button>
           {confirming
@@ -69,7 +104,7 @@ function Personal() {
               <button type="button" className="rec-btn" onClick={() => setConfirming(false)}>취소</button></>
             : <button type="button" className="rec-btn" onClick={() => setConfirming(true)}>삭제</button>}
         </div>
-        <p className="note muted">루틴은 문장만 저장합니다. 실행은 명령 패널에서 직접 보냅니다.</p>
+        <p className="note muted">기본 대상만 저장합니다. 실행은 명령 패널에서 직접 보내며, 실행 때 로봇·안전 조건을 다시 확인합니다.</p>
       </div>}
     </div>
   </>;
@@ -114,7 +149,7 @@ export default function Settings({ server }) {
       {SECTIONS.map((s) => <button key={s} type="button" aria-current={section === s ? 'page' : undefined} onClick={() => setSection(s)}>{s}</button>)}
     </nav>
     <div className="rec-body">
-      {section === '개인' && <Personal />}
+      {section === '개인' && <Personal server={server} />}
       {section === '운영' && <Operations />}
       {section === '안전·권한' && <Policies server={server} />}
     </div>

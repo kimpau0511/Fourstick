@@ -49,7 +49,7 @@ QA 실패 항목(`문서/QA_결과.md`)을 구현한다. 요구 원문은 `문�
 ## 1단계 — 병렬(파일이 겹치지 않게 나눔)
 
 ### A. 틀(Sidebar·Header·App 레이아웃·반응형) — 파일: `components/Sidebar.jsx`, `components/Header.jsx`, `App.jsx`, `styles.css`
-- 사이드바 하단 **System status 위젯**(가-4·§15): 4행 ROS 2 / PLANNER / SAFETY PLC / LATENCY + 헤더에 "N/4 정상".
+- 사이드바 하단 **System status 위젯**(가-4·§15): 4행 ROS 2 / PLANNER / SAFETY PLC / LATENCY(진단 화면에서 행을 숨길 수 있다) + 헤더에 "N/M 정상"(M = 보이는 행 수, 숨긴 행이 있으면 위젯에 "숨김 K" 표시, 전부 숨기면 "상태 위젯 숨김").
   ROS 2 = robots.stop_diagnostics.available && health.robot.configured, PLANNER = features.planning.available,
   SAFETY PLC = 서버에 값 없음 → "수신 없음"(정상으로 세지 않음), LATENCY = conn.latencyMs(정상 기준은 stop.cancel_ack_timeout_sec*1000 미만).
   각 행 클릭 → `#/diagnostics?service=<id>`. 상태는 색+아이콘+텍스트(정상/경고/장애/수신 없음).

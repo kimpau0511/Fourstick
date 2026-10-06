@@ -1,6 +1,7 @@
 // 공통 레이아웃·홈·로봇 관리·기록·진단·설정 — 화면설계서 가~아, 상태매트릭스, 용어 매핑표
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { fixture, mockBackend } from '../mock.js';
+import { SAMPLES, fixture, mockBackend, sendCommand, startJob } from '../mock.js';
 
 test.beforeEach(async ({ page }) => { await mockBackend(page); });
 
@@ -22,9 +23,20 @@ test.describe('공통 레이아웃', () => {
     }
   });
 
-  test('[UI-LAYOUT-03][가-3] 명령 패널 폭을 드래그로 조절할 수 있다', async ({ page }) => {
+  test('[UI-LAYOUT-03][가-3] 명령 패널 폭을 키보드(←/→)로 조절하고 320~560으로 제한된다', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('separator', { name: /명령 패널/ })).toBeVisible();
+    const sep = page.getByRole('separator', { name: /명령 패널/ });
+    const cmdW = () => page.locator('.app').evaluate((el) => el.style.getPropertyValue('--cmd-w'));
+    await expect(sep).toHaveAttribute('aria-valuenow', '400');
+    await sep.focus();
+    await page.keyboard.press('ArrowLeft'); // 왼쪽 = 패널이 넓어진다
+    await expect(sep).toHaveAttribute('aria-valuenow', '416');
+    expect(await cmdW()).toBe('416px');
+    for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowLeft');
+    await expect(sep).toHaveAttribute('aria-valuenow', '560'); // 최대
+    for (let i = 0; i < 40; i++) await page.keyboard.press('ArrowRight');
+    await expect(sep).toHaveAttribute('aria-valuenow', '320'); // 최소
+    expect(await cmdW()).toBe('320px');
   });
 
   test('[UI-LAYOUT-04][가-4·§15] 사이드바 System status 위젯 4행(ROS 2·PLANNER·SAFETY PLC·LATENCY) + "N/4 정상"', async ({ page }) => {
@@ -68,8 +80,30 @@ test.describe('현황(홈)', () => {
     await expect(banner).toBeVisible();
     await expect(banner.getByRole('button', { name: /닫기|×/ })).toHaveCount(0);
     await banner.getByRole('button', { name: /인지 확인/ }).click();
-    await expect(page.getByRole('alert').filter({ hasText: /긴급/ })).toBeVisible(); // 축소될 뿐 사라지지 않는다
+    await expect(page.getByRole('alert').filter({ hasText: /긴급\s*\d+건/ })).toBeVisible(); // 축소될 뿐 사라지지 않는다
+    await expect(page.getByRole('button', { name: '다시 펼치기' })).toBeVisible(); // 접힌 뒤에도 되돌릴 수 있다
+    await page.getByRole('button', { name: '다시 펼치기' }).click();
+    await expect(page.getByRole('button', { name: /인지 확인/ })).toBeVisible();
     await page.locator('header').getByRole('button', { name: /즉시 정지/ }).click({ trial: true }); // 가려지지 않는다
+  });
+
+  test('[UI-HOME-07][①] 홈 로봇 카드 진행 막대는 이 화면이 따라가는 작업일 때만 그린다(서버 running_job에는 진행률이 없다)', async ({ page }) => {
+    const running = { job_id: 'qa-job', action: 'transfer', action_label: '컨베이어로 이송', status: 'running' };
+    await mockBackend(page, { overrides: { simDemo: { running_job: running } } });
+    await page.goto('/');
+    await expect(page.locator('.robot').first()).toContainText('컨베이어로 이송'); // 다른 탭에서 시작한 작업 — 막대 없음
+    await expect(page.locator('.robot').getByRole('progressbar')).toHaveCount(0);
+  });
+
+  test('[UI-HOME-08][①] 이 화면에서 시작한 작업이면 서버 progress(reached/전체)로 진행 막대를 그린다', async ({ page }) => {
+    const running = { job_id: 'qa-job', action: 'transfer', action_label: '컨베이어로 이송', status: 'running' };
+    await mockBackend(page, { command: SAMPLES.confirm(60), jobs: [SAMPLES.run.job], overrides: { simDemo: { running_job: running } } });
+    await page.goto('/');
+    await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
+    await page.locator('section.command').getByRole('button', { name: '실행 승인' }).click();
+    const bar = page.locator('.robot').getByRole('progressbar', { name: '작업 진행률' });
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute('aria-valuenow', '33'); // 3단계 중 1단계 도달
   });
 
   test('[UI-HOME-06][⑥·§11] 사이드바 로봇 관리 배지 "가동 N/전체"', async ({ page }) => {
@@ -80,8 +114,9 @@ test.describe('현황(홈)', () => {
 
 test.describe('비상 정지·용어', () => {
   test('[UI-ESTOP-01][SFR-009·DEV-06] 정지 버튼은 시뮬레이션 창이 열려 있어도 보이고 눌린다', async ({ page }) => {
+    await mockBackend(page, { command: SAMPLES.confirm(60), jobs: [SAMPLES.run.job] });
     await page.goto('/');
-    await page.locator('.demo-bar').getByRole('button', { name: '안전 검사 중' }).click();
+    await startJob(page);
     await expect(page.locator('.sim-card')).toBeVisible();
     const stop = page.locator('header').getByRole('button', { name: /정지/ });
     await expect(stop).toBeVisible();
@@ -133,22 +168,46 @@ test.describe('로봇 관리', () => {
 });
 
 test.describe('기록', () => {
-  test('[UI-RECORD-01][⑮·§14] 필터 두 축 분리: 검증 결과 / 실행 결과', async ({ page }) => {
+  // 목 서버 recent_jobs(고정 응답) 4건: 성공 3(복구·이송·정합) · 정지됨 1(복귀 중 정지). 이 탭에서 보낸 명령은 없다.
+  const historyRows = (page) => page.getByRole('table', { name: '명령 기록' }).locator('tbody tr');
+
+  test('[UI-RECORD-01][⑮·§14] 필터 두 축 분리: 검증 결과 / 실행 결과 — 누르면 행이 줄고, 실행 차단이면 실행 결과는 잠긴다', async ({ page }) => {
     await page.goto('/#/history');
-    await expect(page.getByRole('group', { name: /검증 결과/ })).toBeVisible();
-    await expect(page.getByRole('group', { name: /실행 결과/ })).toBeVisible();
+    const verify = page.getByRole('group', { name: /검증 결과/ });
+    const exec = page.getByRole('group', { name: /실행 결과/ });
+    await expect(verify).toBeVisible();
+    await expect(exec).toBeVisible();
+    await expect(historyRows(page)).toHaveCount(4);
+    await exec.getByRole('button', { name: 'STOP' }).click();
+    await expect(historyRows(page)).toHaveCount(1);
+    await exec.getByRole('button', { name: '성공' }).click();
+    await expect(historyRows(page)).toHaveCount(3);
+    await verify.getByRole('button', { name: '실행 차단' }).click();
+    for (const button of await exec.getByRole('button').all()) await expect(button).toBeDisabled(); // 차단된 명령은 실행 결과가 없다
   });
 
-  test('[UI-RECORD-02][⑯-4] 명령 원문·ID 텍스트 검색', async ({ page }) => {
+  test('[UI-RECORD-02][⑯-4] 명령 원문·ID 텍스트 검색 — 입력하면 행 수가 줄어든다', async ({ page }) => {
     await page.goto('/#/history');
-    await expect(page.getByRole('searchbox')).toBeVisible();
+    const search = page.getByRole('searchbox');
+    await expect(search).toBeVisible();
+    await expect(historyRows(page)).toHaveCount(4);
+    await search.fill('이송');
+    await expect(historyRows(page)).toHaveCount(1);
+    await search.fill('simjob_5d6d97a38a78'); // 작업 ID로도 찾는다
+    await expect(historyRows(page)).toHaveCount(1);
+    await search.fill('없는 명령 zzz');
+    await expect(historyRows(page)).toHaveCount(0);
+    await expect(page.locator('.col-main')).toContainText('조건에 맞는 기록이 없습니다');
   });
 
-  test('[UI-RECORD-03][⑭·⑯-2] 명령 1건 상세 타임라인(계획→시뮬레이션→허가→실행)', async ({ page }) => {
+  test('[UI-RECORD-03][⑭·⑯-2] 명령 1건 상세 타임라인(계획→시뮬레이션→허가→실행) — 행을 눌러 연다', async ({ page }) => {
     await page.goto('/#/history');
-    await page.getByRole('table').getByRole('row').nth(1).click(); // 첫 데이터 행(머리 행 다음)
-    for (const step of ['계획', '시뮬레이션', '허가', '실행']) await expect(page.locator('.col-main')).toContainText(step);
-    await expect(page.locator('.col-main')).toContainText(/정지 요청 없음|STOP/);
+    await expect(page.getByRole('region', { name: '명령 상세' })).toHaveCount(0);
+    await historyRows(page).first().click(); // 가장 최근 작업(복구)
+    const detail = page.getByRole('region', { name: '명령 상세' });
+    for (const step of ['계획', '시뮬레이션', '허가', '실행']) await expect(detail.locator('.timeline')).toContainText(step);
+    await expect(detail.locator('.timeline')).toContainText('작업 ID simjob_1b05a6710b83'); // 서버 작업이면 시작 시각·작업 ID
+    await expect(detail.locator('.timeline')).toContainText(/정지 요청 없음|STOP/);
   });
 });
 
@@ -159,9 +218,35 @@ test.describe('진단·설정·공통', () => {
     await expect(page.locator('.col-main')).toContainText(/마지막 정상|최근 점검/);
   });
 
-  test('[UI-DIAG-02][⑲-5] 진단자료 내보내기', async ({ page }) => {
+  test('[UI-DIAG-02][⑲-5] 진단자료 내보내기 — 완료 행·다운로드, 해제한 항목은 payload에서 빠지고 전부 해제하면 버튼이 잠긴다', async ({ page }) => {
     await page.goto('/#/diagnostics');
-    await expect(page.getByRole('button', { name: /내보내기/ })).toBeVisible();
+    const exportBtn = page.getByRole('button', { name: '진단자료 내보내기' });
+    const items = page.getByRole('group', { name: '내보낼 항목' });
+    await expect(exportBtn).toBeVisible();
+    for (const name of ['연결 상태', '서비스 상태', '상태 변화 이력', '서버 상태', '정책', '최근 작업']) {
+      await expect(items.getByRole('checkbox', { name: new RegExp(name) })).toBeChecked(); // 기본 전부 체크
+    }
+    await items.getByRole('checkbox', { name: '정책' }).uncheck();
+    await exportBtn.click();
+    const jobs = page.getByRole('table', { name: '진단자료 내보내기 작업' });
+    await expect(jobs).toContainText('완료');
+    const [download] = await Promise.all([page.waitForEvent('download'), jobs.getByRole('button', { name: /JSON 다운로드/ }).click()]);
+    const payload = JSON.parse(readFileSync(await download.path(), 'utf-8'));
+    expect(payload.included).not.toContain('policies');
+    expect(payload.included).toContain('services');
+    expect(payload).not.toHaveProperty('policies');
+    expect(payload).toHaveProperty('services');
+    for (const checkbox of await items.getByRole('checkbox').all()) await checkbox.uncheck();
+    await expect(exportBtn).toBeDisabled();
+  });
+
+  test('[UI-DIAG-03][⑲-3] 서비스 행의 원시 샘플은 마지막 정상과 현재를 함께 보인다(본 적 없으면 그렇게 적는다)', async ({ page }) => {
+    await page.goto('/#/diagnostics');
+    const row = page.locator('#svc-safety-plc'); // 서버가 신호를 주지 않아 늘 '수신 없음'
+    await row.getByRole('button', { name: '문제 전후 원시 샘플 보기' }).click();
+    await expect(row.locator('pre')).toContainText('마지막 정상');
+    await expect(row.locator('pre')).toContainText('이 화면이 본 적 없음');
+    await expect(row.locator('pre')).toContainText('현재');
   });
 
   test('[UI-SET-01][⑳·§16] 설정 3구역: 개인 / 운영 / 안전·권한', async ({ page }) => {
@@ -170,6 +255,29 @@ test.describe('진단·설정·공통', () => {
     await expect(main).toContainText('개인');
     await expect(main).toContainText('운영');
     await expect(main).toContainText(/안전\s*·\s*권한/);
+  });
+
+  test('[UI-SET-03][㉒-2] 저장 루틴: 검색·기본 대상·사용 스킬·적용 가능 로봇 열', async ({ page }) => {
+    await page.goto('/#/settings');
+    await page.getByRole('button', { name: '새 루틴' }).click();
+    await page.getByRole('textbox', { name: '이름' }).fill('컨베이어 이송');
+    await page.getByRole('textbox', { name: '명령 문장' }).fill('A자재를 컨베이어로 옮겨줘');
+    const table = page.getByRole('table', { name: '저장 루틴 목록' });
+    // 상세 창이 옆에 열리면 표 카드가 좁아져 이 열들은 행 펼침으로 들어간다(반응형) — 열이 있는지만 본다.
+    for (const col of ['사용 스킬', '적용 가능 로봇']) await expect(table.getByRole('columnheader', { name: col, includeHidden: true })).toBeAttached();
+    const row = table.locator('tbody tr').first();
+    await expect(row).toContainText('이송'); // 화면 추정(실행 때 서버가 다시 판정)
+    await expect(row).toContainText('실행 시 선택');
+    const target = page.getByRole('combobox', { name: '기본 대상' });
+    await target.selectOption({ index: 1 }); // 0 = 지정 안 함, 1 = 서버 로봇
+    const label = await target.evaluate((el) => el.selectedOptions[0].textContent);
+    await expect(row).toContainText(label);
+    await expect(row).not.toContainText('실행 시 선택');
+    const search = page.getByRole('searchbox', { name: '루틴 검색' });
+    await search.fill('컨베이어');
+    await expect(table.locator('tbody tr')).toHaveCount(1);
+    await search.fill('없는 루틴 zzz');
+    await expect(page.locator('.col-main')).toContainText('검색 결과가 없습니다');
   });
 
   test('[UI-SET-02][㉑·§17] 안전 임계값 변경은 상태머신(작성 중→검사 중→승인 필요→적용 예약→사용 중)', async ({ page }) => {

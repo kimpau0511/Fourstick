@@ -1,18 +1,20 @@
 // Codex 리뷰(2026-10-02) 지적 회귀 테스트 — 확인 안 된 상태를 정상·실행 중·취소됨·정지 확인으로 확정하지 않는다(설계원칙 4).
 import { expect, test } from '@playwright/test';
-import { SAMPLES, mockBackend, sendCommand } from '../mock.js';
+import { SAMPLES, fixture, mockBackend, sendCommand, startJob } from '../mock.js';
 
 const panel = (page) => page.locator('section.command');
 const headerStop = (page) => page.locator('header').getByRole('button', { name: /즉시 정지/ });
 
 test.describe('정지 요청 결과', () => {
   test('[UI-REV-01][SFR-009] 미리보기 창이 열려 있어도 정지 버튼은 응답 없이 "정지 확인"을 띄우지 않는다', async ({ page }) => {
-    await mockBackend(page);
+    await mockBackend(page, { command: SAMPLES.confirm(60), jobs: [SAMPLES.run.job] });
     await page.goto('/');
-    await page.locator('.demo-bar').getByRole('button', { name: '안전 검사 중' }).click();
+    await startJob(page);
+    await expect(page.locator('.sim-card')).toBeVisible();
     await headerStop(page).click();
     await expect(panel(page)).toContainText('QA: 정지할 작업 없음'); // 서버 응답 그대로
     await expect(page.locator('.sim-card')).not.toContainText('정지 확인됨');
+    await expect(page.locator('.sim-card')).not.toContainText('정지 요청됨'); // 접수되지 않았다
   });
 
   test('[UI-REV-02][SFR-009] 정지 요청이 실패하면 실패로 보인다', async ({ page }) => {
@@ -95,3 +97,106 @@ test('[UI-REV-09] 다른 탭에서 위젯 설정을 지우면 이 탭도 기본(
   await expect(ros).toHaveAttribute('aria-checked', 'true');
 });
 // 음성과 텍스트가 겹치는 경우(UI-REV-10)는 마이크 권한 설정이 있는 voice.spec.js에 있다.
+
+// 서버 recent_jobs 한 줄(고정 응답과 같은 모양). 이 탭에서 보낸 명령이 만든 작업으로 쓴다.
+const QA_JOB = { job_id: 'qa-job', action: 'transfer', action_label: '컨베이어로 이송', material: 'material_a', slot: null, slot_label: null, status: 'finished', exit_code: 0, started_at: 1790891200, result_status: 'simulation_transfer_completed' };
+const goHistory = (page) => page.locator('nav.nav a[href="#/history"]').click(); // 같은 탭 안에서 이동 — 이 탭의 명령 기록(log)이 남는다
+
+test('[UI-REV-11][§1] 정지 진단을 사용할 수 없으면(available:false) 로봇 상태는 정상이 아니다', async ({ page }) => {
+  const stop = fixture('robots').stop_diagnostics;
+  await mockBackend(page, { overrides: { simState: { stale: false }, robots: { stop_diagnostics: { ...stop, available: false } } } });
+  await page.goto('/');
+  const robot = page.locator('.robot').first();
+  await expect(robot.locator('[data-level]')).toHaveAttribute('data-level', 'NO_DATA');
+  await expect(robot).toContainText('정지 진단을 사용할 수 없습니다');
+  await page.locator('nav.nav a[href="#/robots"]').click();
+  await expect(page.locator('.col-main')).toContainText('운용 불가');
+  await expect(page.locator('.col-main')).toContainText('정지 진단 확인 안 됨');
+});
+
+test('[UI-REV-12][§4] 작업 상태(/v1/sim-demo) 조회가 실패하면 경고 알림과 "마지막 값" 안내를 보이고 로봇 상태는 정상이 아니다', async ({ page }) => {
+  await mockBackend(page, { overrides: { simState: { stale: false } } });
+  await page.route((url) => url.pathname === '/v1/sim-demo', (route) => route.fulfill({ status: 500, json: {} }));
+  await page.goto('/');
+  await expect(page.getByText('작업 상태 조회가 실패하고 있습니다(마지막 값 표시 중)')).toBeVisible();
+  await expect(page.getByText('작업 상태 조회 실패 — 마지막으로 받은 값입니다')).toBeVisible();
+  const robot = page.locator('.robot').first();
+  await expect(robot.locator('[data-level]')).toHaveAttribute('data-level', 'NO_DATA');
+  await expect(robot).toContainText('작업 상태 값을 받지 못했습니다');
+  await goHistory(page);
+  await expect(page.getByText('작업 상태 조회 실패 — 마지막으로 받은 값입니다')).toBeVisible();
+});
+
+test('[UI-REV-14][⑯-2] 서버가 정지를 접수하지 않은 정지 명령은 붉은 정지 노드가 아니라 "정지할 작업 없음"으로 기록된다', async ({ page }) => {
+  await mockBackend(page, { command: { decision: 'STOP', intent: 'stop', stop: { requested: false, detail: 'QA: 정지할 작업 없음' } } });
+  await page.goto('/');
+  await sendCommand(page, '멈춰');
+  await goHistory(page);
+  await page.getByRole('row', { name: /멈춰/ }).click();
+  const timeline = page.locator('.timeline');
+  await expect(timeline).toContainText('정지 요청 — 정지할 작업 없음');
+  await expect(timeline.locator('li[data-state="stop"]')).toHaveCount(0);
+  await expect(timeline.locator('li[data-state="none"]').filter({ hasText: '정지 요청 — 정지할 작업 없음' })).toHaveCount(1);
+});
+
+test('[UI-REV-15][⑯-2] 서버가 정지를 접수한 정지 명령만 붉은 정지 노드로 기록된다', async ({ page }) => {
+  await mockBackend(page, { command: { decision: 'STOP', intent: 'stop', stop: { requested: true, detail: '' } } });
+  await page.goto('/');
+  await sendCommand(page, '멈춰');
+  await goHistory(page);
+  await page.getByRole('row', { name: /멈춰/ }).click();
+  await expect(page.locator('.timeline li[data-state="stop"]')).toHaveCount(1);
+});
+
+test('[UI-REV-16][⑯-1] 이 탭에서 보낸 명령과 이어진 서버 작업은 기록에 한 줄로 나오고, 타임라인에 작업 ID가 붙는다', async ({ page }) => {
+  await mockBackend(page, {
+    command: SAMPLES.confirm(60), jobs: [SAMPLES.done],
+    overrides: { simDemo: (base) => ({ ...base, recent_jobs: [QA_JOB, ...base.recent_jobs] }) }, // 고정 응답 4건 + 이 작업 = 서버 5건
+  });
+  await page.goto('/');
+  await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
+  await panel(page).getByRole('button', { name: '실행 승인' }).click();
+  await expect(panel(page)).toContainText('이송 완료');
+  await goHistory(page);
+  const rows = page.getByRole('table', { name: '명령 기록' }).locator('tbody tr');
+  await expect(rows).toHaveCount(5); // 로그 1 + 서버 4(qa-job은 로그 행에 붙는다). 6줄이면 같은 명령이 두 줄로 나온 것
+  await page.getByRole('row', { name: /A 자재를 컨베이어로 옮겨줘/ }).click();
+  await expect(page.locator('.timeline')).toContainText('작업 ID qa-job');
+});
+
+test.describe('명령 잠금(결정3)', () => {
+  const stop = fixture('robots').stop_diagnostics;
+  const send = (page) => panel(page).getByRole('button', { name: '보내기' });
+
+  test('[UI-REV-17][§1] 긴급(정지 래치)이면 보내기·스킬 버튼이 잠기고 즉시 정지는 잠기지 않는다', async ({ page }) => {
+    await mockBackend(page, { overrides: { simState: { stale: false }, robots: { stop_diagnostics: { ...stop, stop_latch_active: true } } } });
+    await page.goto('/');
+    await panel(page).getByLabel('자연어 명령').fill('A 자재를 컨베이어로 옮겨줘');
+    await expect(panel(page)).toContainText('긴급 상태(정지 래치)라 새 명령을 보낼 수 없습니다');
+    await expect(send(page)).toBeDisabled();
+    await expect(panel(page).getByRole('button', { name: 'A자재 → 컨베이어' })).toBeDisabled();
+    await expect(panel(page).getByRole('button', { name: '즉시 정지' })).toBeEnabled();
+    await expect(headerStop(page)).toBeEnabled();
+  });
+
+  test('[UI-REV-18][§1] 로봇 상태를 확인할 수 없으면(NO_DATA) 사유와 함께 잠긴다', async ({ page }) => {
+    await mockBackend(page, { overrides: { simState: { stale: true } } });
+    await page.goto('/');
+    await panel(page).getByLabel('자연어 명령').fill('A 자재를 컨베이어로 옮겨줘');
+    await expect(panel(page)).toContainText('로봇 상태를 확인할 수 없어 명령을 보낼 수 없습니다 — 3D 관측이 오래되었습니다');
+    await expect(send(page)).toBeDisabled();
+    await expect(panel(page).getByRole('button', { name: '즉시 정지' })).toBeEnabled();
+  });
+
+  test('[UI-REV-19][§1] 확인 카드의 실행 승인도 같은 잠금을 따른다', async ({ page }) => {
+    await mockBackend(page, { command: SAMPLES.confirm(60) });
+    await page.goto('/');
+    await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘'); // 정상일 때 확인 카드까지
+    const approve = panel(page).getByRole('button', { name: '실행 승인' });
+    await expect(approve).toBeEnabled();
+    const latch = { stop_diagnostics: { ...stop, stop_latch_active: true } };
+    await page.route('**/v1/robots', (route) => route.fulfill({ json: fixture('robots', latch) }));
+    await expect(approve).toBeDisabled({ timeout: 15_000 }); // /v1/robots는 10초 주기
+    await expect(headerStop(page)).toBeEnabled();
+  });
+});

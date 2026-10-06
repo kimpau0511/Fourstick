@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import Alerts from './components/Alerts.jsx';
 import CommandPanel from './components/CommandPanel.jsx';
 import EmergencyBanner from './components/EmergencyBanner.jsx';
-import DemoBar from './components/DemoBar.jsx';
 import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import SimOverlay from './components/SimOverlay.jsx';
 import { NAV } from './nav.js';
 import { useServer } from './server.js';
+import { overlayOf } from './simOverlayState.js';
 import { useSimCommand } from './simCommand.js';
 import Diagnostics from './pages/Diagnostics.jsx';
 import History from './pages/History.jsx';
@@ -59,9 +59,7 @@ function PanelSeparator({ width, onChange }) {
 }
 
 export default function App() {
-  // null(평소) | 'running'(안전 검사 중) | 'stopping'(검사 중 즉시 정지) | 'danger'(위험 판정)
-  const [sim, setSim] = useState(null);
-  const [simAt, setSimAt] = useState(null);
+  const [closedKey, setClosedKey] = useState(null); // 닫은 시뮬레이션 창의 상태 key — 같은 상태 동안은 다시 열지 않는다
   const server = useServer();
   const cmd = useSimCommand();
   const now = useNow();
@@ -70,7 +68,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const nav = NAV.find((item) => item.id === page);
 
-  const open = (state) => { setSim(state); setSimAt(new Date()); };
+  const overlay = overlayOf(cmd); // 시뮬레이션 창 상태 = 명령 흐름의 서버 값(null이면 창 없음)
 
   // 헤더 즉시 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 실행 중인 시연 작업에
   // 정지를 요청한다(/v1/sim-demo/stop). 결과(요청됨·실패·정지할 작업 없음)는 명령 패널에 서버 응답대로 뜬다.
@@ -87,7 +85,7 @@ export default function App() {
       <EmergencyBanner alerts={server.alerts} />
       <div className="body">
         <div className="col-main">
-          {page === 'home' && <Home server={server} />}
+          {page === 'home' && <Home server={server} cmdJob={cmd.job} />}
           {page === 'robots' && <Robots server={server} />}
           {page === 'history' && <History server={server} log={cmd.log} />}
           {page === 'diagnostics' && <Diagnostics server={server} />}
@@ -99,8 +97,7 @@ export default function App() {
           {page === 'home' && <Alerts server={server} />}
         </div>
       </div>
-      <DemoBar state={sim} server={server} onChange={(state) => (state ? open(state) : setSim(null))} />
     </div>
-    {sim && <SimOverlay server={server} state={sim} at={simAt} onClose={() => setSim(null)} onRerun={() => open('running')} />}
+    {overlay && overlay.key !== closedKey && <SimOverlay overlay={overlay} cmd={cmd} server={server} onClose={() => setClosedKey(overlay.key)} />}
   </div>;
 }

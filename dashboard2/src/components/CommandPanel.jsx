@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { RESULT_LABELS } from '../simCommand.js';
+import { commandLock } from '../server.js';
 import { useVoice } from '../voice.js';
 import Spinner from './Spinner.jsx';
 import './command.css';
@@ -54,9 +55,9 @@ export default function CommandPanel({ now, sim, server }) {
     .map(([id, profile]) => ({ id, name: robotName(id, profile), title: profile.profile_id || id }));
   // 1대면 기본 선택. 여러 대인데 고르지 않았으면 보내기를 잠근다.
   const target = robots.length === 1 ? robots[0] : robots.find((r) => r.id === picked) || null;
-  const connOk = !!server && server.conn.status === 'ok';
-  const lockReason = !connOk ? '서버와 연결이 정상이 아니어서 명령을 보낼 수 없습니다'
-    : robots.length > 1 && !target ? '대상 로봇을 먼저 선택해 주세요' : null;
+  // 연결·로봇 상태 잠금은 server.js의 commandLock(즉시 정지는 잠그지 않는다).
+  const lockReason = commandLock(server)
+    || (robots.length > 1 && !target ? '대상 로봇을 먼저 선택해 주세요' : null);
   // 스킬 버튼: 서버가 지금 가능하다고 준 동작만. 서버가 받는 source는 text·stt_final뿐이라
   // 버튼으로 보낸 명령도 기록에는 text와 구분되지 않는다.
   const skills = ((server && server.simDemo && server.simDemo.materials) || []).flatMap((m) => [
@@ -70,6 +71,7 @@ export default function CommandPanel({ now, sim, server }) {
     onFinal: (utterance, stt) => { if (!sim.busy && !lockReason && (phase === 'idle' || phase === 'ask')) sim.send(utterance, target && target.id, stt); },
   });
   const { result, pending, job, goal } = sim;
+  const gripper = server && server.config && server.config.robot && server.config.robot.has_gripper;
   const [tone, label] = (result && DECISIONS[result.decision]) || ['info', result ? result.decision : ''];
   const remaining = sim.deadline ? Math.max(0, Math.ceil((sim.deadline - now.getTime()) / 1000)) : null;
   const expired = remaining === 0;
@@ -108,8 +110,8 @@ export default function CommandPanel({ now, sim, server }) {
   let interpretation = [];
   if (sim.error) interpretation = [sim.error];
   else if (pending) interpretation = [pending.summary, pending.evidence && pending.evidence.slot_label].filter(Boolean);
-  else if (result && result.decision === 'PASS_THROUGH') interpretation = ['자재 이송·복귀·정지·이어서 명령이 아닙니다. 일반 계획 경로는 이 화면에 아직 연결되지 않았습니다.'];
-  else if (result && result.decision === 'STOP') interpretation = ['시연 작업에 정지를 요청했습니다.'];
+  else if (result && result.decision === 'PASS_THROUGH') interpretation = ['이 화면은 시연 명령(자재 이송·복귀·정지·이어서)만 처리합니다.'];
+  else if (result && result.decision === 'STOP') interpretation = [result.stop?.requested === true ? '시연 작업에 정지를 요청했습니다.' : result.stop?.detail || '정지할 시연 작업이 없습니다'];
   else if (result) interpretation = [result.summary || (job && `${job.action_label || job.action} · ${job.slot_label || ''}`), result.reason].filter(Boolean);
   const stages = phase === 'done' ? ['done', 'done', resultTone === 'ok' ? 'done' : 'fail']
     : phase === 'running' ? ['done', 'done', 'active']
@@ -125,7 +127,7 @@ export default function CommandPanel({ now, sim, server }) {
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
       <MicButton voice={voice} locked={!!lockReason} />
     </div>
-    {phase === 'idle' && <button type="submit" className="btn-primary send" disabled={sim.busy || !!lockReason || !text.trim()}>{sim.busy ? '보내는 중…' : '보내기'}</button>}
+    {(phase === 'idle' || phase === 'ask') && <button type="submit" className="btn-primary send" disabled={sim.busy || !!lockReason || !text.trim()}>{sim.busy ? '보내는 중…' : phase === 'ask' ? '답변 보내기' : '보내기'}</button>}
     {voice.partial && <small className="cmd-partial" aria-live="polite">{voice.partial}</small>}
     {voice.clarify && <small className="cmd-lock" role="status">{voice.clarify}</small>}
     {(voice.error || voice.unavailable) && <small className="cmd-lock" role="status">{voice.error || voice.unavailable}</small>}
@@ -161,6 +163,9 @@ export default function CommandPanel({ now, sim, server }) {
         {headline && <b className="cmd-title">{headline}</b>}
         {details.map((line) => <small key={line} className="cmd-reason">{line}</small>)}
         {phase === 'confirm' && target && <small className="cmd-target">대상: {target.name}</small>}
+        {/* 서버 값이 있는 것만 보인다 — 영향 구역은 서버가 주지 않아 넣지 않는다. */}
+        {phase === 'confirm' && typeof gripper === 'boolean' && <small className="cmd-target">도구: {gripper ? '그리퍼' : '장착 도구 없음'}</small>}
+        {phase === 'confirm' && Number.isFinite(pending.created_at) && <small className="cmd-target">판정 시각 {new Date(pending.created_at * 1000).toTimeString().slice(0, 8)}</small>}
         {pending && pending.kind === 'goal' && <ul className="plan">
           {(pending.plan || []).map((p) => <li key={p.step}><Spinner size={14} decorative />{stepText(p)}</li>)}
         </ul>}
@@ -173,7 +178,7 @@ export default function CommandPanel({ now, sim, server }) {
         {phase === 'done' && goal && !job && <small>목표 상태: {goal.status}</small>}
         {phase === 'ask' && input}
         {phase === 'confirm' && <div className="approve-row">
-          <button className="approve" disabled={sim.busy || expired || !connOk} title={connOk ? undefined : lockReason} onClick={() => sim.answer('confirm')}><span className="icon-play" aria-hidden="true" />{pending.kind === 'goal' ? '전체 실행 승인' : '실행 승인'}</button>
+          <button className="approve" disabled={sim.busy || expired || !!lockReason} title={lockReason || undefined} onClick={() => sim.answer('confirm')}><span className="icon-play" aria-hidden="true" />{pending.kind === 'goal' ? '전체 실행 승인' : '실행 승인'}</button>
           {!expired && <button className="approve-cancel" disabled={sim.busy} onClick={() => sim.answer('cancel')}>취소</button>}
         </div>}
         {(phase === 'done' || phase === 'other' || (phase === 'confirm' && expired)) &&
@@ -181,7 +186,7 @@ export default function CommandPanel({ now, sim, server }) {
       </div>}
     <div className="decide">
       {phase === 'confirm' && !expired && <p className="muted">{remaining}초 안에 승인하지 않으면 취소됩니다</p>}
-      {phase === 'confirm' && !connOk && <p className="cmd-lock" role="status">{lockReason}</p>}
+      {phase === 'confirm' && !!lockReason && <p className="cmd-lock" role="status">{lockReason}</p>}
       {phase === 'confirm' && expired && <p>확인 시간이 지났습니다 — 명령을 다시 보내 주세요</p>}
       {phase === 'running' && <p className="muted">정지는 확인 없이 즉시 요청됩니다</p>}
       {phase === 'done' && <p className="muted">다음 명령을 입력해 주세요</p>}

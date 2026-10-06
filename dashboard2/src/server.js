@@ -16,10 +16,20 @@ const SOURCES = [
 
 const INITIAL = {
   health: null, config: null, robots: null, simDemo: null, simState: null,
-  healthOkAt: null, healthFailing: false, robotsFailing: false, latencyMs: null, refreshedAt: null, nowMs: Date.now(),
+  healthOkAt: null, healthFailing: false, robotsFailing: false, simDemoFailing: false, latencyMs: null, refreshedAt: null, nowMs: Date.now(),
   conn: { status: 'connecting', lastReceivedAt: null, latencyMs: null, ageSec: null },
   alerts: [], robotStatus: { level: 'NO_DATA', label: '', reasons: [] },
 };
+
+// 새 명령·승인을 잠그는 사유(없으면 null). 즉시 정지는 이 잠금을 타지 않는다.
+// 명령 패널과 시뮬레이션 창의 '다시 보내기'가 같은 기준을 쓴다.
+export function commandLock(server) {
+  if (!server || server.conn.status !== 'ok') return '서버와 연결이 정상이 아니어서 명령을 보낼 수 없습니다';
+  const { level, reasons } = server.robotStatus;
+  if (level === 'CRITICAL') return '긴급 상태(정지 래치)라 새 명령을 보낼 수 없습니다';
+  if (level === 'NO_DATA') return `로봇 상태를 확인할 수 없어 명령을 보낼 수 없습니다${reasons.length ? ` — ${reasons.join(', ')}` : ''}`;
+  return null;
+}
 
 export const LEVEL_LABELS = {
   NORMAL: '정상', NOTICE: '작업 중', WARNING: '주의', CRITICAL: '긴급', NO_DATA: '데이터 없음',
@@ -46,6 +56,11 @@ function deriveRobotStatus(s, conn) {
   else if (simState.stale) noData.push('3D 관측이 오래되었습니다');
   // 정지 래치는 /v1/robots에서만 온다. 못 받았거나 마지막 조회가 실패했으면 '래치 없음'으로 치지 않는다.
   if (!s.robots?.stop_diagnostics || s.robotsFailing) noData.push('정지 진단 값을 받지 못했습니다');
+  else if (s.robots.stop_diagnostics.available === false) noData.push('정지 진단을 사용할 수 없습니다');
+  // 복구 필요·실행 중 작업은 /v1/sim-demo에서만 온다 — 못 받았으면 '정상'이라 할 근거가 없다.
+  if (!s.simDemo || s.simDemoFailing) noData.push('작업 상태 값을 받지 못했습니다');
+  // enabled:false면 서버가 작업 상태(복구 필요·실행 중)를 주지 않는다 — 정상 판정 근거가 없다.
+  else if (s.simDemo.enabled !== true) noData.push('시연 명령 서비스가 꺼져 있습니다');
   if (noData.length) return { level: 'NO_DATA', label: LEVEL_LABELS.NO_DATA, reasons: noData };
   if (s.robots?.stop_diagnostics?.stop_latch_active) {
     return { level: 'CRITICAL', label: LEVEL_LABELS.CRITICAL, reasons: ['정지 래치가 활성입니다'] };
@@ -69,6 +84,7 @@ function deriveAlerts(s, conn, prev) {
   const features = s.health?.features;
   if (features?.planning && !features.planning.available) add('planning', 'WARNING', '계획 모델을 사용할 수 없습니다');
   if (features?.stt && !features.stt.available) add('stt', 'WARNING', '음성 인식을 사용할 수 없습니다');
+  if (s.simDemoFailing) add('sim-demo', 'WARNING', '작업 상태 조회가 실패하고 있습니다(마지막 값 표시 중)');
   if (s.simState?.stale) add('sim-stale', 'WARNING', '3D 관측이 오래되었습니다');
   if (s.simDemo?.recovery_required) add('recovery', 'WARNING', '복구가 필요합니다');
   if (conn.status === 'down' || conn.status === 'stale') add('conn', 'WARNING', '서버와 연결이 끊겼습니다');
@@ -105,11 +121,12 @@ export function useServer() {
             ...s, [key]: data, refreshedAt: at,
             ...(key === 'health' ? { healthOkAt: at, healthFailing: false, latencyMs: at - startedAt } : {}),
             ...(key === 'robots' ? { robotsFailing: false } : {}),
+            ...(key === 'simDemo' ? { simDemoFailing: false } : {}),
           }));
         } catch {
           // 실패한 값은 지우지 않는다(마지막 값 유지) — 얼마나 오래됐는지는 conn이 말한다.
           // 3D 관측은 서버가 못 줄 수도 있으므로(503) 값 없음으로 둔다.
-          update((s) => ({ ...s, ...(key === 'health' ? { healthFailing: true } : {}), ...(key === 'robots' ? { robotsFailing: true } : {}), ...(key === 'simState' ? { simState: null } : {}) }));
+          update((s) => ({ ...s, ...(key === 'health' ? { healthFailing: true } : {}), ...(key === 'robots' ? { robotsFailing: true } : {}), ...(key === 'simDemo' ? { simDemoFailing: true } : {}), ...(key === 'simState' ? { simState: null } : {}) }));
         }
         if (!cancelled) timers.push(setTimeout(loop, every));
       };
@@ -119,6 +136,6 @@ export function useServer() {
     return () => { cancelled = true; timers.forEach(clearTimeout); clearInterval(tick); };
   }, []);
 
-  const { health, config, robots, robotsFailing, simDemo, simState, conn, alerts, robotStatus, refreshedAt } = state;
-  return { health, config, robots, robotsFailing, simDemo, simState, conn, alerts, robotStatus, refreshedAt };
+  const { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt } = state;
+  return { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt };
 }

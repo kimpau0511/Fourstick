@@ -73,3 +73,9 @@ export async function sendCommand(page, text) {
   await page.getByLabel('자연어 명령').fill(text);
   await page.getByRole('button', { name: '보내기' }).click();
 }
+
+/** 명령 → 실행 승인까지 눌러 작업이 시작되게 한다(시뮬레이션 창이 열리는 흐름). mockBackend에 command: SAMPLES.confirm()이 있어야 한다. */
+export async function startJob(page, text = 'A 자재를 컨베이어로 옮겨줘') {
+  await sendCommand(page, text);
+  await page.locator('section.command').getByRole('button', { name: '실행 승인' }).click();
+}

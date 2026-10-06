@@ -54,6 +54,7 @@ export function useSimCommand() {
   const [state, setState] = useState({
     busy: false, sent: '', result: null, pending: null, deadline: null,
     job: null, goal: null, error: null, stopNote: null, statusUnknown: false,
+    seq: null, updatedAt: null, // seq = 지금 명령의 기록 id(오버레이가 '새 명령인가'를 가린다), updatedAt = 작업·목표 응답을 마지막으로 받은 시각
   });
   // 이 탭에서 보낸 명령 기록(최근 LOG_MAX개, 메모리). 서버 기록(recent_jobs)과 별개다.
   const [log, setLog] = useState([]);
@@ -86,7 +87,7 @@ export function useSimCommand() {
       const res = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`).catch((e) => ({ ok: false, payload: { detail: e.message } }));
       if (!alive.current) return;
       if (!res.ok) { lost(res, logId); return; }
-      patch({ job: res.payload });
+      patch({ job: res.payload, updatedAt: Date.now() });
       if (res.payload.status !== 'running') {
         const report = res.payload.report;
         addEvent('result', (report && RESULT_LABELS[report.status]?.[1]) || '작업 종료', report ? report.status : '', logId);
@@ -98,11 +99,14 @@ export function useSimCommand() {
 
   const pollGoal = useCallback(async (goalId, logId) => {
     addEvent('job', '목표 시작', goalId, logId);
+    const seen = new Set();
     for (;;) {
       const res = await call('GET', `/v1/sim-demo/goals/${encodeURIComponent(goalId)}`).catch((e) => ({ ok: false, payload: { detail: e.message } }));
       if (!alive.current) return;
       if (!res.ok) { lost(res, logId); return; }
-      patch({ goal: res.payload });
+      patch({ goal: res.payload, updatedAt: Date.now() });
+      // 목표가 단계마다 만든 작업 id — 기록 화면이 서버 작업 줄과 이 명령을 한 줄로 묶는 근거.
+      (res.payload.plan || []).forEach((p) => { if (p.job_id && !seen.has(p.job_id)) { seen.add(p.job_id); addEvent('goal_job', '단계 작업', p.job_id, logId); } });
       if (!['running', 'stopping'].includes(res.payload.status)) {
         addEvent('result', '목표 종료', res.payload.status, logId);
         return;
@@ -119,7 +123,7 @@ export function useSimCommand() {
     const id = nextId.current++;
     currentId.current = id;
     setLog((entries) => [...entries, { id, sentAt: Date.now(), text: utterance, robot, via: stt ? '음성' : '텍스트', events: [] }].slice(-LOG_MAX));
-    patch({ busy: true, sent: utterance, result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false });
+    patch({ busy: true, sent: utterance, result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false, seq: id, updatedAt: null });
     const requestedAt = Date.now(); // 남은 시간은 요청을 보낸 시각부터 센다 — 왕복 시간만큼 짧게(안전한 쪽) 보인다
     let res;
     try {
@@ -135,7 +139,11 @@ export function useSimCommand() {
     const result = res.payload;
     if (!result.decision) { patch({ busy: false, error: reasonOf(res) }); addEvent('error', '오류', reasonOf(res), id); return; }
     addEvent('decision', DECISION_LOG[result.decision] || '시연 명령 아님', result.reason || (result.confirmation && result.confirmation.summary) || '', id);
-    if (result.decision === 'STOP') addEvent('stop', '정지 요청', '', id);
+    // 'stop'은 서버가 정지를 접수했을 때만 남긴다. 접수 안 됨(작업 없음 등)은 'stop_none'.
+    if (result.decision === 'STOP') {
+      if (result.stop?.requested === true) addEvent('stop', '정지 요청', '', id);
+      else addEvent('stop_none', '정지 요청 (정지할 작업 없음)', result.stop?.detail || '', id);
+    }
     const pending = ['CONFIRM', 'CONFIRM_GOAL'].includes(result.decision) ? result.confirmation : null;
     patch({
       busy: false, result, pending,
@@ -166,7 +174,8 @@ export function useSimCommand() {
     if (!res.ok) {
       const what = action === 'cancel' ? '취소' : '확인';
       addEvent('error', `${what} 거부됨`, reasonOf(res), id);
-      patch({ result: { decision: 'BLOCK', reason: `${action === 'cancel' ? '취소가' : '확인이'} 거부되었습니다 — ${reasonOf(res)}` } });
+      // rejected: 서버가 명령을 차단한 판정이 아니라 확인 요청이 거부된 것 — 위험 판정 창을 열지 않는다.
+      patch({ result: { decision: 'BLOCK', rejected: true, reason: `${action === 'cancel' ? '취소가' : '확인이'} 거부되었습니다 — ${reasonOf(res)}` } });
       return;
     }
     if (action === 'cancel') {
@@ -196,7 +205,9 @@ export function useSimCommand() {
       return;
     }
     const p = res.payload;
-    addEvent('stop', res.ok && p.requested ? '정지 요청' : '정지 요청 (정지할 작업 없음)', res.ok ? (p.detail || '') : reasonOf(res));
+    if (!res.ok) addEvent('error', '정지 요청 실패', reasonOf(res));
+    else if (p.requested === true) addEvent('stop', '정지 요청', p.detail || '');
+    else addEvent('stop_none', '정지 요청 (정지할 작업 없음)', p.detail || '');
     if (!res.ok) patch({ stopNote: { tone: 'danger', text: `정지 요청 실패 — ${reasonOf(res)}` } });
     else if (p.requested) patch({ stopNote: { tone: 'ok', text: '정지를 요청했습니다 — 시뮬레이터가 정지를 확인하면 결과가 표시됩니다' } });
     else patch({ stopNote: { tone: 'warn', text: p.detail || '정지할 시연 작업이 없습니다' } });
@@ -204,7 +215,7 @@ export function useSimCommand() {
 
   /** 결과 카드를 닫고 입력으로 돌아간다(피그마 '새 명령 입력'). 서버에는 아무것도 보내지 않는다. */
   const reset = useCallback(() => {
-    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false });
+    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false, updatedAt: null });
   }, [patch]);
 
   return { ...state, log, send, answer, stop, reset };

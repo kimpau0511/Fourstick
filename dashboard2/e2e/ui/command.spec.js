@@ -41,7 +41,10 @@ test.describe('명령 패널', () => {
     const p = panel(page);
     await expect(p).toContainText(SAMPLES.block.reason);
     await expect(p.getByRole('button', { name: /승인|무시|그래도 실행/ })).toHaveCount(0);
-    await p.getByRole('button', { name: '명령 수정' }).click();
+    // 차단(BLOCK)이면 위험 판정 창이 패널을 덮는다 — 창의 "명령 수정"으로 입력에 돌아간다. 창에도 우회 버튼은 없다.
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('button', { name: /승인|무시|그래도 실행/ })).toHaveCount(0);
+    await dialog.getByRole('button', { name: '명령 수정' }).click();
     await expect(p.getByLabel('자연어 명령')).toBeVisible();
   });
 
@@ -85,10 +88,15 @@ test.describe('명령 패널', () => {
     for (const step of ['동작 준비', '안전 규칙 확인', '가상 동작 확인']) await expect(p).toContainText(step);
   });
 
-  test('[UI-CMD-07][⑦·§10] 대상 로봇 선택 Chip, 명령 직전 로봇명 재명시', async ({ page }) => {
-    await mockBackend(page);
+  test('[UI-CMD-07][⑦·§10] 대상 로봇 선택 Chip(1대면 기본 선택), 명령 직전 최종점검 카드에 로봇명 재명시', async ({ page }) => {
+    await mockBackend(page, { command: SAMPLES.confirm(60) });
     await page.goto('/');
-    await expect(panel(page).getByRole('button', { name: /FR3|Alpha|로봇/ })).toBeVisible();
+    const chip = panel(page).getByRole('group', { name: '대상 로봇' }).getByRole('button').first();
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    const name = (await chip.textContent()).trim();
+    await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
+    await expect(panel(page)).toContainText(`대상: ${name}`);
   });
 
   test('[UI-CMD-08][오류] 서버에 닿지 못하면 오류 카드 + 새 명령 입력', async ({ page }) => {
@@ -102,9 +110,43 @@ test.describe('명령 패널', () => {
     await expect(p.getByLabel('자연어 명령')).toBeVisible();
   });
 
-  test('[UI-CMD-10][SFR-012] 터치 기반 스킬 버튼(No-Code fallback)', async ({ page }) => {
-    await mockBackend(page);
+  test('[UI-CMD-10][SFR-012] 터치 기반 스킬 버튼(No-Code fallback) — 누르면 해당 문장이 서버로 간다', async ({ page }) => {
+    const calls = await mockBackend(page);
     await page.goto('/');
-    await expect(panel(page).getByRole('button', { name: /이송|복귀|홈|정지/ }).first()).toBeVisible();
+    // 서버가 지금 가능하다고 준 동작(고정 응답: A자재 이송)만 버튼이 된다.
+    await panel(page).getByRole('group', { name: '스킬 버튼' }).getByRole('button', { name: 'A자재 → 컨베이어' }).click();
+    await expect.poll(() => calls.filter((c) => c.path.endsWith('/command')).length).toBe(1);
+    expect(calls.find((c) => c.path.endsWith('/command')).body).toMatchObject({ utterance: 'A자재를 컨베이어로 옮겨줘', source: 'text' });
+  });
+
+  test('[UI-CMD-11][⑥-2] ASK 카드에도 "답변 보내기" 버튼 — 입력이 있어야 켜지고, 누르면 답이 다시 간다', async ({ page }) => {
+    const calls = await mockBackend(page, { command: SAMPLES.ask });
+    await page.goto('/');
+    await sendCommand(page, '그거 옮겨줘');
+    const send = panel(page).getByRole('button', { name: '답변 보내기' });
+    await expect(send).toBeVisible();
+    await expect(send).toBeDisabled(); // idle의 보내기와 같은 조건 — 빈 입력은 못 보낸다
+    await panel(page).getByLabel('자연어 명령').fill('A 자재');
+    await expect(send).toBeEnabled();
+    await send.click();
+    await expect.poll(() => calls.filter((c) => c.path.endsWith('/command')).length).toBe(2);
+    expect(calls.filter((c) => c.path.endsWith('/command'))[1].body.utterance).toBe('A 자재');
+  });
+
+  test('[UI-CMD-12][⑥-4] 최종점검 카드: 서버 값이 있는 도구·판정 시각만 보인다', async ({ page }) => {
+    const withTime = { ...SAMPLES.confirm(60), confirmation: { ...SAMPLES.confirm(60).confirmation, created_at: 1790891111 } };
+    await mockBackend(page, { command: withTime });
+    await page.goto('/');
+    await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
+    await expect(panel(page)).toContainText('도구: 그리퍼'); // 고정 응답 config.robot.has_gripper = true
+    await expect(panel(page)).toContainText(/판정 시각 \d\d:\d\d:\d\d/);
+  });
+
+  test('[UI-CMD-13][⑥-4] 서버가 판정 시각을 주지 않으면 그 줄을 그리지 않는다', async ({ page }) => {
+    await mockBackend(page, { command: SAMPLES.confirm(60) }); // created_at 없음
+    await page.goto('/');
+    await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
+    await expect(panel(page)).toContainText('실행 승인');
+    await expect(panel(page)).not.toContainText('판정 시각');
   });
 });

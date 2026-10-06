@@ -1,5 +1,8 @@
+import { Fragment } from 'react';
 import Spinner from '../components/Spinner.jsx';
 import MetricRow from '../components/MetricRow.jsx';
+import { DetailRow, ExpandButton } from '../components/ExpandRow.jsx';
+import { useExpand } from '../components/useExpand.js';
 import { RESULT_LABELS } from '../simCommand.js';
 import './home.css';
 
@@ -19,7 +22,7 @@ function resultText(j) {
   return RESULT_LABELS[j.result_status]?.[1] || (j.exit_code === 0 ? '완료' : j.exit_code == null ? '기록 없음' : '확인 필요');
 }
 
-export default function Home({ server }) {
+export default function Home({ server, cmdJob }) {
   const { health, config, simDemo, simState, robotStatus } = server;
   const loading = server.conn.status === 'connecting'; // 첫 응답 전 — 연결이 실패·끊김이면 기존 문구
   const wait = <><Spinner size={14} label="불러오는 중" /> 불러오는 중</>;
@@ -35,6 +38,10 @@ export default function Home({ server }) {
   const robot = config?.robot;
   const job = simDemo?.running_job;
   const jobs = simDemo?.recent_jobs;
+  // 진행률은 서버 /v1/sim-demo/jobs/<id>의 progress 배열에만 있다 — 이 화면에서 시작해 따라가는 작업만 막대로 보인다.
+  const steps = cmdJob && job && cmdJob.job_id === job.job_id && Array.isArray(cmdJob.progress) && cmdJob.progress.length ? cmdJob.progress : null;
+  const percent = steps ? Math.round((steps.filter((p) => p.reached).length / steps.length) * 100) : 0;
+  const expand = useExpand();
   const matName = Object.fromEntries((simDemo?.materials || []).map((m) => [m.model, m.korean]));
   return <>
     <MetricRow title="오늘의 핵심 운영 지표" items={metrics} />
@@ -48,7 +55,7 @@ export default function Home({ server }) {
           </div>
           <div className="robot-meta">
             <div><span>현재 작업</span><b>{job ? (job.action_label || job.action) : '대기 중'}</b></div>
-            {typeof job?.progress === 'number' && <div className="bar"><i style={{ width: `${job.progress * 100}%` }} /></div>}
+            {steps && <div className="bar" role="progressbar" aria-label="작업 진행률" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
             <div><span>그리퍼</span><b>{gripperText(simState)}</b></div>
             {robotStatus.reasons.length > 0 && <div><span>사유</span><b>{robotStatus.reasons.join(' · ')}</b></div>}
           </div>
@@ -58,15 +65,22 @@ export default function Home({ server }) {
     </section>
     <section>
       <h2>최근 작업 내역</h2>
+      {server.simDemoFailing && <p className="muted note" style={{ marginBottom: 8 }}>작업 상태 조회 실패 — 마지막으로 받은 값입니다</p>}
       <div className="card table">
         {jobs?.length ? <table className="data-table" aria-label="최근 작업">
-          <thead><tr><th>시각</th><th>자재</th><th>작업</th><th>결과</th></tr></thead>
-          <tbody>{jobs.map((j) => <tr key={j.job_id}>
-            <td>{j.started_at ? hhmmss(j.started_at) : '기록 없음'}</td>
-            <td>{matName[j.material] || j.material || '기록 없음'}{j.slot_label ? ` · ${j.slot_label}` : ''}</td>
-            <td>{j.action_label || j.action}</td>
-            <td><b>{resultText(j)}</b></td>
-          </tr>)}</tbody>
+          <thead><tr><th>시각</th><th className="col-extra">자재</th><th>작업</th><th>결과</th></tr></thead>
+          <tbody>{jobs.map((j) => {
+            const mat = `${matName[j.material] || j.material || '기록 없음'}${j.slot_label ? ` · ${j.slot_label}` : ''}`;
+            return <Fragment key={j.job_id}>
+              <tr>
+                <td><ExpandButton open={expand.isOpen(j.job_id)} onToggle={() => expand.toggle(j.job_id)} />{j.started_at ? hhmmss(j.started_at) : '기록 없음'}</td>
+                <td className="col-extra">{mat}</td>
+                <td>{j.action_label || j.action}</td>
+                <td><b>{resultText(j)}</b></td>
+              </tr>
+              <DetailRow open={expand.isOpen(j.job_id)} span={3} items={[['자재', mat]]} />
+            </Fragment>;
+          })}</tbody>
         </table> : <p className="muted" style={{ padding: 14 }}>{!jobs && loading ? wait : '기록 없음'}</p>}
       </div>
     </section>
