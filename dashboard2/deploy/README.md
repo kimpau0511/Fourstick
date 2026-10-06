@@ -31,3 +31,11 @@ $ng = Get-ChildItem "$env:USERPROFILE\scoop\apps\nginx\*\nginx.exe" | Where-Obje
 - `/health`·`/v1/config`·`/v1/history`·`/v1/sim-view/state` 200, `/v1/sim-view/stream` 웹소켓 101
 - 화면: 헤더 수신 시각·로봇 상태·진단 8개 서비스, 일반 경로 계획 → 안전 관문 판정까지(실행 승인은 누르지 않음), 콘솔 오류 0
 - 확인 못 한 것: 음성(마이크 없는 자동 브라우저), 실행 중 긴 응답(`/v1/execute`, 600초 제한으로 둠)
+
+## PWA
+
+- 설치 가능한 앱이다(`public/manifest.webmanifest`, `public/sw.js`). 서비스 워커는 build 결과(`vite build`)에서만 등록된다.
+- 캐시되는 것: 화면 껍데기(`/`, 아이콘, 매니페스트)와 `/assets/`(해시 파일).
+- 절대 캐시되지 않는 것: `/v1/*`(명령·승인·실행·정지 포함), `/health`, 웹소켓. 오래된 값이 '현재 상태'로 보이면 안 되기 때문이다.
+- 오프라인이면 화면만 뜨고, 서버 값은 '확인 안 됨'으로 보인다.
+- 화면 갱신이 안 보이면 `public/sw.js`의 `CACHE` 버전(`forstick-shell-v1`)을 올린다.
