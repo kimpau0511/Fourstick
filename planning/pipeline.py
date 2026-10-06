@@ -102,9 +102,16 @@ def plan_from_utterance(
     stop_keywords: tuple[str, ...],
     schema_version: str,
     references: tuple[str, ...] = (),
+    slot_grounder: Callable[[SlotExtraction], SlotExtraction] | None = None,
 ) -> PlanningOutcome:
-    """발화 하나를 계획으로 만든다. 시각·TTL·plan_id는 주입받는다."""
+    """발화 하나를 계획으로 만든다. 시각·TTL·plan_id는 주입받는다.
+
+    `slot_grounder`는 서버가 검증한 근거(등록 색 → 유일한 자재, 확인된 자재의 현재 위치)를
+    슬롯에 더한다. 모델 입력과 요청↔계획 일치 검증이 **같은 슬롯**을 보게 하려고 여기서 붙인다.
+    """
     slots = extract_slots(utterance, catalog, stop_keywords=stop_keywords)
+    if slot_grounder is not None and not slots.stop_keyword_hit:
+        slots = slot_grounder(slots)
 
     if not utterance.strip():
         return PlanningOutcome(

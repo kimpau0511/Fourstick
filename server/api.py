@@ -633,6 +633,12 @@ class Api:
         text = (utterance or "").strip()
         if not text:
             raise ApiError(400, ReasonCode.PLAN_SLOT_INCOMPLETE, "발화가 비어 있다")
+        if extract_slots(text, runtime.resource_catalog,
+                         stop_keywords=runtime.stt_policy.stop_keywords).stop_keyword_hit:
+            # 정지 발화는 계획을 만들지 않는다 — 모델(Qwen)·계획 검증을 기다리지 않고 바로
+            # 전체 정지(`/v1/stop`과 같은 범위)를 요청한다. 정지 계획은 안전 정책의 종료 스킬
+            # 요구(home)와 충돌해 어차피 차단된다(실측).
+            return self._stop_from_utterance(session_id, text)
         if runtime.provider is None:
             raise ApiError(
                 503, ReasonCode.PLAN_LLM_UNAVAILABLE,
@@ -660,6 +666,7 @@ class Api:
         except StorageError as exc:
             raise ApiError(500, exc.reason, str(exc)) from None
 
+        grounder = self._grounding()
         run = run_planning(
             text, request_id=request_id, catalog=runtime.resource_catalog,
             skill_catalog=runtime.skill_catalog, profile=runtime.profile,
@@ -673,6 +680,7 @@ class Api:
             schema_version=TASK_PLAN_SCHEMA_VERSION,
             stt_inference_id=stt_inference_id,
             execution_path=PlanningExecutionPath.OPERATIONAL,
+            slot_grounder=grounder,
         )
         persist_attempts(runtime.repository, run.attempts)
         attempt_id = run.attempts[-1].planning_attempt_id if run.attempts else None
@@ -1069,6 +1077,10 @@ class Api:
             request.utterance, self.runtime.resource_catalog,
             stop_keywords=self.runtime.stt_policy.stop_keywords,
         )
+        # 계획을 만들 때와 같은 근거(등록 색·현재 위치)를 **지금 상태로** 다시 붙인다.
+        grounder = self._grounding()
+        if grounder is not None and not slots.stop_keyword_hit:
+            slots = grounder(slots)
         gate = self.gate_for(plan, slots)
         attempt = repository.planning_attempt_for_plan(plan_id)
         return PlanBundle(
@@ -1756,6 +1768,48 @@ class Api:
         return {"ok": True, **_execution_dict(record, repository)}
 
     # ── 정지와 취소 (계약상 구분) ───────────────────────────────────────
+    def _grounding(self):
+        """서버 검증 근거(등록 색 → 유일한 자재, 현재 위치)를 슬롯에 붙이는 함수. 없으면 None.
+
+        시연 작업 실행기(셀 설정·자재 기록)가 없으면 근거를 더하지 않는다 — 기존 별칭
+        확인만 쓴다. 위치 기록이 확정되지 않았으면 현재 위치 근거를 더하지 않는다.
+        """
+        runtime = self.runtime
+        jobs = getattr(runtime, "sim_demo_jobs", None)
+        if jobs is None:
+            return None
+        workcell = getattr(jobs, "workcell", None)
+        if not workcell:
+            return None
+        from server.plan_grounding import ground_slots, object_facts
+
+        try:
+            world = jobs.transfer_world()
+        except Exception:  # noqa: BLE001 — 위치를 모르면 위치 근거를 더하지 않는다
+            world = None
+        locations = dict(getattr(world, "location_of", None) or {})
+        facts = object_facts(runtime.resource_catalog, workcell, locations)
+        catalog = runtime.resource_catalog
+        return lambda slots: ground_slots(slots, catalog=catalog, facts=facts)
+
+    def _stop_from_utterance(self, session_id: str, text: str) -> dict:
+        """정지 발화 → 전체 정지 요청. `/v1/stop` 라우트와 같은 범위(일반 실행 + 시연 작업)."""
+        stopped = self.stop(session_id=session_id)
+        runtime = self.runtime
+        sim_stop = None
+        jobs = getattr(runtime, "sim_demo_jobs", None)
+        if jobs is not None:
+            goals = getattr(runtime, "sim_demo_goals", None)
+            goal_stop = goals.request_stop() if goals is not None else None
+            sim_stop = (goal_stop if goal_stop and goal_stop.get("requested")
+                        else jobs.request_stop(reason="plan_utterance_stop"))
+        return {"ok": False, "stopped": True, "decision": "STOP",
+                "session_id": session_id, "utterance": text,
+                "reason_code": None, "recoverable": False,
+                "detail": "정지 발화 — 계획을 만들지 않고 전체 정지를 요청했다(모델 호출 없음)",
+                "clarification": None, "stop": stopped,
+                "simulation_demo_stop": sim_stop}
+
     def stop(self, *, session_id: str | None = None) -> dict:
         """**전체 정지.** 로봇 전체를 멈춘다.
 

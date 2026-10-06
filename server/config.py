@@ -70,6 +70,12 @@ class ServerConfig:
     #: `FORSTICK2_SIM_DEMO_WEB=0`으로 끌 수 있다.
     #: 일반 `/v1/plan`·`/v1/execute`의 pick/place 차단과는 무관하다.
     enable_sim_demo_web: bool = True
+    #: 시연 **명령 입구**(`POST /v1/sim-demo/command`)만 끈다. 끄면 그 입구가 PASS_THROUGH로
+    #: 답하고, 기존 웹 화면은 그 답을 받아 일반 경로(`/v1/plan` → `/v1/execute`)로 보낸다 —
+    #: 화면 코드를 바꾸지 않고 일반 모드를 시험하는 스위치다. 시연 작업 실행기(일반 경로
+    #: pick/place가 쓰는 것)와 다른 시연 API는 그대로 둔다. 기본은 켬(지금 동작 그대로).
+    #: `FORSTICK2_SIM_DEMO_COMMAND=0`으로 끈다.
+    enable_sim_demo_command: bool = True
     #: 모호한 자재 작업 발화를 Qwen 분류기로 보낼지. 끄면 규칙 해석만 쓴다.
     #: 분류기는 계획 생성과 **같은 LLM 설정**(`llm_config_name`)을 쓴다.
     enable_sim_demo_intent: bool = True
@@ -121,6 +127,7 @@ class ServerConfig:
                 os.environ.get("FORSTICK2_CLIENT_GRACE_SEC", "5")
             ),
             enable_sim_demo_web=flag("FORSTICK2_SIM_DEMO_WEB", True),
+            enable_sim_demo_command=flag("FORSTICK2_SIM_DEMO_COMMAND", True),
             enable_sim_demo_intent=flag("FORSTICK2_SIM_DEMO_INTENT", True),
             sim_demo_intent_min_confidence=float(
                 os.environ.get("FORSTICK2_SIM_DEMO_INTENT_MIN_CONFIDENCE", "0.7")

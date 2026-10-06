@@ -65,6 +65,13 @@
     없으면 인자 있는 스킬 금지, 안전·홈 자세 의도면 종료 스킬 단독, 4-4는 확인된
     위치 식별자가 있을 때만, 위치가 명시된 이동 요청은 이동 계획, 놓기 동사·자원
     불명확은 6번. 개발셋 최장 입력 2587→2302토큰. 모델 설정·스키마는 그대로.
+- `plan-ko-1.8` / `plan-out-1.2` — 2026-10-06. 별칭 목록에 없는 표현("초록색 모형"·"연두 물체")이
+    확인된 식별자 0개가 되어 되묻기로 끝나던 문제. 사용자 블록 앞에 **물체 정보**(등록 색·지금
+    위치, 서버가 셀 설정·기록에서 만든다)를 한 줄씩 넣고, "확인된 식별자"에는 서버가 검증한 근거
+    (등록 색 → 유일한 자재, 그 자재의 현재 위치)를 더한다(`server/plan_grounding.py`). 물체 정보
+    근거는 `'표현'=id`로 적는다("'초록색'=mat_c, 'C자재의 현재 위치'=loc_pallet_3") — 같은 줄이
+    집을 곳도 알려 준다. 입력이 이미 한도(2560)에 가까워 규칙 문장은 더하지 않았다.
+    규칙·스키마·gate는 그대로.
 - `plan-ko-1.2` / `plan-out-1.2` — 5-03 2차. `terminal_hold` 의미를 긍정문으로
   다시 씀. 1.1 측정에서 모델이 거의 모든 계획에 물체를 쥔 채 종료로 표기했다
   (순서 일치율 0.000). 문법 문제가 아니라 문구 문제였다 — 같은 스키마로 서버에
@@ -84,7 +91,7 @@ from core.termination import ApproachRequirement, TerminationRequirement
 from planning.plan_provider import PlanningContext
 
 #: 프롬프트 템플릿 버전. 문구를 바꾸면 올린다.
-PROMPT_TEMPLATE_VERSION = "plan-ko-1.7"
+PROMPT_TEMPLATE_VERSION = "plan-ko-1.8"
 #: 모델이 지켜야 하는 출력 스키마 버전. 필드를 바꾸면 올린다.
 OUTPUT_SCHEMA_VERSION = "plan-out-1.2"
 
@@ -306,6 +313,30 @@ def _composition_lines(
     )
 
 
+def _recognized_line(context: PlanningContext, catalog: ResourceCatalog) -> str:
+    """확인된 식별자 목록. 별칭으로 확인된 것은 id만(기존 형식), 서버가 다른 근거(등록 색·
+    현재 위치)로 확인한 것은 `'표현'=id`로 적는다 — 모델이 "카탈로그에 없는 표현"이라며
+    되묻지 않게 하려고. 2026-10-06 실측: "주황 모형"을 mat_a로 확인했는데 모델이 되물었다."""
+    if not context.slots:
+        return ""
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in context.slots.matches:
+        rid = match.resource_id
+        if rid in seen:
+            continue
+        seen.add(rid)
+        entry = catalog.get(rid) if catalog.has(rid) else None
+
+        def norm(text: str) -> str:
+            return "".join(str(text).split()).lower()
+
+        surfaces = {norm(x) for x in (entry.display_name, *entry.aliases)} if entry else set()
+        out.append(rid if not match.surface or norm(match.surface) in surfaces
+                   else f"'{match.surface}'={rid}")
+    return ", ".join(out)
+
+
 def render_prompt(
     context: PlanningContext,
     *,
@@ -361,7 +392,7 @@ def render_prompt(
         "\n[출력 스키마]\n"
         f"{json.dumps(schema, ensure_ascii=False)}"
     )
-    recognized = ", ".join(context.slots.resource_ids) if context.slots else ""
+    recognized = _recognized_line(context, resource_catalog)
     references = (
         "\n[참고 문서]\n" + "\n".join(f"- {r}" for r in context.references)
         if context.references else ""

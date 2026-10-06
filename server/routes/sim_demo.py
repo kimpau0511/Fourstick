@@ -951,6 +951,12 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
                 json.dumps(response["diagnostic"], ensure_ascii=False))
         return json_response(response, status)
 
+    config = getattr(ctx.runtime, "config", None)
+    if config is not None and not getattr(config, "enable_sim_demo_command", True):
+        # 일반 모드 시험: 시연 명령 해석을 하지 않는다. 화면은 PASS_THROUGH를 받아 계획 생성으로 간다.
+        return answer(200, decision=PASS_THROUGH, intent=None, material=None,
+                      reason="시연 명령 입구가 꺼져 있다(FORSTICK2_SIM_DEMO_COMMAND=0)"
+                             " — 일반 계획 생성(/v1/plan)으로 간다")
     if payload.get("mode") != "simulation_demo":
         return answer(400, decision=BLOCK,
                       reason="시뮬레이션 시연 모드가 아니다 — 일반 명령은 계획 생성으로 간다")
