@@ -9,7 +9,7 @@
 .rec-btn { padding: 6px 16px; border-radius: 12px; background: var(--panel-2); box-shadow: var(--btn); font-size: 13px; font-weight: 700; color: var(--cyan); white-space: nowrap; }
 .rec-btn:disabled { opacity: .45; }
 .data-table tbody tr[tabindex] { cursor: pointer; }
-.data-table tbody tr[aria-selected="true"] { background: var(--nav-active); }
+.data-table tbody tr[tabindex][aria-selected="true"] { background: var(--nav-active); }
 .data-table tbody tr[tabindex]:focus-visible { outline: 2px solid var(--accent-border); outline-offset: -2px; }
 .rec-empty { padding: 20px; color: var(--muted); font-size: 13px; margin: 0; }
 .rec-detail { padding: 16px 20px; }

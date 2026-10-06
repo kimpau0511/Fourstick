@@ -3,7 +3,8 @@
 .robots-list .data-table td:first-child { white-space: nowrap; }
 .robots-detail { flex: 1; min-width: 0; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 .robots-list .data-table tbody tr { cursor: pointer; }
-.robots-list .data-table tbody tr[aria-selected="true"] { background: var(--nav-active); }
+/* 선택 표시는 고를 게 있을 때(2대 이상)만 — 1대면 늘 선택이라 다른 표와 달리 줄이 회색으로만 보인다. */
+.robots-list .data-table tbody tr[aria-selected="true"]:not(:only-child) { background: var(--nav-active); }
 .detail-fixed { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .detail-fixed > div { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); font-size: 13px; }
 .detail-fixed span { color: var(--muted); font-size: 11px; }
