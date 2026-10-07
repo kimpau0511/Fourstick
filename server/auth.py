@@ -30,7 +30,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http.cookies import SimpleCookie
 from typing import Callable
 
@@ -138,11 +138,42 @@ def header(headers: list[tuple[bytes, bytes]], name: bytes) -> str | None:
     return None
 
 
-def origin_ok(headers: list[tuple[bytes, bytes]], public_origin: str) -> bool:
-    """브라우저가 보낸 Origin이 화면 주소와 같은지. Origin이 없으면(브라우저 밖 요청) 통과 —
+def origin_ok(headers: list[tuple[bytes, bytes]], public_origin: str | tuple[str, ...]) -> bool:
+    """브라우저가 보낸 Origin이 등록된 화면 주소인지. Origin이 없으면(브라우저 밖 요청) 통과 —
     쿠키를 실어 보내는 공격은 브라우저에서 오고, 브라우저는 POST·WebSocket에 Origin을 붙인다."""
     origin = header(headers, b"origin")
-    return origin is None or (bool(public_origin) and origin.rstrip("/") == public_origin)
+    allowed = (public_origin,) if isinstance(public_origin, str) else public_origin
+    return origin is None or (bool(origin) and origin.rstrip("/") in tuple(o for o in allowed if o))
+
+
+#: '명령'으로 보고 보낸 사람을 남기는 요청(결정 Q10). 조회(GET)·로그인·세션 발급은 넣지 않는다.
+COMMAND_PREFIXES = ("/v1/plan", "/v1/decision", "/v1/execute", "/v1/executions/", "/v1/stop",
+                    "/v1/sim-demo", "/v1/humanoid")
+_LINK_KEYS = ("request_id", "plan_id", "execution_id", "job_id", "goal_id")
+
+
+def is_command(method: str, path: str) -> bool:
+    return method == "POST" and path.startswith(COMMAND_PREFIXES)
+
+
+def link_ids(body: bytes) -> dict:
+    """응답 JSON에서 이 명령이 만든 기록의 식별자를 찾는다.
+
+    맨 위 키와 이 명령이 띄운 `job`·`goal` 안만 본다. 응답에 같이 실리는 상태(진행 중인 다른 작업,
+    최근 작업 목록)까지 뒤지면 남이 시작한 작업에 이 사람을 잘못 붙인다.
+    """
+    try:
+        payload = json.loads(body or b"{}")
+    except ValueError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    found = {k: payload[k] for k in _LINK_KEYS if isinstance(payload.get(k), str) and payload[k]}
+    for holder, key in (("job", "job_id"), ("goal", "goal_id")):
+        inner = payload.get(holder)
+        if key not in found and isinstance(inner, dict) and isinstance(inner.get(key), str) and inner[key]:
+            found[key] = inner[key]
+    return found
 
 
 def public_user(account: AccountRecord) -> dict:
@@ -157,13 +188,23 @@ class AuthService:
     exchange: Callable[[str, ServerConfig], dict] = google_exchange
     now: Callable[[], float] = time.time
 
-    def login(self, code: str) -> tuple[AccountRecord, str]:
+    @property
+    def allowed_origins(self) -> tuple[str, ...]:
+        return (self.config.public_origin, *self.config.additional_public_origins)
+
+    def login(self, code: str, *, origin: str | None = None) -> tuple[AccountRecord, str]:
         """인가 코드 → 등록 계정 확인 → (계정, 새 세션 토큰)."""
         cfg = self.config
         if not (cfg.google_client_id and cfg.google_client_secret and cfg.public_origin):
             raise LoginError(503, ReasonCode.CONFIG_MISSING, "구글 로그인 설정(클라이언트 ID·보안 비밀·화면 주소)이 없다")
         if not code:
             raise LoginError(400, ReasonCode.CONFIG_MISSING, "code가 없다")
+        if origin is not None:
+            origin = origin.rstrip("/")
+            if origin not in self.allowed_origins:
+                raise LoginError(403, ReasonCode.SESSION_LOGIN_FAILED, "허용되지 않은 로그인 주소다")
+            # 공유 설정을 바꾸지 않는다. 동시 로그인도 각각 인가 코드를 받은 주소로 교환한다.
+            cfg = replace(cfg, public_origin=origin)
         claims = check_id_token(self.exchange(code, cfg), client_id=cfg.google_client_id, now=self.now())
         email = str(claims["email"]).strip().lower()
         at = self.now()
@@ -207,11 +248,27 @@ class AuthService:
         body = json.dumps({"error": "로그인이 필요하다", "reason_code": reason.value}, ensure_ascii=False).encode("utf-8")
         return 401, [], body
 
+    def actor_of(self, method: str, path: str, token: str | None) -> str | None:
+        """명령 요청이면 **처리 전에** 보낸 사람을 정한다. 처리 뒤에 다시 보면 그 사이 로그아웃·만료로 빠진다."""
+        if not (is_command(method, path) and token):
+            return None
+        account = self.resolve(token)[0]
+        return account.email if account else None
+
+    def record_command(self, method: str, path: str, actor_email: str | None, status: int, body: bytes) -> None:
+        """명령 요청이면 보낸 사람을 남긴다(결정 Q10). 로그인 없이 보낸 정지는 actor_email이 비어 있다."""
+        if not is_command(method, path):
+            return
+        self.repository.append_command_actor({
+            "audit_id": secrets.token_hex(12), "recorded_at": self.now(), "actor_email": actor_email,
+            "method": method, "path": path, "status": int(status), **link_ids(body),
+        })
+
     def ws_refused(self, path: str, headers: list[tuple[bytes, bytes]]) -> bool:
         """WebSocket 출입 검사. 로그인 + 다른 출처의 페이지가 쿠키로 붙는 것 거절."""
         if not self.config.require_login:
             return False
-        if not origin_ok(headers, self.config.public_origin):
+        if not origin_ok(headers, self.allowed_origins):
             return True
         return self.refusal("GET", path, cookie_token(headers)) is not None
 
@@ -219,12 +276,15 @@ class AuthService:
         if token:
             self.repository.delete_login_session(_hash(token))
 
-    def set_cookie(self, token: str) -> tuple[bytes, bytes]:
-        return b"set-cookie", self._cookie(token, int(self.config.login_session_ttl_sec)).encode()
+    def set_cookie(self, token: str, *, origin: str | None = None) -> tuple[bytes, bytes]:
+        return b"set-cookie", self._cookie(token, int(self.config.login_session_ttl_sec), origin).encode()
 
-    def clear_cookie(self) -> tuple[bytes, bytes]:
-        return b"set-cookie", self._cookie("", 0).encode()
+    def clear_cookie(self, *, origin: str | None = None) -> tuple[bytes, bytes]:
+        return b"set-cookie", self._cookie("", 0, origin).encode()
 
-    def _cookie(self, value: str, max_age: int) -> str:
-        secure = "; Secure" if self.config.public_origin.startswith("https://") else ""
+    def _cookie(self, value: str, max_age: int, origin: str | None = None) -> str:
+        address = origin.rstrip("/") if origin else self.config.public_origin
+        if address not in self.allowed_origins:
+            address = self.config.public_origin
+        secure = "; Secure" if address.startswith("https://") else ""
         return f"{COOKIE_NAME}={value}; Max-Age={max_age}; Path=/; HttpOnly; SameSite=Lax{secure}"

@@ -99,8 +99,7 @@ test('[UI-PAUSE-03] 명령 패널에는 즉시 정지가 없고, 헤더의 즉�
   await expect(page.locator('header').getByRole('button', { name: /즉시 정지/ })).toBeEnabled();
 });
 
-// '시뮬레이션 보기' 버튼으로 작업 없이 창을 여는 보기 모드(팀원 App.jsx, 2026-10-07 작업 중)가 커밋되면 fixme를 뗀다.
-test.fixme('[UI-PAUSE-04] 작업이 없을 때 시뮬레이션 보기를 열어도 일시정지·재개가 보이고, 쓸 수 없는 이유를 보인다', async ({ page }) => {
+test('[UI-PAUSE-04] 작업이 없을 때 시뮬레이션 보기를 열어도 일시정지·재개가 보이고, 쓸 수 없는 이유를 보인다', async ({ page }) => {
   await mockBackend(page);
   await page.goto('/');
   await page.getByRole('button', { name: '시뮬레이션 보기' }).click();
@@ -138,8 +137,7 @@ test('[UI-STOP-02] 정지 해제 거부(움직이는 작업이 남음)면 이유
   await expect(page.locator('header').getByRole('button', { name: /정지 해제/ })).toBeVisible();
 });
 
-// '시뮬레이션 보기' 버튼으로 작업 없이 창을 여는 보기 모드(팀원 App.jsx, 2026-10-07 작업 중)가 커밋되면 fixme를 뗀다.
-test.fixme('[UI-STOP-03] 전체 정지로 멈춘 자재도 시뮬레이션 보기에서 재개할 수 있다(서버가 재개 가능하다고 할 때)', async ({ page }) => {
+test('[UI-STOP-03] 전체 정지로 멈춘 자재도 시뮬레이션 보기에서 재개할 수 있다(서버가 재개 가능하다고 할 때)', async ({ page }) => {
   const calls = [];
   await mockBackend(page);
   await page.route((url) => url.pathname === '/v1/sim-demo', (route) => route.fulfill({ json: fixture('simDemo', (base) => ({

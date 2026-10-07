@@ -46,10 +46,21 @@ async def handle(
     commands = list(runtime.repository.recent_request_summaries(limit))
     jobs = getattr(runtime, "sim_demo_jobs", None)
     jobs_dir = Path(jobs.jobs_dir) if jobs is not None else None
+    sim_jobs = _sim_jobs(jobs_dir, limit, include_reconcile) if jobs_dir else []
+    # 보낸 사람(결정 Q10). 기록 기능이 생기기 전 명령·로그인 없이 보낸 정지는 actor가 null이다.
+    # 화면은 결과 파일 말고 /v1/sim-demo의 recent_jobs(진행 중 포함)도 쓴다 — 그 작업들의 보낸 사람도 job_actors로 준다.
+    recent_ids = [j.get("job_id") for j in ((jobs.status() if jobs is not None else {}).get("recent_jobs") or [])]
+    actors = runtime.repository.command_actors_for(
+        request_ids=[c["request_id"] for c in commands],
+        job_ids=[*(j.get("job_id") for j in sim_jobs), *recent_ids])
+    for row, key in [*((c, c["request_id"]) for c in commands), *((j, j.get("job_id")) for j in sim_jobs)]:
+        row["actor"] = actors.get(key)
+    job_actors = {i: actors[i] for i in recent_ids if i in actors}
     return json_response({
         "is_simulated": True,
         "commands": commands,
-        "sim_jobs": _sim_jobs(jobs_dir, limit, include_reconcile) if jobs_dir else [],
+        "sim_jobs": sim_jobs,
+        "job_actors": job_actors,
         "notice": "발화와 시연 작업은 연결해 기록되지 않습니다 — 두 목록은 따로입니다",
     })
 

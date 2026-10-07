@@ -789,6 +789,27 @@ CREATE TABLE login_sessions (
 CREATE INDEX idx_login_sessions_email ON login_sessions(email);
 """
 
+#: 명령을 보낸 사람(2026-10-06 결정 Q10). **덧붙이기만 한다(append-only).** 기존 기록(requests·작업 파일)을
+#: 고치지 않고, 응답에 담긴 식별자(request_id·job_id 등)로 이어 붙인다. 정지는 로그인 없이도 받으므로
+#: actor_email이 비어 있을 수 있다(그때는 '로그인 없이 보낸 요청'이다).
+MIGRATION_0019 = """
+CREATE TABLE command_actors (
+    audit_id        TEXT PRIMARY KEY,
+    recorded_at     REAL NOT NULL,
+    actor_email     TEXT,
+    method          TEXT NOT NULL,
+    path            TEXT NOT NULL,
+    status          INTEGER NOT NULL,
+    request_id      TEXT,
+    plan_id         TEXT,
+    execution_id    TEXT,
+    job_id          TEXT,
+    goal_id         TEXT
+);
+CREATE INDEX idx_command_actors_request ON command_actors(request_id);
+CREATE INDEX idx_command_actors_job ON command_actors(job_id);
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "요청·계획·검증·허가·실행·이력 초기 스키마", MIGRATION_0001),
     (2, "확정 요청의 STT 메타데이터 컬럼 추가", MIGRATION_0002),
@@ -808,6 +829,7 @@ MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (16, "STT 원문과 정규화 전사 분리", "ALTER TABLE stt_inferences ADD COLUMN raw_transcript TEXT;"),
     (17, "일반 경로 검증된 작업 의도 기록 추가", MIGRATION_0017),
     (18, "로그인 계정·로그인 세션 추가", MIGRATION_0018),
+    (19, "명령을 보낸 사람 기록 추가", MIGRATION_0019),
 )
 
 CREATE_MIGRATIONS_TABLE = """
