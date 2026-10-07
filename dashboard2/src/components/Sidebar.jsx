@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NAV } from '../nav.js';
 import bot from '../assets/bot.svg';
 import StatusWidget from './StatusWidget.jsx';
@@ -22,6 +22,18 @@ function Avatar({ user }) {
 export default function Sidebar({ page, server, user, onLogout, logoutFailed, inert }) {
   const badge = runningBadge(server);
   const [menuOpen, setMenuOpen] = useState(false);
+  const profileRef = useRef(null);
+  // 메뉴 밖을 누르거나 Esc를 누르면 닫는다. 페이지를 옮겨도 닫는다(아래 menuPage).
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onDown = (e) => { if (!profileRef.current?.contains(e.target)) setMenuOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [menuOpen]);
+  const [menuPage, setMenuPage] = useState(page);
+  if (menuPage !== page) { setMenuPage(page); setMenuOpen(false); }
   return <aside className="sidebar" inert={inert}>
     <div>
       <div className="brand">
@@ -39,7 +51,7 @@ export default function Sidebar({ page, server, user, onLogout, logoutFailed, in
     <div className="side-bottom">
       <StatusWidget server={server} />
       {/* 계정은 서버(/v1/auth/me)가 준 값만 — 이름·근무를 지어내지 않는다(D2). */}
-      <div className="profile">
+      {user && <div className="profile" ref={profileRef}>
         {menuOpen && <div className="profile-menu" id="profile-menu" role="menu" onKeyDown={(e) => { if (e.key === 'Escape') setMenuOpen(false); }}>
           <div className="who"><Avatar user={user} /><div><strong>{user.name || user.email}</strong><small>{user.email}</small></div></div>
           <hr />
@@ -51,7 +63,7 @@ export default function Sidebar({ page, server, user, onLogout, logoutFailed, in
           <Avatar user={user} />
           <div className="rail-hide"><strong>{user.name || user.email}</strong><small>{user.email}</small></div>
         </button>
-      </div>
+      </div>}
     </div>
   </aside>;
 }

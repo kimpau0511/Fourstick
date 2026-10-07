@@ -203,6 +203,19 @@ class AuthApiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get("/health")).status, 200)
 
 
+class LoginConfigFromEnvTest(unittest.TestCase):
+    def test_login_values_ignore_surrounding_whitespace_and_cr(self):
+        # Windows에서 만든 설정 파일의 \r이 값 끝에 붙어도 같은 값으로 읽는다(2026-10-07 실제 장애).
+        from unittest import mock
+        env = {"FORSTICK2_GOOGLE_CLIENT_ID": f" {CLIENT_ID}\r", "FORSTICK2_GOOGLE_CLIENT_SECRET": "fixture-secret\r",
+               "FORSTICK2_PUBLIC_ORIGIN": "https://foursticks.example/\r"}
+        with mock.patch.dict("os.environ", env):
+            config = ServerConfig.from_env()
+        self.assertEqual(config.google_client_id, CLIENT_ID)
+        self.assertEqual(config.google_client_secret, "fixture-secret")
+        self.assertEqual(config.public_origin, "https://foursticks.example")
+
+
 class IdTokenCheckTest(unittest.TestCase):
     def test_accepts_google_token_for_this_app(self):
         self.assertEqual(check_id_token(claims(), client_id=CLIENT_ID, now=NOW)["sub"], "sub-1")

@@ -151,9 +151,11 @@ class ServerConfig:
                 os.environ.get("FORSTICK2_SIM_DEMO_CONFIRM_TTL_SEC", "60")
             ),
             require_login=flag("FORSTICK2_REQUIRE_LOGIN", True),
-            google_client_id=os.environ.get("FORSTICK2_GOOGLE_CLIENT_ID", ""),
-            google_client_secret=os.environ.get("FORSTICK2_GOOGLE_CLIENT_SECRET", ""),
-            public_origin=os.environ.get("FORSTICK2_PUBLIC_ORIGIN", "").rstrip("/"),
+            # 로그인 값은 파일에서 복사해 넣는 경우가 많다 — 앞뒤 공백·줄 끝 문자(\r)를 지운다.
+            # 2026-10-07 Windows에서 만든 설정 파일의 \r이 값 끝에 붙어 출처 검사·구글 교환이 실패했다.
+            google_client_id=os.environ.get("FORSTICK2_GOOGLE_CLIENT_ID", "").strip(),
+            google_client_secret=os.environ.get("FORSTICK2_GOOGLE_CLIENT_SECRET", "").strip(),
+            public_origin=os.environ.get("FORSTICK2_PUBLIC_ORIGIN", "").strip().rstrip("/"),
             login_session_ttl_sec=float(os.environ.get("FORSTICK2_LOGIN_SESSION_TTL_SEC", "43200")),
             google_http_timeout_sec=float(os.environ.get("FORSTICK2_GOOGLE_HTTP_TIMEOUT_SEC", "10")),
         )

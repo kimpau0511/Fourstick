@@ -12,8 +12,8 @@ const ERRORS = {
   not_registered: (e) => ({ tone: 'danger', text: `이 계정${e.email ? `(${e.email})` : ''}은 사용 권한이 없습니다. 관리자에게 등록을 요청하세요.`, button: '다른 계정으로 로그인' }),
   disabled: () => ({ tone: 'danger', text: '사용이 중지된 계정입니다. 관리자에게 문의하세요.', button: '다른 계정으로 로그인' }),
   cancelled: () => ({ tone: 'info', text: '로그인이 취소되었습니다.' }),
-  popup_blocked: () => ({ tone: 'warn', text: '브라우저가 로그인 창을 막았습니다. 팝업을 허용한 뒤 다시 시도하세요.', button: '다시 시도', retry: true }),
-  server: () => ({ tone: 'danger', text: '로그인 서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.', button: '다시 시도', retry: true }),
+  popup_blocked: () => ({ tone: 'warn', text: '브라우저가 로그인 창을 막았습니다. 팝업을 허용한 뒤 다시 시도하세요.', button: '다시 시도' }),
+  server: () => ({ tone: 'danger', text: '로그인 서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.', button: '다시 시도' }),
   config: () => ({ tone: 'danger', text: '구글 로그인 설정(클라이언트 ID)이 없습니다. 관리자에게 문의하세요.' }),
   logout_failed: () => ({ tone: 'danger', text: '로그아웃을 서버에서 확인하지 못했습니다. 다시 시도하세요.' }),
 };
@@ -31,9 +31,9 @@ export function Notice({ tone, title, children }) {
   </div>;
 }
 
-export function GoogleButton({ auth, label = 'Google로 로그인', retry = false, autoFocus = false }) {
+export function GoogleButton({ auth, label = 'Google로 로그인', autoFocus = false }) {
   const noConfig = !GOOGLE_CLIENT_ID;
-  return <button type="button" className={retry ? 'google-btn retry' : 'google-btn'} onClick={auth.login} disabled={auth.pending || noConfig} aria-busy={auth.pending || undefined} autoFocus={autoFocus}>
+  return <button type="button" className="google-btn" onClick={auth.login} disabled={auth.pending || noConfig} aria-busy={auth.pending || undefined} autoFocus={autoFocus}>
     {auth.pending ? <Spinner size={16} decorative /> : <img src={googleG} alt="" width="18" height="18" />}
     {auth.pending ? 'Google 인증 대기 중…' : label}
   </button>;
@@ -56,7 +56,7 @@ export function LoginScreen({ auth }) {
         <p>{auth.pending ? '열린 Google 창에서 로그인을 완료하세요' : '등록된 Google 계정으로 로그인하세요'}</p>
       </div>
       {err && !auth.pending && <Notice tone={err.tone}>{err.text}</Notice>}
-      <GoogleButton auth={auth} label={err?.button} retry={!auth.pending && err?.retry} />
+      <GoogleButton auth={auth} label={err?.button} />
       <p className="login-help">계정이 없나요? 관리자에게 등록을 요청하세요.</p>
       {PRIVACY_URL && <a className="login-link" href={PRIVACY_URL} target="_blank" rel="noreferrer">개인정보 처리방침</a>}
     </main>
@@ -72,7 +72,7 @@ export function SessionExpired({ auth }) {
       <p id="expired-desc">다시 로그인하면 지금 보던 화면으로 그대로 돌아옵니다.</p>
       <Notice tone="info" title="즉시 정지는 다시 로그인하지 않아도 누를 수 있습니다">로봇 작업은 계속 진행됩니다. 위쪽 즉시 정지 버튼을 쓰세요.</Notice>
       {err && !auth.pending && <Notice tone={err.tone}>{err.text}</Notice>}
-      <GoogleButton auth={auth} label={err?.button} retry={!auth.pending && err?.retry} autoFocus />
+      <GoogleButton auth={auth} label={err?.button} autoFocus />
     </section>
   </div>;
 }
