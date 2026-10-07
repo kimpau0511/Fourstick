@@ -85,6 +85,21 @@ class ServerConfig:
     sim_demo_intent_min_confidence: float = 0.7
     #: 확인 카드 만료(초). 사용자 요구값이다.
     sim_demo_confirm_ttl_sec: float = 60.0
+    #: 로그인을 요구할지(구글만·등록 계정만, 2026-10-06 결정). **기본은 켬** — 보안 기본값(CODE_RULES 8).
+    #: 켜져 있으면 로그인·정지·정적 파일 말고는 로그인 세션이 있어야 한다(`server/auth.py`).
+    #: 구글 설정을 하기 전 개발 PC에서만 `FORSTICK2_REQUIRE_LOGIN=0`으로 끈다.
+    require_login: bool = True
+    #: 구글 OAuth 클라이언트 ID(공개 값). 화면(`dashboard2/.env`)과 같은 값이어야 한다.
+    google_client_id: str = ""
+    #: 구글 OAuth 클라이언트 보안 비밀. **환경변수로만** 받는다 — 저장소·화면에 두지 않는다.
+    google_client_secret: str = ""
+    #: 화면이 열리는 주소(origin). 구글 팝업 방식의 인가 코드 교환 redirect_uri가 이 값이다
+    #: (구글 문서 identity/oauth2/web/guides/use-code-model, 2026-10-07 확인). https면 쿠키에 Secure를 붙인다.
+    public_origin: str = ""
+    #: 로그인 유지 시간(초). 사용자 결정 2026-10-06 Q4 "한 근무 시간(12시간)".
+    login_session_ttl_sec: float = 43200.0
+    #: 구글 토큰 교환 요청 제한 시간(초). **측정값이 아니다** — 로그인 버튼이 끝없이 돌지 않게 둔 보수적 상한.
+    google_http_timeout_sec: float = 10.0
 
     @staticmethod
     def from_env() -> "ServerConfig":
@@ -135,4 +150,10 @@ class ServerConfig:
             sim_demo_confirm_ttl_sec=float(
                 os.environ.get("FORSTICK2_SIM_DEMO_CONFIRM_TTL_SEC", "60")
             ),
+            require_login=flag("FORSTICK2_REQUIRE_LOGIN", True),
+            google_client_id=os.environ.get("FORSTICK2_GOOGLE_CLIENT_ID", ""),
+            google_client_secret=os.environ.get("FORSTICK2_GOOGLE_CLIENT_SECRET", ""),
+            public_origin=os.environ.get("FORSTICK2_PUBLIC_ORIGIN", "").rstrip("/"),
+            login_session_ttl_sec=float(os.environ.get("FORSTICK2_LOGIN_SESSION_TTL_SEC", "43200")),
+            google_http_timeout_sec=float(os.environ.get("FORSTICK2_GOOGLE_HTTP_TIMEOUT_SEC", "10")),
         )

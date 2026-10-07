@@ -1035,3 +1035,27 @@ class ApprovalRecord:
                 raise ValueError(f"{name}이 비어 있다")
         if not isinstance(self.decision, ApprovalDecision):
             raise ValueError(f"decision이 ApprovalDecision이 아니다: {self.decision!r}")
+
+
+@dataclass(frozen=True)
+class AccountRecord:
+    """로그인할 수 있는 사람 하나(구글 계정, 2026-10-06 결정 Q1·Q10).
+
+    **미리 등록된 이메일만 로그인한다** — 구글 계정이 있다는 것만으로 들이지 않는다.
+    등록은 `scripts/auth_accounts.py`가 한다(관리 화면은 나중).
+    `google_sub`는 첫 로그인 때 묶고, 그 뒤 다른 sub로 같은 이메일이 오면 거절한다
+    (이메일 주소가 다른 구글 계정에 재할당되는 경우를 막는다).
+    """
+
+    email: str
+    enabled: bool
+    created_at: float
+    google_sub: str | None = None
+    name: str | None = None
+    picture: str | None = None
+    first_login_at: float | None = None
+    last_login_at: float | None = None
+
+    def __post_init__(self) -> None:
+        if not self.email or self.email != self.email.strip().lower():
+            raise ValueError("email은 공백 없는 소문자여야 한다")

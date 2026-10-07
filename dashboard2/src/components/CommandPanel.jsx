@@ -106,8 +106,9 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   // 조회가 끊겼으면(statusUnknown) 마지막 '실행 중'을 계속 보이지 않는다 — 오류 카드로 간다.
   const running = !sim.statusUnknown && ((job && job.status === 'running') || (goal && ['running', 'stopping'].includes(goal.status)));
   const report = job && job.report;
-  const [reportTone, resultLabel] = (report && RESULT_LABELS[report.status]) || ['warn', report ? report.status : ''];
-  const resultTone = report ? reportTone : goal ? (goal.status === 'completed' ? 'ok' : goal.status === 'failed' ? 'danger' : 'warn') : 'warn';
+  // 일반 경로는 실행 최종 상태(job.general)를 서버 값으로 준다. 시연 경로는 작업 결과 코드.
+  const [reportTone, resultLabel] = job && job.general ? [job.general.tone, job.general.label] : (report && RESULT_LABELS[report.status]) || ['warn', report ? report.status : ''];
+  const resultTone = job && job.general ? job.general.tone : report ? reportTone : goal ? (goal.status === 'completed' ? 'ok' : goal.status === 'failed' ? 'danger' : 'warn') : 'warn';
 
   // 피그마 Light CommandPanel(23:2517)의 상태: 입력 → 해석·승인/되묻기/차단… → 실행 중 → 완료.
   // 입력 칸은 대기·되묻기에서만 보이고, 나머지는 결과 카드 하나가 그 자리를 쓴다.
@@ -178,7 +179,7 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     : goal ? (goal.plan || []).map((p) => ({ key: p.step, done: p.status === 'completed', text: `${stepText(p)} · ${p.status}` })) : [];
 
   return <section className="command">
-    <div className="command-head"><span><img src={dotPanel} alt="" width="8" height="8" />통합 작업 명령 패널</span><small className={`state-label ${statusTone}`}>{statusLabel}</small></div>
+    <div className="command-head"><span><img src={dotPanel} alt="" width="8" height="8" />통합 작업 명령 패널{sim.mode === 'general' && <small className="muted"> · 일반 경로(계획·안전 검증)</small>}</span><small className={`state-label ${statusTone}`}>{statusLabel}</small></div>
     {stages && <ol className="cmd-stages" aria-label="진행 단계">
       {stages.map((st, i) => <li key={STAGES[i]} className={st}><span aria-hidden="true">{MARK[st]}</span>{STAGES[i]}<span className="sr-only"> {STAGE_TEXT[st]}</span></li>)}
     </ol>}
@@ -195,6 +196,10 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
         {/* 서버 값이 있는 것만 보인다 — 영향 구역은 서버가 주지 않아 넣지 않는다. */}
         {phase === 'confirm' && typeof gripper === 'boolean' && <small className="cmd-target">도구: {gripper ? '그리퍼' : '장착 도구 없음'}</small>}
         {phase === 'confirm' && Number.isFinite(pending.created_at) && <small className="cmd-target">판정 시각 {new Date(pending.created_at * 1000).toTimeString().slice(0, 8)}</small>}
+        {pending && pending.kind === 'plan' && <ul className="plan" aria-label="계획 단계">
+          {(pending.steps || []).map((line) => <li key={line}>{line}</li>)}
+        </ul>}
+        {pending && pending.latch && <small className="cmd-lock" role="status">{pending.latch}</small>}
         {pending && pending.kind === 'goal' && <ul className="plan">
           {(pending.plan || []).map((p) => <li key={p.step}><Spinner size={14} decorative />{stepText(p)}</li>)}
         </ul>}

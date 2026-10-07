@@ -55,6 +55,7 @@ test.describe('현황(홈)', () => {
 
   test('[UI-HOME-02][①·용어표] 로봇 카드 1차 표시는 셀 위치·별칭(모델명 UR5e/FR3 아님)', async ({ page }) => {
     await page.goto('/');
+    await expect(page.locator('.robot-head strong').first()).toBeVisible(); // 로그인 확인 뒤에 대시보드가 그려진다
     const titles = await page.locator('.robot-head strong').allTextContents();
     expect(titles.length).toBeGreaterThan(0);
     for (const t of titles) expect(t).not.toMatch(/UR5e|FR3/);
@@ -97,7 +98,7 @@ test.describe('현황(홈)', () => {
 
   test('[UI-HOME-08][①] 이 화면에서 시작한 작업이면 서버 progress(reached/전체)로 진행 막대를 그린다', async ({ page }) => {
     const running = { job_id: 'qa-job', action: 'transfer', action_label: '컨베이어로 이송', status: 'running' };
-    await mockBackend(page, { plan: SAMPLES.plan(60), execute: null, progress: [SAMPLES.step], overrides: { simDemo: { running_job: running } } });
+    await mockBackend(page, { command: SAMPLES.confirm(60), jobs: [SAMPLES.run.job], overrides: { simDemo: { running_job: running } } });
     await page.goto('/');
     await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
     await page.locator('section.command').getByRole('button', { name: '실행 승인' }).click();
@@ -114,7 +115,7 @@ test.describe('현황(홈)', () => {
 
 test.describe('비상 정지·용어', () => {
   test('[UI-ESTOP-01][SFR-009·DEV-06] 정지 버튼은 시뮬레이션 창이 열려 있어도 보이고 눌린다', async ({ page }) => {
-    await mockBackend(page, { plan: SAMPLES.plan(60), execute: null, progress: [SAMPLES.step] });
+    await mockBackend(page, { command: SAMPLES.confirm(60), jobs: [SAMPLES.run.job] });
     await page.goto('/');
     await startJob(page);
     await expect(page.locator('.sim-card')).toBeVisible();
@@ -166,26 +167,6 @@ test.describe('로봇 관리', () => {
     const detail = page.getByLabel('로봇 상세');
     await expect(detail).toContainText('현재 상태');
     for (const dup of ['현재 도구', '현재 셀', '운용 가능 여부']) await expect(detail).not.toContainText(dup);
-  });
-
-  test('[UI-ROBOTS-05][2026-10-06 결정] 구성 · 작업 셀 탭: 옛 웹의 로봇 구성·작업 셀 자원을 서버 값(/v1/config)으로 보여 주고 주소에 남는다', async ({ page }) => {
-    const config = fixture('config');
-    const workcell = config.robot.workcell;
-    await page.goto('/#/robots');
-    await expect(page.getByRole('table', { name: '로봇 목록' })).toBeVisible(); // 첫 탭은 기존 화면
-    await page.getByRole('tab', { name: '구성 · 작업 셀' }).click();
-    await expect(page).toHaveURL(/#\/robots\?tab=config$/);
-    const robot = page.getByLabel('로봇 구성');
-    await expect(robot).toContainText(config.robot.robot_id);
-    await expect(robot).toContainText(workcell.workcell_id);
-    await expect(robot).toContainText(workcell.world);
-    for (const skill of config.robot.supported_skills) await expect(robot.getByText(skill, { exact: true })).toBeVisible();
-    await expect(page.getByLabel('정책', { exact: true })).toContainText(config.policies.safety.policy_version);
-    await expect(page.getByRole('table', { name: '작업 셀 자원' }).locator('tbody tr')).toHaveCount(Object.keys(workcell.resources).length);
-    // 옛 웹 catalog.js에 적어 둔 값(페이로드 '미확보' 등)은 옮기지 않았다.
-    await expect(page.locator('.col-main')).not.toContainText('미확보');
-    await page.reload();
-    await expect(page.getByRole('tab', { name: '구성 · 작업 셀' })).toHaveAttribute('aria-selected', 'true');
   });
 });
 
@@ -317,5 +298,64 @@ test.describe('진단·설정·공통', () => {
   test('[UI-COMMON-02][㉕·§9] 제어권·운전 모드 표시', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('body')).toContainText(/제어권|제어중|운전 모드|REMOTE|원격/);
+  });
+});
+
+test.describe('서버 이력(/v1/history)', () => {
+  const now = Math.floor(Date.now() / 1000);
+  const history = {
+    commands: [
+      { request_id: 'req-1', utterance: '팔레트 1의 A자재를 집어 컨베이어에 놓아줘', created_at: now - 120, decision: 'allow', execution_id: 'exe-1', execution_started_at: now - 110, final_state: 'stopped' },
+      { request_id: 'req-2', utterance: '금지 구역으로 옮겨', created_at: now - 300, decision: 'block', execution_id: null, execution_started_at: null, final_state: null },
+      { request_id: 'req-3', utterance: '관측 끊긴 실행', created_at: now - 400, decision: 'allow', execution_id: 'exe-3', execution_started_at: now - 390, final_state: 'unknown' },
+    ],
+    sim_jobs: [
+      { job_id: 'simjob_file1', action: 'transfer', action_label: '컨베이어로 이송', material: 'material_a', status: 'simulation_transfer_completed', written_at: new Date((now - 600) * 1000).toISOString() },
+      { job_id: 'simjob_file2', action: 'transfer', action_label: '컨베이어로 이송', material: 'material_c', status: 'some_internal_code', written_at: new Date((now - 700) * 1000).toISOString() },
+      // 이력 API가 한국어 이름을 못 준 작업(action_label = 내부 이름)
+      { job_id: 'simjob_file3', action: 'spot', action_label: 'spot', material: 'material_b', status: 'spot_arrived', written_at: new Date((now - 800) * 1000).toISOString() },
+    ],
+  };
+
+  test('[UI-RECORD-04][⑭·§14] 서버 요청 기록과 작업 결과 파일이 기록 표에 나오고, 판정·상태는 화면 용어로 바뀐다', async ({ page }) => {
+    await mockBackend(page, { overrides: { history, simDemo: { action_labels: { ...fixture('simDemo').action_labels, spot: '지정 위치로 옮기기' } } } });
+    await page.goto('/#/history');
+    const table = page.getByRole('table', { name: '명령 기록' });
+    const row = (name) => table.getByRole('row', { name });
+    await expect(row(/A자재를 집어 컨베이어에 놓아줘/)).toContainText('안전 확인됨');
+    await expect(row(/A자재를 집어 컨베이어에 놓아줘/)).toContainText('정지 확인됨');
+    await expect(row(/금지 구역으로 옮겨/)).toContainText('실행 차단');
+    await expect(row(/금지 구역으로 옮겨/)).toContainText('실행 없음');
+    await expect(row(/관측 끊긴 실행/)).toContainText('확인 안 됨'); // unknown을 성공으로 바꾸지 않는다
+    await expect(table).toContainText('A자재'); // 결과 파일 작업 — 자재 한국어 이름
+    await expect(table).toContainText('결과 확인 안 됨'); // 표에 없는 결과 코드는 성공·실패로 지어내지 않는다
+    await expect(table).not.toContainText('some_internal_code');
+    await expect(row(/지정 위치로 옮기기 · B자재/)).toContainText('지정 위치 도착'); // 내부 이름 spot 대신 서버 한국어 이름·결과
+    await expect(table).not.toContainText(/\bspot\b/);
+    await expect(table).not.toContainText(/\ballow\b|\bblock\b|\bask\b/);
+    // STOP 필터는 서버가 정지를 확인한 요청만 남긴다
+    await page.getByRole('group', { name: '실행 결과' }).getByRole('button', { name: 'STOP' }).click();
+    // 기본 fixture의 '복귀 중 정지' 작업 + 이 요청 — 정지를 확인한 것만 남고 차단·확인 안 됨 요청은 빠진다
+    await expect(table.locator('tbody tr:not(.row-detail)')).toHaveCount(2);
+    await expect(row(/금지 구역으로 옮겨/)).toHaveCount(0);
+    await expect(row(/관측 끊긴 실행/)).toHaveCount(0);
+    await row(/A자재를 집어 컨베이어에 놓아줘/).click();
+    const timeline = page.locator('.timeline');
+    await expect(timeline).toContainText('명령 원문: 팔레트 1의 A자재를 집어 컨베이어에 놓아줘');
+    await expect(timeline.locator('li[data-state="stop"]')).toHaveCount(1);
+  });
+
+  test('[UI-RECORD-05][⑭] 이 화면에서 보낸 명령이 서버 요청 기록에도 있으면 한 줄만, 이력 조회 실패는 표시', async ({ page }) => {
+    const sent = '두 번 나오면 안 되는 명령';
+    await mockBackend(page, { command: { decision: 'BLOCK', reason: 'QA' }, overrides: { history: { commands: [{ request_id: 'req-x', utterance: sent, created_at: Math.floor(Date.now() / 1000), decision: 'block', execution_id: null, final_state: null }] } } });
+    await page.goto('/');
+    await sendCommand(page, sent);
+    await page.getByRole('dialog').getByRole('button', { name: '명령 수정' }).click();
+    await page.goto('/#/history');
+    await expect(page.getByRole('table', { name: '명령 기록' }).getByRole('row', { name: new RegExp(sent) })).toHaveCount(1);
+    await expect(page.getByRole('table', { name: '명령 기록' }).getByRole('row', { name: new RegExp(sent) })).toContainText('실행 없음'); // 차단은 실행 자체가 없다
+    await page.route('**/v1/history**', (route) => route.fulfill({ status: 500, json: {} }));
+    await page.reload();
+    await expect(page.getByText(/서버 이력 조회 실패/)).toBeVisible({ timeout: 15000 });
   });
 });

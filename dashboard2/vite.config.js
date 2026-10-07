@@ -25,6 +25,16 @@ export default defineConfig({
       '/v1/stt': { target: backend, changeOrigin: true, secure: false, ws: true },
       '/v1/robots': { target: backend, changeOrigin: true, secure: false },
       '/v1/config': { target: backend, changeOrigin: true, secure: false },
+      '/v1/history': { target: backend, changeOrigin: true, secure: false },
+      // 일반 경로(VITE_COMMAND_MODE=general): 계획·승인·실행·전체 정지·상태
+      '/v1/plan': { target: backend, changeOrigin: true, secure: false },
+      '/v1/decision': { target: backend, changeOrigin: true, secure: false },
+      '/v1/execute': { target: backend, changeOrigin: true, secure: false },
+      '/v1/executions': { target: backend, changeOrigin: true, secure: false },
+      '/v1/stop': { target: backend, changeOrigin: true, secure: false },
+      '/v1/state': { target: backend, changeOrigin: true, secure: false },
+      // 로그인(구글) — 세션 쿠키
+      '/v1/auth': { target: backend, changeOrigin: true, secure: false },
       '/health': { target: backend, changeOrigin: true, secure: false },
     },
   },

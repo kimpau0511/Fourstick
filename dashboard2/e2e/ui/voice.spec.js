@@ -45,18 +45,17 @@ test.describe('음성 입력', () => {
     await expect(panel(page).locator('.cmd-partial')).toHaveText('A 자재를');
   });
 
-  test('[UI-VOICE-02][SFR-001] final만 일반 계획 API로 1회 보내고 partial은 보내지 않는다', async ({ page }) => {
+  test('[UI-VOICE-02][SFR-001] final이 오면 stt_final로 1회만 보낸다(partial로는 보내지 않는다)', async ({ page }) => {
     const calls = await mockBackend(page);
     const seen = await mockStt(page);
     await page.goto('/');
     await panel(page).getByRole('button', { name: /음성 입력/ }).click();
     await expect(panel(page).locator('.cmd-partial')).toHaveText('A 자재를');
-    expect(calls.filter((c) => c.path === '/v1/plan')).toHaveLength(0);
+    expect(calls.filter((c) => c.path.endsWith('/command'))).toHaveLength(0);
     await panel(page).getByRole('button', { name: /음성 인식 중/ }).click();
-    await expect.poll(() => calls.filter((c) => c.path === '/v1/plan').length).toBe(1);
-    const body = calls.find((c) => c.path === '/v1/plan').body;
-    expect(body).toMatchObject({ session_id: 'qa-session', utterance: FINAL });
-    expect(calls.some((c) => c.path.startsWith('/v1/sim-demo/'))).toBe(false);
+    await expect.poll(() => calls.filter((c) => c.path.endsWith('/command')).length).toBe(1);
+    const body = calls.find((c) => c.path.endsWith('/command')).body;
+    expect(body).toMatchObject({ source: 'stt_final', utterance: FINAL, raw_transcript: FINAL, stt_confidence: 0.93 });
     expect(seen.flush).toBe(1);
   });
 
@@ -72,7 +71,7 @@ test.describe('음성 입력', () => {
 // Codex 리뷰(2026-10-02) 지적 6번 회귀.
 test.describe('음성과 텍스트가 겹칠 때', () => {
   test('[UI-REV-10][SFR-001] 녹음 중 텍스트로 보내면 음성은 버리고, 뜬 확인 카드를 덮어쓰지 않는다', async ({ page }) => {
-    const calls = await mockBackend(page, { plan: SAMPLES.plan(60) });
+    const calls = await mockBackend(page, { command: SAMPLES.confirm(60) });
     await page.route('**/v1/sessions', (route) => route.fulfill({ json: { session_id: 'qa-session', client_id: 'qa-client' } }));
     const seen = { abort: 0 };
     await page.routeWebSocket(/\/v1\/stt/, (ws) => {
@@ -90,6 +89,6 @@ test.describe('음성과 텍스트가 겹칠 때', () => {
     await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
     await expect(panel(page)).toContainText('A 자재를 컨베이어로 옮깁니다');
     await expect.poll(() => seen.abort).toBe(1);
-    expect(calls.filter((c) => c.path === '/v1/plan')).toHaveLength(1);
+    expect(calls.filter((c) => c.path.endsWith('/command'))).toHaveLength(1);
   });
 });
