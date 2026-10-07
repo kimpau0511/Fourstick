@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { repeatAction } from '../repeatApi.js';
 import SimView3D from '../SimView3D.jsx';
 import { commandLock } from '../server.js';
 import { simLabel } from '../simLabel.js';
@@ -65,6 +66,18 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   const canRestore = controls && !moving && !canResume && !lock
     && !!(stoppedRow && stoppedRow.actions && stoppedRow.actions.restore);
   const stoppedName = stoppedRow ? stoppedRow.korean || stoppedRow.model : null;
+  // 반복 작업이 진행 중이면 일시정지·재개는 그 반복을 제어한다(서버가 판정 — 재개 가능 구간 제한 그대로).
+  const repeatRun = server && server.repeat && server.repeat.run && server.repeat.run.active ? server.repeat.run : null;
+  const [repeatNote, setRepeatNote] = useState(null);
+  const [repeatBusy, setRepeatBusy] = useState(false);
+  const onRepeat = useCallback(async (action) => {
+    if (!repeatRun) return;
+    setRepeatBusy(true); setRepeatNote(null);
+    const out = await repeatAction(repeatRun.run_id, action);
+    if (!out.ok) setRepeatNote(out.reason);
+    await server.refresh?.();
+    setRepeatBusy(false);
+  }, [repeatRun, server]);
 
   let card;
   if (state === 'viewing') {
@@ -132,8 +145,13 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
         {full && <button type="button" className="sim-fullscreen sim-fullscreen-exit" onClick={toggleFull} aria-pressed>전체화면 종료 (Esc)</button>}
         {full && <div className="sim-fs-bar">
           <span className={card.titleTone}>{card.title}{state !== 'viewing' && steps ? ` · ${done}/${steps.length} 단계` : ''}</span>
-          {controls && <button type="button" className="sim-fs-pause" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>}
-          {controls && <button type="button" className="sim-fs-pause" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>}
+          {repeatRun ? <>
+            <button type="button" className="sim-fs-pause" disabled={repeatBusy || repeatRun.state !== 'running'} onClick={() => onRepeat('pause')}>❚❚ 일시정지</button>
+            <button type="button" className="sim-fs-pause" disabled={repeatBusy || repeatRun.state !== 'paused' || !!lock} onClick={() => onRepeat('resume')}>▶ 재개</button>
+          </> : <>
+            {controls && <button type="button" className="sim-fs-pause" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>}
+            {controls && <button type="button" className="sim-fs-pause" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>}
+          </>}
           <button type="button" className="sim-fs-stop" onClick={cmd.stop}>■ 즉시 정지</button>
         </div>}
       </div>
@@ -145,12 +163,18 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
         </div>)}
       </div> : state !== 'viewing' && <p className="sim-foot">진행 단계 정보 없음</p>}
       <p className="sim-foot">{card.foot}</p>
-      {controls && <div className="sim-actions" role="group" aria-label="이 작업 제어">
+      {repeatRun && <div className="sim-actions" role="group" aria-label="반복 작업 제어">
+        <button type="button" disabled={repeatBusy || repeatRun.state !== 'running'} title={repeatRun.state !== 'running' ? '실행 중인 반복이 아닙니다' : undefined} onClick={() => onRepeat('pause')}>❚❚ 일시정지</button>
+        <button type="button" disabled={repeatBusy || repeatRun.state !== 'paused' || !!lock} title={repeatRun.state !== 'paused' ? '일시정지된 반복이 아닙니다' : lock || undefined} onClick={() => onRepeat('resume')}>▶ 재개</button>
+        {repeatRun.state === 'paused' && <button type="button" disabled={repeatBusy} onClick={() => onRepeat('cancel')}>반복 취소</button>}
+      </div>}
+      {repeatRun && <p className="sim-foot" role="status">반복 작업: {repeatRun.label}{repeatNote ? ` — ${repeatNote}` : ''}</p>}
+      {controls && !repeatRun && <div className="sim-actions" role="group" aria-label="이 작업 제어">
         <button type="button" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>
         <button type="button" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>
         {canRestore && <button type="button" disabled={cmd.busy} onClick={() => cmd.restore(stoppedRow && stoppedRow.model)}>↺ 복구(원래 자리로)</button>}
       </div>}
-      {controls && (stoppedRow || moving) && <p className="sim-foot" role="status">{canPause ? '일시정지: 이 작업만 멈춥니다(전체 정지는 헤더)'
+      {controls && !repeatRun && (stoppedRow || moving) && <p className="sim-foot" role="status">{canPause ? '일시정지: 이 작업만 멈춥니다(전체 정지는 헤더)'
         : canResume ? `${stoppedName}: 정지 지점에서 이어서 옮길 수 있습니다`
           : canRestore ? `${stoppedName}: ${resumeWhy}` : resumeWhy}</p>}
       {cmd.pauseNote && <p className={`sim-foot ${cmd.pauseNote.tone}`} role="status">{cmd.pauseNote.text}</p>}

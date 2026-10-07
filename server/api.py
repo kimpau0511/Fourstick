@@ -38,6 +38,7 @@ from core.execution_result import ExecutionResult
 from core.execution_state import ExecutionState
 from core.grasp_observation import GraspAvailability
 from core.reason_codes import ReasonCode
+from core.task_intent import TaskIntent
 from core.task_plan import TaskPlan
 from core.geometry import GeometryDecision, GeometryRequest, GeometryVerdict
 from planning.attempt_runner import persist_attempts, run_planning
@@ -645,6 +646,7 @@ class Api:
     def create_plan(
         self, *, session_id: str, utterance: str,
         stt_inference_id: str | None = None, request_id: str | None = None,
+        intent: TaskIntent | None = None, keep_stop_latch: bool = False,
     ) -> dict:
         """발화를 계획으로 만든다. **실행하지 않는다.**
 
@@ -662,6 +664,12 @@ class Api:
             # 전체 정지(`/v1/stop`과 같은 범위)를 요청한다. 정지 계획은 안전 정책의 종료 스킬
             # 요구(home)와 충돌해 어차피 차단된다(실측).
             return self._stop_from_utterance(session_id, text)
+        if keep_stop_latch:
+            with self._flag_lock:
+                latched = self._stop_requested
+            if latched:
+                raise ApiError(409, ReasonCode.EXEC_STOPPED,
+                               "전체 정지가 걸려 있다 — 반복 작업의 다음 단계를 계획하지 않는다")
         if runtime.provider is None:
             raise ApiError(
                 503, ReasonCode.PLAN_LLM_UNAVAILABLE,
@@ -691,7 +699,14 @@ class Api:
 
         # 이송 요청이면 의도 하나로 해석·검증한다(server/plan_intent.py). 계획 생성과 요청↔계획
         # 일치 검증이 이 의도를 같이 쓴다. 이송이 아니면(위치 이동·홈) 기존 계획 생성 그대로다.
-        decision = self._interpret_intent(text, session_id)
+        # 서버 안의 실행기(반복 작업)는 이미 검증된 작업 의도를 넘긴다 — 해석(Qwen)을 거치지 않고,
+        # 계획 생성·관문·요청–계획 일치 검증은 화면 명령과 똑같이 거친다.
+        if intent is not None:
+            from server.plan_intent import IntentDecision
+
+            decision = IntentDecision("intent", intent=intent, interpretation={})
+        else:
+            decision = self._interpret_intent(text, session_id)
         intent = None
         provider = runtime.provider
         if decision is not None:
@@ -770,6 +785,10 @@ class Api:
         latch_cleared, latch_detail = (False, "진행 중인 실행이 있어 풀지 않았다")
         with self._flag_lock:
             idle = not self._active_executions
+        if keep_stop_latch:
+            # 반복 작업의 다음 단계 계획이 사용자의 즉시 정지를 풀지 않는다.
+            idle = False
+            latch_detail = "반복 작업 단계 계획은 정지 래치를 풀지 않는다"
         if idle:
             latch_cleared, latch_detail = runtime.reset_stop_latch()
             if latch_cleared:
@@ -1330,7 +1349,7 @@ class Api:
     # ── 실행 ────────────────────────────────────────────────────────────
     def execute(
         self, *, session_id: str, request_id: str, plan_id: str,
-        approval_id: str | None = None,
+        approval_id: str | None = None, reservation: str | None = None,
     ) -> dict:
         """승인된 계획을 실행한다. 허가 전 검사를 모두 지난다.
 
@@ -1390,9 +1409,10 @@ class Api:
         if opened is not None and opened.enabled and transfer_units(plan.steps).units:
             jobs = runtime.sim_demo_jobs
             transfer_goal = f"genexec_{plan_id}"
-            if jobs is None or not jobs.reserve_goal(transfer_goal, owner="general_execute"):
+            if jobs is None or not jobs.reserve_goal(transfer_goal, owner="general_execute",
+                                                     reservation=reservation):
                 transfer_goal = None
-                active = runtime.cell_execution.current()
+                active = runtime.cell_execution.current() or runtime.cell_execution.reservation()
                 raise ApiError(
                     409, ReasonCode.EXEC_GOAL_REJECTED,
                     "이송 실행기를 예약하지 못했다 — 다른 작업 셀 실행이 진행 중이거나"
@@ -1402,9 +1422,9 @@ class Api:
                 )
         else:
             lease = runtime.cell_execution.try_acquire(
-                owner="general_execute", operation_id=plan_id)
+                owner="general_execute", operation_id=plan_id, reservation=reservation)
             if lease is None:
-                active = runtime.cell_execution.current()
+                active = runtime.cell_execution.current() or runtime.cell_execution.reservation()
                 active_detail = ""
                 if active is not None:
                     active_detail = (f" (owner={active.owner}, "
@@ -1966,6 +1986,10 @@ class Api:
         with self._flag_lock:
             self._stop_requested = True
             affected = dict(self._active_executions)   # {execution_id: session_id}
+        # 반복 작업: 전체 정지는 남은 반복을 취소한다(진행 중 단계는 실행 결과로 멈추고, 일시정지·단계 사이면 여기서).
+        repeat = getattr(runtime, "repeat_runs", None)
+        if repeat is not None:
+            repeat.on_global_stop()
 
         by_session: dict[str, list[str]] = {}
         for execution_id, owner in affected.items():

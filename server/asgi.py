@@ -68,6 +68,16 @@ class Application:
         self.hub = EventHub()
         self.auth = AuthService(repository=self.runtime.repository, config=self.config)
         self.api.listeners.append(self.hub.fanout)
+        # 반복 작업(2026-10-07): 작업 셀 시연 실행기가 있을 때만. 상태 파일은 시연 상태 파일 옆(셀마다 따로).
+        if getattr(self.runtime, "sim_demo_jobs", None) is not None:
+            from pathlib import Path
+
+            from server.repeat_runs import RepeatRuns
+            from validation.simulation_demo_state import DEFAULT_PATH as _STATE
+
+            state_path = Path(getattr(self.runtime, "simulation_demo_state_path", None) or _STATE)
+            self.runtime.repeat_runs = RepeatRuns(api=self.api, runtime=self.runtime,
+                                                  path=state_path.with_name("repeat_runs.json"))
         self.ctx = RouteContext(
             api=self.api, runtime=self.runtime, config=self.config,
             hub=self.hub, read_body=self._body,

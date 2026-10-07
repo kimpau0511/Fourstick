@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { RESULT_LABELS } from '../simCommand.js';
 import { commandLock } from '../server.js';
 import { useVoice } from '../voice.js';
+import RepeatPanel from './RepeatPanel.jsx';
 import Spinner from './Spinner.jsx';
 import './command.css';
 import checkSquare from '../assets/check-square-2.svg';
@@ -86,7 +87,10 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   // 1대면 기본 선택. 여러 대인데 고르지 않았으면 보내기를 잠근다.
   const target = robots.length === 1 ? robots[0] : robots.find((r) => r.id === picked) || null;
   // 연결·로봇 상태 잠금은 server.js의 commandLock(즉시 정지는 잠그지 않는다).
-  const lockReason = commandLock(server)
+  // 반복 작업 중에는 다른 명령을 받지 않는다(서버도 셀 예약으로 실행을 거부한다) — 이유를 먼저 보인다.
+  const repeatLock = server && server.repeat && server.repeat.run && server.repeat.run.active
+    ? '반복 작업이 진행 중입니다 — 끝나거나 취소한 뒤 명령하세요' : null;
+  const lockReason = commandLock(server) || repeatLock
     || (robots.length > 1 && !target ? '대상 로봇을 먼저 선택해 주세요' : null);
   // 텍스트·음성·스킬 버튼 모두 같은 일반 계획 요청(sim.send)을 사용한다.
   const skills = materialSkills(server);
@@ -184,6 +188,8 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     </ol>}
     {(phase === 'idle' || phase === 'ask') && targetChips}
     {skillChips}
+    {/* 반복 작업: 예제(스킬) 버튼 아래·입력칸 위, 접고 펼침. 상태는 서버 값(server.repeat). */}
+    <RepeatPanel server={server} lockReason={commandLock(server)} />
     {phase === 'idle' ? <div className="step step-input">{input}</div>
       : <div className={`step cmd-card ${cardTone}`}>
         {phase === 'running' || phase === 'done'

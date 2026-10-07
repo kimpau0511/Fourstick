@@ -499,7 +499,8 @@ class SimDemoJobs:
             name=f"sim-demo-recovered-{job_id}", daemon=True)
         watcher.start()
 
-    def reserve_goal(self, goal_id: str, *, owner: str = "sim_demo_goal") -> bool:
+    def reserve_goal(self, goal_id: str, *, owner: str = "sim_demo_goal",
+                     reservation: str | None = None) -> bool:
         """Atomically reserve the sim-demo runner and shared cell for a goal.
 
         ``owner`` names who holds the shared cell lease (the general ``/v1/execute``
@@ -514,7 +515,7 @@ class SimDemoJobs:
             if self._current is not None or self._goal_reservation is not None:
                 return False
             lease = self.cell_execution.try_acquire(
-                owner=owner, operation_id=goal_id)
+                owner=owner, operation_id=goal_id, reservation=reservation)
             if lease is None:
                 return False
             self._goal_reservation = goal_id

@@ -9,13 +9,14 @@ const TICK_MS = 1000; // 마지막 수신 후 경과 시간 갱신
 const SOURCES = [
   ['health', '/health', FAST_MS],
   ['simDemo', '/v1/sim-demo', FAST_MS],
+  ['repeat', '/v1/sim-demo/repeat', FAST_MS], // 반복 작업 상태(서버가 관리) — 새로고침해도 같은 실행을 본다
   ['simState', '/v1/sim-view/state', FAST_MS],
   ['robots', '/v1/robots', SLOW_MS],
   ['config', '/v1/config', SLOW_MS],
 ];
 
 const INITIAL = {
-  health: null, config: null, robots: null, simDemo: null, simState: null,
+  health: null, config: null, robots: null, simDemo: null, simState: null, repeat: null,
   healthOkAt: null, healthFailing: false, robotsFailing: false, simDemoFailing: false, latencyMs: null, refreshedAt: null, nowMs: Date.now(),
   conn: { status: 'connecting', lastReceivedAt: null, latencyMs: null, ageSec: null },
   alerts: [], robotStatus: { level: 'NO_DATA', label: '', reasons: [] },
@@ -28,6 +29,8 @@ export function commandLock(server) {
   const { level, reasons } = server.robotStatus;
   if (level === 'CRITICAL') return '긴급 상태(정지 래치)라 새 명령을 보낼 수 없습니다';
   if (level === 'NO_DATA') return `로봇 상태를 확인할 수 없어 명령을 보낼 수 없습니다${reasons.length ? ` — ${reasons.join(', ')}` : ''}`;
+  // 서버 재시작으로 중단된 반복은 확인 전까지 셀을 잠근다(서버도 실행을 거부한다) — 재개·복구·새 명령 모두.
+  if (server.repeat && server.repeat.run && server.repeat.run.lock_held) return '서버 재시작으로 중단된 반복 작업이 작업 셀을 잠그고 있습니다 — 반복 작업의 ‘상태 확인 후 잠금 해제’를 먼저 하세요';
   return null;
 }
 
@@ -147,8 +150,8 @@ export function useServer() {
 
   // 작업이 끝나면(완료·실패·취소) 주기를 기다리지 않고 자재 상태를 다시 조회한다 — 버튼이 서버 기록을 따라가게.
   // robots: 즉시 정지·해제 뒤 정지 래치 상태(stop_diagnostics)를 주기(10초)를 기다리지 않고 다시 읽는다.
-  const refresh = useCallback(() => Promise.all(['simDemo', 'simState', 'robots'].map((key) => fetchers.current[key]?.())), []);
+  const refresh = useCallback(() => Promise.all(['simDemo', 'simState', 'robots', 'repeat'].map((key) => fetchers.current[key]?.())), []);
 
-  const { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt } = state;
-  return { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt, refresh };
+  const { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, repeat, conn, alerts, robotStatus, refreshedAt } = state;
+  return { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, repeat, conn, alerts, robotStatus, refreshedAt, refresh };
 }
