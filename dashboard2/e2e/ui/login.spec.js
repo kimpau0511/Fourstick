@@ -190,6 +190,22 @@ test.describe('로그인', () => {
     await expect(page.getByRole('alertdialog', { name: '로그아웃할까요?' })).toBeVisible();
   });
 
+  test('[UI-LOGIN-17] 프로필 메뉴는 바깥을 누르거나 Esc, 페이지 이동이면 닫힌다', async ({ page }) => {
+    await mockBackend(page);
+    await page.goto('/');
+    const menu = page.getByRole('menu');
+    await page.locator('.profile-btn').click();
+    await expect(menu).toBeVisible();
+    await page.locator('.col-main').click({ position: { x: 20, y: 20 } });
+    await expect(menu).toHaveCount(0);
+    await page.locator('.profile-btn').click();
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await page.locator('.profile-btn').click();
+    await page.goto('/#/history');
+    await expect(menu).toHaveCount(0);
+  });
+
   test('[UI-LOGIN-13] 820·390 폭: 카드가 화면 안에 있고 가로 스크롤이 없다', async ({ page }) => {
     await mockBackend(page, { overrides: { auth: false } });
     for (const width of [820, 390]) {

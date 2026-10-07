@@ -51,7 +51,9 @@
 .avatar { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 18px; background: #9fcfdb; color: var(--cyan); font-size: 15px; font-weight: 700; object-fit: cover; }
 .profile-btn > div { min-width: 0; }
 .profile-btn strong, .profile-btn small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-menu { position: absolute; bottom: calc(100% + 8px); left: 16px; z-index: 40; width: 256px; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 12px; word-break: keep-all;
+/* 프로필 오른쪽(본문 쪽)으로 연다 — 위로 열면 SYSTEM STATUS를 가린다(2026-10-07 결정 A). */
+.sidebar:has(.profile-menu) { z-index: 35; } /* 메뉴가 본문 카드 위로 올라오게(메뉴가 열렸을 때만) */
+.profile-menu { position: absolute; bottom: 12px; left: calc(100% + 8px); z-index: 40; width: 256px; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 12px; word-break: keep-all;
   background: var(--glass-clear); border: 1px solid var(--border); border-radius: 16px; -webkit-backdrop-filter: blur(15px); backdrop-filter: blur(15px); }
 .profile-menu .who { display: flex; gap: 12px; align-items: center; min-width: 0; }
 .profile-menu .who > div { min-width: 0; }

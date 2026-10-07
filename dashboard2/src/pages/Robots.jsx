@@ -41,7 +41,7 @@ export default function Robots({ server }) {
     {!ids.length ? <p className="muted">{!robots && server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p> : <div className="robots-split">
       <div className="card table robots-list">
         <table className="data-table" aria-label="로봇 목록">
-          <thead><tr><th>이름</th><th className="col-extra">모델</th><th className="col-extra">셀</th><th className="col-extra">현재 도구</th><th>운용 여부</th></tr></thead>
+          <thead><tr><th>로봇</th><th className="col-extra">모델</th><th className="col-extra">셀</th><th className="col-extra">현재 도구</th><th>운용 여부</th></tr></thead>
           <tbody>{ids.map((rid) => {
             const r = config?.robot?.robot_id === rid ? config.robot : null;
             const model = robots.robots[rid].profile_id || rid;
@@ -53,7 +53,8 @@ export default function Robots({ server }) {
                 <td className="col-extra">{model}</td>
                 <td className="col-extra">{cell}</td>
                 <td className="col-extra">{tool}</td>
-                <td>{health?.robot?.robot_id === rid ? (operability(server) === '운용 가능' ? '운용 가능' : '운용 불가') : NONE}</td>
+                {/* 운용 가능 초록 · 운용 불가 빨강(2026-10-07 사용자 요청), 확인 안 됨은 색 없이 */}
+                <td>{health?.robot?.robot_id === rid ? (operability(server) === '운용 가능' ? <span className="ok">운용 가능</span> : <span className="danger">운용 불가</span>) : NONE}</td>
               </tr>
               <DetailRow open={expand.isOpen(rid)} span={2} items={[['모델', model], ['셀', cell], ['현재 도구', tool]]} />
             </Fragment>;
