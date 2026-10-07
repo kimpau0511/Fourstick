@@ -7,6 +7,8 @@ STT 스트림 WebSocket과 partial/final 전달.
   붙이지 않는다(4단계 계약).
 - 확정된 요청은 브라우저 세션에 귀속된다(`owner_session_id`).
 - STT를 쓸 수 없으면 **사용 불가로 알리고 닫는다.** Mock 성공을 만들지 않는다.
+- 일반 모드의 발화가 종료된 뒤 큐에 남은 오디오·flush·abort는 소비만 한다.
+  종료된 세션을 다시 열거나 final·저장을 반복하지 않는다. 세션 자체의 상태 계약은 유지한다.
 - PCM과 partial transcript를 DB에 직접 저장하지 않는다 — 저장은
   `StreamingSTTSession`이 Repository 계약으로만 한다.
 - **호출어 대기(`mode=wake`, 2026-10-07)**: 대시보드 음성 명령이 켜져 있는 동안 계속 듣는다. 발화 하나가
@@ -145,6 +147,10 @@ async def stt_socket(ctx: RouteContext, receive, send, session_id: str, mode: st
                 continue
             if message.get("bytes"):
                 chunk = message["bytes"]
+                if not wake and session.state is SttSessionState.CLOSED:
+                    # final을 보내는 동안에도 마이크 프레임은 수신 큐에 쌓일 수 있다.
+                    # 한 명령은 이미 끝났다. 잔여 오디오를 새 명령으로 해석하지 않는다.
+                    continue
                 if wake:
                     recent.append(chunk)
                     while sum(len(c) for c in recent) / 2 / rate > WAKE_PREROLL_SEC:
@@ -173,6 +179,9 @@ async def stt_socket(ctx: RouteContext, receive, send, session_id: str, mode: st
                 continue
             kind = command.get("type")
             if kind == "flush":
+                if session.state is SttSessionState.CLOSED:
+                    # 무음 final과 클라이언트 flush가 겹쳐도 한 번만 확정한다.
+                    continue
                 events = await asyncio.to_thread(
                     session.flush, at_sec=audio_sec, at_utc=time.time()
                 )
@@ -181,8 +190,8 @@ async def stt_socket(ctx: RouteContext, receive, send, session_id: str, mode: st
                 if wake:
                     epoch += 1
                     del recent[:]           # 버린 발화의 끝을 새 발화에 다시 넣지 않는다
-                    if session.state is SttSessionState.CLOSED:
-                        continue            # 버릴 발화가 없다 — 다음 프레임이 새 발화를 연다
+                if session.state is SttSessionState.CLOSED:
+                    continue                # 종료된 발화에 대한 중복 abort. wake의 세대는 위에서 갱신한다.
                 events = session.abort(at_utc=time.time())
                 await emit(events)
             elif kind == "close":

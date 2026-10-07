@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from server.routes import stt as stt_route  # noqa: E402
 from stt.whisper_backend import Transcript  # noqa: E402
-from tests.unit.test_stt_session import MODEL_CONFIG, make_policy  # noqa: E402
+from tests.unit.test_stt_session import MODEL_CONFIG, ScriptedTranscriber, make_policy  # noqa: E402
 
 SR = 16_000
 SILENCE = b"\x00\x00" * 160            # 10ms
@@ -87,6 +87,67 @@ def utterance(sec=0.4):
 
 
 class WakeModeTest(unittest.TestCase):
+    def test_command_final_ignores_queued_audio_and_terminal_controls(self):
+        flush = {"type": "websocket.receive", "text": '{"type":"flush"}'}
+        abort = {"type": "websocket.receive", "text": '{"type":"abort"}'}
+        close = {"type": "websocket.receive", "text": '{"type":"close"}'}
+        repo = SpyRepository()
+        texts = Texts(["A자재 옮겨줘"])
+        sent = drive([SPEECH] * 40 + [flush, SPEECH, flush, abort, close],
+                     mode="", transcriber=texts, repository=repo)
+        self.assertEqual([e["kind"] for e in sent].count("final"), 1)
+        self.assertEqual([e["kind"] for e in sent].count("__closed__"), 1)
+        self.assertEqual(texts.calls, 1)
+        self.assertEqual(repo.calls.count("save_request_with_stt_inference"), 1)
+
+    def test_command_silence_final_tolerates_remaining_microphone_frames(self):
+        texts = Texts(["A자재 옮겨줘"])
+        sent = drive(utterance() + [SPEECH] * 20, mode="", transcriber=texts,
+                     repository=SpyRepository())
+        self.assertEqual([e["kind"] for e in sent].count("final"), 1)
+        self.assertEqual(texts.calls, 1)
+
+    def test_command_abort_tolerates_late_audio_without_transcribing(self):
+        abort = {"type": "websocket.receive", "text": '{"type":"abort"}'}
+        texts = Texts(["실행하면 안 되는 잔여 발화"])
+        repo = SpyRepository()
+        sent = drive([SPEECH] * 20 + [abort, SPEECH, abort], mode="",
+                     transcriber=texts, repository=repo)
+        self.assertEqual(texts.calls, 0)
+        self.assertEqual(repo.calls, [])
+        self.assertEqual([e["kind"] for e in sent].count("error"), 1)
+        self.assertFalse(any(e["kind"] == "final" for e in sent))
+
+    def test_closed_wake_flush_does_not_prevent_next_utterance(self):
+        flush = {"type": "websocket.receive", "text": '{"type":"flush"}'}
+        sent = drive([SPEECH] * 40 + [flush, flush] + utterance(), mode="wake",
+                     transcriber=Texts(["지니야"]), repository=SpyRepository())
+        self.assertEqual([e["kind"] for e in sent].count("final"), 2)
+
+    def test_command_error_and_clarify_tolerate_queued_audio(self):
+        flush = {"type": "websocket.receive", "text": '{"type":"flush"}'}
+        cases = (
+            (Transcript(text="불명확", confidence=0.1), "clarify"),
+            (RuntimeError("fixture backend failure"), "error"),
+        )
+        for result, terminal_kind in cases:
+            with self.subTest(terminal_kind=terminal_kind):
+                texts = ScriptedTranscriber([result])
+                sent = drive([SPEECH] * 40 + [flush, SPEECH, flush], mode="",
+                             transcriber=texts, repository=SpyRepository())
+                kinds = [e["kind"] for e in sent]
+                self.assertEqual(kinds.count(terminal_kind), 1)
+                self.assertNotIn("final", kinds)
+                self.assertEqual(texts.calls, 1)
+
+    def test_command_no_speech_error_tolerates_queued_audio(self):
+        flush = {"type": "websocket.receive", "text": '{"type":"flush"}'}
+        texts = Texts(["전사하면 안 됨"])
+        sent = drive([SILENCE, flush, SPEECH, flush], mode="",
+                     transcriber=texts, repository=SpyRepository())
+        self.assertEqual([e["kind"] for e in sent].count("error"), 1)
+        self.assertEqual(texts.calls, 0)
+
     def test_wake_mode_keeps_listening_and_does_not_persist(self):
         texts = Texts(["지니야"])
         repo = SpyRepository()
