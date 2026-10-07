@@ -32,20 +32,22 @@ async def handle(
         return 200, [], json_bytes({"user": public_user(account)})
 
     if method == "POST" and path == "/v1/auth/google":
-        if not header(headers, b"x-requested-with") or not origin_ok(headers, auth.config.public_origin):
+        if not header(headers, b"x-requested-with") or not origin_ok(headers, auth.allowed_origins):
             return 403, [], json_bytes({"error": "로그인 요청의 출처를 확인하지 못했다",
                                         "reason_code": ReasonCode.SESSION_LOGIN_FAILED.value})
         payload = await ctx.read_body(receive)
         try:
-            account, new_token = await asyncio.to_thread(auth.login, str(payload.get("code") or ""))
+            account, new_token = await asyncio.to_thread(
+                auth.login, str(payload.get("code") or ""), origin=header(headers, b"origin"),
+            )
         except LoginError as exc:
             return exc.status, [], json_bytes(exc.to_dict())
         if token:
             auth.logout(token)  # 같은 브라우저의 이전 세션은 남기지 않는다
-        return 200, [*JSON_HEADERS, auth.set_cookie(new_token)], json_bytes({"user": public_user(account)})
+        return 200, [*JSON_HEADERS, auth.set_cookie(new_token, origin=header(headers, b"origin"))], json_bytes({"user": public_user(account)})
 
     if method == "POST" and path == "/v1/auth/logout":
         auth.logout(token)
-        return 200, [*JSON_HEADERS, auth.clear_cookie()], json_bytes({"ok": True})
+        return 200, [*JSON_HEADERS, auth.clear_cookie(origin=header(headers, b"origin"))], json_bytes({"ok": True})
 
     return None

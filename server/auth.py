@@ -30,7 +30,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from http.cookies import SimpleCookie
 from typing import Callable
 
@@ -138,11 +138,12 @@ def header(headers: list[tuple[bytes, bytes]], name: bytes) -> str | None:
     return None
 
 
-def origin_ok(headers: list[tuple[bytes, bytes]], public_origin: str) -> bool:
-    """브라우저가 보낸 Origin이 화면 주소와 같은지. Origin이 없으면(브라우저 밖 요청) 통과 —
+def origin_ok(headers: list[tuple[bytes, bytes]], public_origin: str | tuple[str, ...]) -> bool:
+    """브라우저가 보낸 Origin이 등록된 화면 주소인지. Origin이 없으면(브라우저 밖 요청) 통과 —
     쿠키를 실어 보내는 공격은 브라우저에서 오고, 브라우저는 POST·WebSocket에 Origin을 붙인다."""
     origin = header(headers, b"origin")
-    return origin is None or (bool(public_origin) and origin.rstrip("/") == public_origin)
+    allowed = (public_origin,) if isinstance(public_origin, str) else public_origin
+    return origin is None or (bool(origin) and origin.rstrip("/") in tuple(o for o in allowed if o))
 
 
 def public_user(account: AccountRecord) -> dict:
@@ -157,13 +158,23 @@ class AuthService:
     exchange: Callable[[str, ServerConfig], dict] = google_exchange
     now: Callable[[], float] = time.time
 
-    def login(self, code: str) -> tuple[AccountRecord, str]:
+    @property
+    def allowed_origins(self) -> tuple[str, ...]:
+        return (self.config.public_origin, *self.config.additional_public_origins)
+
+    def login(self, code: str, *, origin: str | None = None) -> tuple[AccountRecord, str]:
         """인가 코드 → 등록 계정 확인 → (계정, 새 세션 토큰)."""
         cfg = self.config
         if not (cfg.google_client_id and cfg.google_client_secret and cfg.public_origin):
             raise LoginError(503, ReasonCode.CONFIG_MISSING, "구글 로그인 설정(클라이언트 ID·보안 비밀·화면 주소)이 없다")
         if not code:
             raise LoginError(400, ReasonCode.CONFIG_MISSING, "code가 없다")
+        if origin is not None:
+            origin = origin.rstrip("/")
+            if origin not in self.allowed_origins:
+                raise LoginError(403, ReasonCode.SESSION_LOGIN_FAILED, "허용되지 않은 로그인 주소다")
+            # 공유 설정을 바꾸지 않는다. 동시 로그인도 각각 인가 코드를 받은 주소로 교환한다.
+            cfg = replace(cfg, public_origin=origin)
         claims = check_id_token(self.exchange(code, cfg), client_id=cfg.google_client_id, now=self.now())
         email = str(claims["email"]).strip().lower()
         at = self.now()
@@ -211,7 +222,7 @@ class AuthService:
         """WebSocket 출입 검사. 로그인 + 다른 출처의 페이지가 쿠키로 붙는 것 거절."""
         if not self.config.require_login:
             return False
-        if not origin_ok(headers, self.config.public_origin):
+        if not origin_ok(headers, self.allowed_origins):
             return True
         return self.refusal("GET", path, cookie_token(headers)) is not None
 
@@ -219,12 +230,15 @@ class AuthService:
         if token:
             self.repository.delete_login_session(_hash(token))
 
-    def set_cookie(self, token: str) -> tuple[bytes, bytes]:
-        return b"set-cookie", self._cookie(token, int(self.config.login_session_ttl_sec)).encode()
+    def set_cookie(self, token: str, *, origin: str | None = None) -> tuple[bytes, bytes]:
+        return b"set-cookie", self._cookie(token, int(self.config.login_session_ttl_sec), origin).encode()
 
-    def clear_cookie(self) -> tuple[bytes, bytes]:
-        return b"set-cookie", self._cookie("", 0).encode()
+    def clear_cookie(self, *, origin: str | None = None) -> tuple[bytes, bytes]:
+        return b"set-cookie", self._cookie("", 0, origin).encode()
 
-    def _cookie(self, value: str, max_age: int) -> str:
-        secure = "; Secure" if self.config.public_origin.startswith("https://") else ""
+    def _cookie(self, value: str, max_age: int, origin: str | None = None) -> str:
+        address = origin.rstrip("/") if origin else self.config.public_origin
+        if address not in self.allowed_origins:
+            address = self.config.public_origin
+        secure = "; Secure" if address.startswith("https://") else ""
         return f"{COOKIE_NAME}={value}; Max-Age={max_age}; Path=/; HttpOnly; SameSite=Lax{secure}"

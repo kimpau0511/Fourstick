@@ -124,6 +124,52 @@ class AuthApiTest(unittest.IsolatedAsyncioTestCase):
             pass
         self.assertEqual(ws.close_code, 4401)
 
+    async def test_localhost_is_not_allowed_without_explicit_configuration(self):
+        self.repo.add_account("operator@example.com", at=NOW)
+        local = [(b"x-requested-with", b"XMLHttpRequest"), (b"origin", b"http://localhost:5175")]
+        self.assertEqual((await self.login(headers=local)).status, 403)
+        self.assertEqual(self.codes, [])
+
+    async def test_multiple_origins_use_their_own_redirect_and_cookie_security(self):
+        self.app.auth.config = dataclasses.replace(
+            self.config, additional_public_origins=("http://localhost:5175",),
+        )
+        self.repo.add_account("operator@example.com", at=NOW)
+        for origin in ("http://localhost:5175", "https://foursticks.example", "http://localhost:5175"):
+            with self.subTest(origin=origin):
+                headers = [(b"x-requested-with", b"XMLHttpRequest"), (b"origin", origin.encode())]
+                response = await self.login(headers=headers)
+                self.assertEqual(response.status, 200)
+                self.assertEqual(self.codes[-1], ("qa-code", origin))
+                self.assertEqual(self.app.auth.config.public_origin, self.config.public_origin)
+                token, raw = self.cookie_of(response)
+                self.assertEqual("; Secure" in raw, origin.startswith("https://"))
+                self.assertIn("HttpOnly; SameSite=Lax", raw)
+                ws_headers = [*self.with_cookie(token), (b"origin", origin.encode())]
+                self.assertFalse(self.app.auth.ws_refused("/v1/sim-view/stream", ws_headers))
+                logout = await self.client.request(
+                    "POST", "/v1/auth/logout", headers=[*headers, *self.with_cookie(token)],
+                )
+                self.assertEqual(logout.status, 200)
+                self.assertIn("Max-Age=0", logout.headers["set-cookie"])
+                self.assertEqual("; Secure" in logout.headers["set-cookie"], origin.startswith("https://"))
+
+    async def test_additional_origin_does_not_allow_other_ports_or_suffixes(self):
+        self.app.auth.config = dataclasses.replace(
+            self.config, additional_public_origins=("http://localhost:5175",),
+        )
+        self.repo.add_account("operator@example.com", at=NOW)
+        token, _ = self.cookie_of(await self.login())
+        count = len(self.codes)
+        for origin in ("http://localhost:5176", "http://localhost:5175.evil.example", "null", "https://evil.example"):
+            with self.subTest(origin=origin):
+                headers = [(b"x-requested-with", b"XMLHttpRequest"), (b"origin", origin.encode())]
+                self.assertEqual((await self.login(headers=headers)).status, 403)
+                self.assertTrue(self.app.auth.ws_refused(
+                    "/v1/sim-view/stream", [*headers, *self.with_cookie(token)],
+                ))
+        self.assertEqual(len(self.codes), count)
+
     async def test_slow_google_does_not_delay_stop(self):
         # 구글 교환은 스레드에서 한다 — 느린 구글 응답 동안에도 정지 요청이 먼저 끝나야 한다(결정 Q5).
         import asyncio
@@ -204,6 +250,16 @@ class AuthApiTest(unittest.IsolatedAsyncioTestCase):
 
 
 class LoginConfigFromEnvTest(unittest.TestCase):
+    def test_additional_origins_are_explicit_and_normalized(self):
+        from unittest import mock
+        with mock.patch.dict("os.environ", {"FORSTICK2_ADDITIONAL_PUBLIC_ORIGINS": ""}):
+            self.assertEqual(ServerConfig.from_env().additional_public_origins, ())
+        with mock.patch.dict("os.environ", {
+            "FORSTICK2_ADDITIONAL_PUBLIC_ORIGINS": " http://localhost:5175/ , , https://other.example/\r",
+        }):
+            self.assertEqual(ServerConfig.from_env().additional_public_origins,
+                             ("http://localhost:5175", "https://other.example"))
+
     def test_login_values_ignore_surrounding_whitespace_and_cr(self):
         # Windows에서 만든 설정 파일의 \r이 값 끝에 붙어도 같은 값으로 읽는다(2026-10-07 실제 장애).
         from unittest import mock

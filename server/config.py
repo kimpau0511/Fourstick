@@ -96,6 +96,9 @@ class ServerConfig:
     #: 화면이 열리는 주소(origin). 구글 팝업 방식의 인가 코드 교환 redirect_uri가 이 값이다
     #: (구글 문서 identity/oauth2/web/guides/use-code-model, 2026-10-07 확인). https면 쿠키에 Secure를 붙인다.
     public_origin: str = ""
+    #: 추가 로그인·WebSocket 허용 origin(쉼표 구분 환경변수). 기본은 비움.
+    #: 기본 PUBLIC_ORIGIN을 유지하며 localhost 등 명시적으로 등록한 화면만 함께 사용한다.
+    additional_public_origins: tuple[str, ...] = ()
     #: 로그인 유지 시간(초). 사용자 결정 2026-10-06 Q4 "한 근무 시간(12시간)".
     login_session_ttl_sec: float = 43200.0
     #: 구글 토큰 교환 요청 제한 시간(초). **측정값이 아니다** — 로그인 버튼이 끝없이 돌지 않게 둔 보수적 상한.
@@ -156,6 +159,11 @@ class ServerConfig:
             google_client_id=os.environ.get("FORSTICK2_GOOGLE_CLIENT_ID", "").strip(),
             google_client_secret=os.environ.get("FORSTICK2_GOOGLE_CLIENT_SECRET", "").strip(),
             public_origin=os.environ.get("FORSTICK2_PUBLIC_ORIGIN", "").strip().rstrip("/"),
+            additional_public_origins=tuple(
+                origin.strip().rstrip("/")
+                for origin in os.environ.get("FORSTICK2_ADDITIONAL_PUBLIC_ORIGINS", "").split(",")
+                if origin.strip()
+            ),
             login_session_ttl_sec=float(os.environ.get("FORSTICK2_LOGIN_SESSION_TTL_SEC", "43200")),
             google_http_timeout_sec=float(os.environ.get("FORSTICK2_GOOGLE_HTTP_TIMEOUT_SEC", "10")),
         )
