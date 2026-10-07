@@ -50,12 +50,12 @@ class RewriteTest(unittest.TestCase):
 
     def test_color_references_become_material_names(self):
         text, subs = self.registry.rewrite("파란색 자재는 빼고 나머지를 제자리로 돌려놔")
-        self.assertEqual(text, "삼각형 자재는 빼고 나머지를 제자리로 돌려놔")
+        self.assertEqual(text, "B자재는 빼고 나머지를 제자리로 돌려놔")
         self.assertEqual(subs[0]["material"], "material_b")
         text, _ = self.registry.rewrite("청색 거를 1번 칸으로, 주황 블록은 원래 자리로")
-        self.assertEqual(text, "삼각형 자재를 1번 칸으로, 사각형 자재은 원래 자리로")
+        self.assertEqual(text, "B자재를 1번 칸으로, A자재은 원래 자리로")
         text, _ = self.registry.rewrite("초록 걸 먼저 옮겨")
-        self.assertEqual(text, "원형 자재를 먼저 옮겨")
+        self.assertEqual(text, "C자재를 먼저 옮겨")
 
     def test_pallet_color_is_not_a_material(self):
         # 2026-09-25: 팔레트 색은 자재가 아니라 **팔레트 이름**으로 바뀐다.
@@ -67,7 +67,7 @@ class RewriteTest(unittest.TestCase):
 
     def test_pallet_colors_come_from_tray_matching_its_material(self):
         text, subs = self.registry.rewrite("파란 자재를 초록 팔레트로 옮겨줘")
-        self.assertEqual(text, "삼각형 자재를 3번 팔레트로 옮겨줘")
+        self.assertEqual(text, "B자재를 3번 팔레트로 옮겨줘")
         self.assertEqual(self.registry.pallets["pallet_3"].colors, ("green", "lime"))
         # 트레이 색이 자재 색과 다르게 선언되면 색 낱말을 물려받지 않는다(추측 없음).
         workcell = copy.deepcopy(WORKCELL)
@@ -221,7 +221,7 @@ class ColorRouteTest(goal_tests.SimDemoGoalRoutesTest):
         status, payload = self.send("하늘색 자재를 컨베이어로 옮겨줘")
         self.assertEqual(payload["decision"], "CONFIRM")
         self.assertEqual(payload["material"], "material_b")
-        self.assertEqual(payload["confirmation"]["evidence"]["material_korean"], "삼각형 자재")
+        self.assertEqual(payload["confirmation"]["evidence"]["material_korean"], "B자재")
         self.assertIsNone(payload["job"])
         self.assertEqual(self.popen.calls, [])
 

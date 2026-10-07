@@ -34,8 +34,7 @@ export function usePoll(path, intervalMs) {
   return state;
 }
 
-// 서버 이름(materials[].korean)이 없을 때만 쓰는 예비 이름 — 셀 설정 resource_map과 같게 둔다(2026-10-07 형상 변경).
-export const MATERIAL_KO = { material_a: '사각형 자재', material_b: '삼각형 자재', material_c: '원형 자재' };
+export const MATERIAL_KO = { material_a: 'A자재', material_b: 'B자재', material_c: 'C자재' };
 
 export function materialName(model, materials) {
   const found = (materials || []).find((m) => m.model === model);

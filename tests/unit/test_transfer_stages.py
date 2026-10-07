@@ -262,7 +262,7 @@ class PathAwarePlannerTest(unittest.TestCase):
         self.assertEqual(steps(result), [
             ("relocate", "material_a", "slot_1", "loc_pallet_2"),
             ("relocate", "material_a", "loc_pallet_2", "slot_3")])
-        self.assertIn("삼각형 자재가 경로를 막는다", result["steps"][0]["reason"])
+        self.assertIn("B자재가 경로를 막는다", result["steps"][0]["reason"])
 
     def test_no_clear_detour_blocks(self):
         # 모든 경로가 칸 2를 스친다고 가정한 판정기 — 우회할 길이 없으면 BLOCK.

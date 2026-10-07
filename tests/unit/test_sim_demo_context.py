@@ -203,7 +203,7 @@ class ContextRouteTest(GoalsBase):
         self.assertIn(payload["decision"], ("CONFIRM", "CONFIRM_GOAL"))
         self.assertNotEqual(payload["decision"], "RUN")
         evidence = payload["confirmation"]["interpretation"]["evidence"]
-        self.assertTrue(any("삼각형 자재" in row for row in evidence))
+        self.assertTrue(any("B자재" in row for row in evidence))
         self.assertEqual(self.popen.calls, [])
 
     def test_ask_then_answer_builds_the_plan(self):
@@ -365,7 +365,7 @@ class RestoreAndPalletReturnTest(ContextRouteTest):
         self.send("C자재를 컨베이어 2번에 놓아줘", session="s1")   # 직전에 C를 다뤘다
         _, asked = self.send("원상복귀", session="s1")
         self.assertEqual(asked["decision"], "ASK")
-        self.assertIn("원형 자재만", asked["reason"])
+        self.assertIn("C자재만", asked["reason"])
         _, everything = self.send("전부", session="s1")
         self.assertEqual(everything["decision"], "CONFIRM_GOAL")
         self.assertEqual(sorted(s["material"] for s in everything["goal"]["plan"]),

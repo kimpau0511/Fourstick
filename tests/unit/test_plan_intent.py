@@ -237,7 +237,7 @@ class SecondPassTest(unittest.TestCase):
         taken = decide("A자재를 원래 자리로 돌려놔", interp("mat_a", "A자재", dest="origin", dtext="원래 자리로"),
                        locations={"mat_a": "loc_conveyor", "mat_b": "loc_pallet_1"})
         self.assertEqual(taken.kind, "block")
-        self.assertIn("삼각형 자재", taken.detail)
+        self.assertIn("B자재", taken.detail)
         lost = decide("A자재를 원래 자리로 돌려놔", interp("mat_a", "A자재", dest="origin", dtext="원래 자리로"),
                       locations={"mat_a": None})
         self.assertEqual(lost.kind, "ask")
@@ -319,11 +319,11 @@ class SecondPassTest(unittest.TestCase):
             task("mat_a", "A자재", "loc_pallet_1", "1번 팔레트에서", "loc_conveyor", "컨베이어로"),
             task("mat_b", "B자재", "loc_pallet_2", "2번 팔레트에서", "loc_conveyor", "컨베이어로"))))
         self.assertEqual((two.kind, two.reason_code), ("ask", ReasonCode.PLAN_AMBIGUOUS))
-        self.assertEqual(two.tasks, ("사각형 자재 → 컨베이어", "삼각형 자재 → 컨베이어"))
+        self.assertEqual(two.tasks, ("A자재 → 컨베이어", "B자재 → 컨베이어"))
         seq = decide("A자재를 컨베이어로 옮긴 다음에 원래 자리로 돌려놔", interp(tasks=(
             task("mat_a", "A자재", None, None, "loc_conveyor", "컨베이어로"),
             task("mat_a", "A자재", None, None, "origin", "원래 자리로"))))
-        self.assertEqual(seq.tasks, ("사각형 자재 → 컨베이어", "사각형 자재 → 원래 자리"))
+        self.assertEqual(seq.tasks, ("A자재 → 컨베이어", "A자재 → 원래 자리"))
         self.assertIsNone(seq.intent)
         # 모델이 하나로 뭉개도 서버가 원문에서 자재 둘을 찾으면 실행 의도를 만들지 않는다.
         merged = decide("초록색이랑 주황색 컨베이어로", interp("mat_c", "초록색", dest="loc_conveyor", dtext="컨베이어로"))

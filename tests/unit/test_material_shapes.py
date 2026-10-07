@@ -1,4 +1,5 @@
-"""자재 형상(2026-10-07: 사각형·삼각형·원형) — Gazebo world·서버 셀 정보·카탈로그가 같은 설정에서 같은 값을 낸다."""
+"""자재 형상 변형(사각형·삼각형·원형) — 보관한 설정(config/workcell/variants/shapes)으로 Gazebo world·서버 셀 정보·
+카탈로그가 같은 값을 내는지. 지금 운영 설정(현장 1)은 상자 자재 A/B/C다(2026-10-07 사용자 결정: 되돌리고 파일만 보관)."""
 
 from __future__ import annotations
 
@@ -16,13 +17,20 @@ sys.path.insert(0, str(ROOT))
 
 from server.sim_view import cell_boxes  # noqa: E402
 
-CELL = json.loads((ROOT / "config/workcell/fr3_2f85_workcell.json").read_text(encoding="utf-8"))
-CATALOG = json.loads((ROOT / "config/workcell/fr3_2f85_workcell_resource_catalog.json").read_text(encoding="utf-8"))
+VARIANT = ROOT / "config/workcell/variants/shapes"
+CELL = json.loads((VARIANT / "fr3_2f85_workcell.json").read_text(encoding="utf-8"))
+CATALOG = json.loads((VARIANT / "fr3_2f85_workcell_resource_catalog.json").read_text(encoding="utf-8"))
+ACTIVE = json.loads((ROOT / "config/workcell/fr3_2f85_workcell.json").read_text(encoding="utf-8"))
 WANT = {"material_a": ("box", "사각형 자재"), "material_b": ("triangle_prism", "삼각형 자재"),
         "material_c": ("cylinder", "원형 자재")}
 
 
 class MaterialShapeTest(unittest.TestCase):
+    def test_active_cell_is_back_to_box_materials(self):
+        rows = {m["model"]: m for m in cell_boxes(ACTIVE)["materials"]}
+        self.assertEqual({m: rows[m]["shape"] for m in WANT}, {m: "box" for m in WANT})
+        self.assertEqual([rows[m]["name"] for m in sorted(WANT)], ["A자재", "B자재", "C자재"])
+
     def test_server_cell_info_carries_shape_name_and_id(self):
         rows = {m["model"]: m for m in cell_boxes(CELL)["materials"]}
         for model, (shape, name) in WANT.items():
@@ -44,7 +52,8 @@ class MaterialShapeTest(unittest.TestCase):
     def test_generated_world_uses_the_same_shapes(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "world.sdf"
-            env = {**os.environ, "FORSTICK2_WORLD_SDF": str(out)}
+            env = {**os.environ, "FORSTICK2_WORLD_SDF": str(out),
+                   "FORSTICK2_WORKCELL_CONFIG": str(VARIANT / "fr3_2f85_workcell.json")}
             subprocess.run([sys.executable, str(ROOT / "scripts/build_workcell_world.py")], env=env,
                            check=True, capture_output=True)
             root = ET.parse(out).getroot()

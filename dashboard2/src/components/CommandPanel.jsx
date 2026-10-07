@@ -151,7 +151,7 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const input = <form className="cmd-form" onSubmit={submit}>
     <div className="cmd-field">
       <textarea id="command-input" className="command-input" rows={phase === 'idle' ? 3 : 1} value={text}
-        aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: 원형 자재를 컨베이어로 옮겨줘'}
+        aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: A 자재를 컨베이어로 옮겨줘'}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
       <MicButton voice={voice} locked={!!lockReason} />

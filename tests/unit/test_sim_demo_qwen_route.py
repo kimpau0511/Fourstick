@@ -89,7 +89,7 @@ class RequestedSentencesTest(QwenRouteBase):
                          "초록색 = C자재, 컨베이어 벨트 = 컨베이어")
         # Qwen 입력: 원문 · 자재(id·이름·색·현재 위치) · 자리 · 지원 동작 · 대화 맥락
         prompt = client.calls[0]["user"]
-        for expected in ("사용자가 말한 원문", "초록색 모형을 컨베이어 벨트로 옮겨줘", "material_c", "원형 자재", "초록",
+        for expected in ("사용자가 말한 원문", "초록색 모형을 컨베이어 벨트로 옮겨줘", "material_c", "C자재", "초록",
                          "현재 위치", "loc_conveyor", "slot_1", "지원 동작", "이어하기",
                          "빈자리 이동", "대화 맥락"):
             self.assertIn(expected, prompt)
@@ -131,7 +131,7 @@ class RequestedSentencesTest(QwenRouteBase):
         self.assertEqual(len(client.calls), 1, "규칙 실패를 바로 끝냈다(Qwen을 부르지 않았다)")
         self.assert_asks(payload)
         # 어떤 자재인지 구체적으로 묻는다 — 후보 자재 이름.
-        for name in ("사각형 자재", "삼각형 자재", "원형 자재"):
+        for name in ("A자재", "B자재", "C자재"):
             self.assertIn(name, payload["reason"])
 
     def test_stop_never_calls_qwen(self):
@@ -152,7 +152,7 @@ class ServerChecksTest(QwenRouteBase):
         self.with_classifier(qwen(material="material_a", destination="loc_conveyor"))
         _, payload = self.command("초록색 모형을 컨베이어 벨트로 옮겨줘")
         self.assert_asks(payload)
-        self.assertIn("원형 자재", payload["reason"])
+        self.assertIn("C자재", payload["reason"])
 
     def test_no_name_no_color_no_context_asks_with_candidates(self):
         """여러 자재가 후보면 고르지 않는다(이전: 모델이 고른 자재로 확인 카드)."""

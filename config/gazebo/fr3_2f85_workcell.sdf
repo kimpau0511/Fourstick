@@ -352,14 +352,14 @@
         </inertia>
       </inertial>
       <collision name="collision">
-        <geometry><mesh><uri>file:///home/asd/forstick2-intent2/config/gazebo/meshes/triangle_prism_50x100.obj</uri></mesh></geometry>
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
         <surface>
           <friction><ode><mu>0.8</mu><mu2>0.8</mu2></ode></friction>
           <contact><collide_bitmask>1</collide_bitmask></contact>
         </surface>
       </collision>
       <visual name="visual">
-        <geometry><mesh><uri>file:///home/asd/forstick2-intent2/config/gazebo/meshes/triangle_prism_50x100.obj</uri></mesh></geometry>
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
         <material>
           <ambient>0.21 0.44999999999999996 0.57 1.0</ambient>
           <diffuse>0.35 0.75 0.95 1.0</diffuse>
@@ -373,19 +373,19 @@
       <inertial>
         <mass>0.2</mass>
         <inertia>
-          <ixx>0.00019792</ixx><iyy>0.00019792</iyy><izz>0.00006250</izz>
+          <ixx>0.00020833</ixx><iyy>0.00020833</iyy><izz>0.00008333</izz>
           <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
         </inertia>
       </inertial>
       <collision name="collision">
-        <geometry><cylinder><radius>0.025</radius><length>0.1</length></cylinder></geometry>
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
         <surface>
           <friction><ode><mu>0.8</mu><mu2>0.8</mu2></ode></friction>
           <contact><collide_bitmask>1</collide_bitmask></contact>
         </surface>
       </collision>
       <visual name="visual">
-        <geometry><cylinder><radius>0.025</radius><length>0.1</length></cylinder></geometry>
+        <geometry><box><size>0.05 0.05 0.1</size></box></geometry>
         <material>
           <ambient>0.36 0.54 0.24 1.0</ambient>
           <diffuse>0.6 0.9 0.4 1.0</diffuse>
