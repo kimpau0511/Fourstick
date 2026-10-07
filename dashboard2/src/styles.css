@@ -77,6 +77,8 @@ small { display: block; }
 .header-title h1 { font-size: 20px; font-weight: 700; white-space: nowrap; }
 .header-right { display: flex; gap: 8px 16px; align-items: center; justify-content: flex-end; flex-wrap: wrap; white-space: nowrap; font-size: 12px; }
 .estop { display: flex; gap: 8px; align-items: center; height: 40px; padding: 0 16px; border-radius: 12px; background: var(--danger-bg); color: var(--on-accent); box-shadow: var(--btn); font-size: 15px; font-weight: 800; }
+.estop.estop-release { background: var(--ok-bg, #1f7a4d); }
+.estop:disabled { opacity: .6; cursor: progress; }
 .grade { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
 .grade b { padding: 4px 8px; border-radius: 10px; background: var(--ok-subtle); color: var(--green); font-weight: 700; }
 

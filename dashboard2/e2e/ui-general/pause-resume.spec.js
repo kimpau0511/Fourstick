@@ -98,3 +98,61 @@ test('[UI-PAUSE-03] 명령 패널에는 즉시 정지가 없고, 헤더의 즉�
   await expect(page.locator('section.command').getByRole('button', { name: '즉시 정지' })).toHaveCount(0);
   await expect(page.locator('header').getByRole('button', { name: /즉시 정지/ })).toBeEnabled();
 });
+
+// '시뮬레이션 보기' 버튼으로 작업 없이 창을 여는 보기 모드(팀원 App.jsx, 2026-10-07 작업 중)가 커밋되면 fixme를 뗀다.
+test.fixme('[UI-PAUSE-04] 작업이 없을 때 시뮬레이션 보기를 열어도 일시정지·재개가 보이고, 쓸 수 없는 이유를 보인다', async ({ page }) => {
+  await mockBackend(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: '시뮬레이션 보기' }).click();
+  const view = page.getByRole('dialog', { name: '시뮬레이션 보기' });
+  await expect(view.getByRole('button', { name: /일시정지/ })).toBeDisabled();
+  await expect(view.getByRole('button', { name: /재개/ })).toBeDisabled();
+  await expect(view.getByRole('button', { name: /일시정지/ })).toHaveAttribute('title', '실행 중인 작업이 없습니다');
+  await expect(view.getByRole('button', { name: /재개/ })).toHaveAttribute('title', '멈춘 작업이 없습니다');
+});
+
+test('[UI-STOP-01] 헤더 즉시 정지는 정지 래치가 걸리면 정지 해제가 되고, 누르면 서버 해제를 부른 뒤 다시 즉시 정지가 된다', async ({ page }) => {
+  let latched = false;
+  const calls = [];
+  await mockBackend(page, { overrides: { robots: (base) => ({ ...base, stop_diagnostics: { ...(base.stop_diagnostics || {}), stop_latch_active: latched } }) } });
+  await page.route((url) => url.pathname === '/v1/robots', (route) => route.fulfill({ json: fixture('robots', (base) => ({ ...base, stop_diagnostics: { ...(base.stop_diagnostics || {}), stop_latch_active: latched } })) }));
+  await page.route((url) => url.pathname === '/v1/stop', (route) => { calls.push('/v1/stop'); latched = true; return route.fulfill({ json: { ok: true, requested: true, confirmed: true } }); });
+  await page.route((url) => url.pathname === '/v1/stop/release', (route) => { calls.push('/v1/stop/release'); latched = false; return route.fulfill({ json: { ok: true, released: true, detail: '정지 래치를 풀었다' } }); });
+  await page.route('**/v1/sessions**', (route) => route.fulfill({ json: { session_id: 'qa-session', client_id: 'c1' } }));
+  await page.goto('/');
+  const header = page.locator('header');
+  await header.getByRole('button', { name: /즉시 정지/ }).click();
+  await expect(header.getByRole('button', { name: /정지 해제/ })).toBeVisible();          // 다시 읽은 래치 상태로 바뀐다
+  await header.getByRole('button', { name: /정지 해제/ }).click();
+  await expect(header.getByRole('button', { name: /즉시 정지/ })).toBeVisible();
+  expect(calls).toEqual(['/v1/stop', '/v1/stop/release']);
+});
+
+test('[UI-STOP-02] 정지 해제 거부(움직이는 작업이 남음)면 이유를 보이고 정지 해제 버튼을 그대로 둔다', async ({ page }) => {
+  await mockBackend(page);
+  await page.route((url) => url.pathname === '/v1/robots', (route) => route.fulfill({ json: fixture('robots', (base) => ({ ...base, stop_diagnostics: { ...(base.stop_diagnostics || {}), stop_latch_active: true } })) }));
+  await page.route((url) => url.pathname === '/v1/stop/release', (route) => route.fulfill({ json: { ok: false, released: false, detail: '진행 중인 실행이 1건 있어 풀지 않았다' } }));
+  await page.goto('/');
+  await page.locator('header').getByRole('button', { name: /정지 해제/ }).click();
+  await expect(page.locator('header')).toContainText('진행 중인 실행이 1건 있어 풀지 않았다');
+  await expect(page.locator('header').getByRole('button', { name: /정지 해제/ })).toBeVisible();
+});
+
+// '시뮬레이션 보기' 버튼으로 작업 없이 창을 여는 보기 모드(팀원 App.jsx, 2026-10-07 작업 중)가 커밋되면 fixme를 뗀다.
+test.fixme('[UI-STOP-03] 전체 정지로 멈춘 자재도 시뮬레이션 보기에서 재개할 수 있다(서버가 재개 가능하다고 할 때)', async ({ page }) => {
+  const calls = [];
+  await mockBackend(page);
+  await page.route((url) => url.pathname === '/v1/sim-demo', (route) => route.fulfill({ json: fixture('simDemo', (base) => ({
+    ...base, running_job: null,
+    materials: base.materials.map((m) => (m.model !== 'material_c' ? m : { ...m, record: { state: 'stopped_unrestored' }, actions: { ...m.actions, transfer: false, resume: true, restore: true } })),
+    state: { ...base.state, checkpoint: { model: 'material_c', checkpoint_id: 'cp-9' } },
+  })) }));
+  await page.route((url) => url.pathname === '/v1/sim-demo/jobs', (route) => { calls.push(route.request().postDataJSON()); return route.fulfill({ status: 202, json: { job_id: 'simjob-9', status: 'running' } }); });
+  await page.route((url) => url.pathname.startsWith('/v1/sim-demo/jobs/'), (route) => route.fulfill({ json: { job_id: 'simjob-9', material: 'material_c', status: 'finished', report: { status: 'simulation_transfer_resumed_completed' } } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: '시뮬레이션 보기' }).click();
+  const view = page.getByRole('dialog', { name: '시뮬레이션 보기' });
+  await expect(view).toContainText('C자재: 정지 지점에서 이어서 옮길 수 있습니다');
+  await view.getByRole('button', { name: /재개/ }).click();
+  await expect.poll(() => calls[0]).toEqual({ action: 'resume', material: 'material_c', checkpoint_id: 'cp-9' });
+});

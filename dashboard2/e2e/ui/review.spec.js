@@ -168,7 +168,7 @@ test.describe('명령 잠금(결정3)', () => {
   const stop = fixture('robots').stop_diagnostics;
   const send = (page) => panel(page).getByRole('button', { name: '보내기' });
 
-  test('[UI-REV-17][§1] 긴급(정지 래치)이면 보내기·스킬 버튼이 잠기고 헤더의 즉시 정지는 잠기지 않는다', async ({ page }) => {
+  test('[UI-REV-17][§1] 긴급(정지 래치)이면 보내기·스킬 버튼이 잠기고 헤더의 정지 해제는 잠기지 않는다', async ({ page }) => {
     await mockBackend(page, { overrides: { simState: { stale: false }, robots: { stop_diagnostics: { ...stop, stop_latch_active: true } } } });
     await page.goto('/');
     await panel(page).getByLabel('자연어 명령').fill('A 자재를 컨베이어로 옮겨줘');
@@ -176,7 +176,8 @@ test.describe('명령 잠금(결정3)', () => {
     await expect(send(page)).toBeDisabled();
     await expect(panel(page).getByRole('button', { name: 'A자재 → 컨베이어' })).toBeDisabled();
     await expect(panel(page).getByRole('button', { name: '즉시 정지' })).toHaveCount(0); // 즉시 정지는 헤더에만(2026-10-07)
-    await expect(headerStop(page)).toBeEnabled();
+    // 정지 래치가 걸려 있으면 헤더의 같은 자리 버튼은 '정지 해제'다(2026-10-07) — 잠기지 않는다.
+    await expect(page.locator('header').getByRole('button', { name: /정지 해제/ })).toBeEnabled();
   });
 
   test('[UI-REV-18][§1] 로봇 상태를 확인할 수 없으면(NO_DATA) 사유와 함께 잠긴다', async ({ page }) => {
@@ -198,6 +199,6 @@ test.describe('명령 잠금(결정3)', () => {
     const latch = { stop_diagnostics: { ...stop, stop_latch_active: true } };
     await page.route('**/v1/robots', (route) => route.fulfill({ json: fixture('robots', latch) }));
     await expect(approve).toBeDisabled({ timeout: 15_000 }); // /v1/robots는 10초 주기
-    await expect(headerStop(page)).toBeEnabled();
+    await expect(page.locator('header').getByRole('button', { name: /정지 해제/ })).toBeEnabled(); // 래치 중 헤더 버튼은 '정지 해제'(2026-10-07)
   });
 });

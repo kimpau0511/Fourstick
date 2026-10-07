@@ -146,7 +146,8 @@ export function useServer() {
   }, []);
 
   // 작업이 끝나면(완료·실패·취소) 주기를 기다리지 않고 자재 상태를 다시 조회한다 — 버튼이 서버 기록을 따라가게.
-  const refresh = useCallback(() => Promise.all(['simDemo', 'simState'].map((key) => fetchers.current[key]?.())), []);
+  // robots: 즉시 정지·해제 뒤 정지 래치 상태(stop_diagnostics)를 주기(10초)를 기다리지 않고 다시 읽는다.
+  const refresh = useCallback(() => Promise.all(['simDemo', 'simState', 'robots'].map((key) => fetchers.current[key]?.())), []);
 
   const { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt } = state;
   return { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt, refresh };

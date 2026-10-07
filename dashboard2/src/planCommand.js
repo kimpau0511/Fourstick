@@ -252,8 +252,9 @@ export function useGeneralCommand() {
   }, [patch, addEvent, ensureSession]);
 
   /** 재개 — 일시정지한 자재를 정지 지점에서 이어서 옮긴다. 서버가 재개 가능하다고 할 때만, 실행기가 직전에 다시 검증한다. */
-  const resume = useCallback(async () => {
-    const material = state.job && state.job.paused && state.job.paused.material;
+  const resume = useCallback(async (target = null) => {
+    // 대상 자재: 창이 서버 상태에서 고른 멈춘 자재(전체 정지 뒤 포함), 없으면 이 화면이 일시정지한 자재.
+    const material = target || (state.job && state.job.paused && state.job.paused.material);
     if (!material) return;
     patch({ busy: true, pauseNote: null });
     const st = await call('GET', '/v1/sim-demo').catch(() => null);
@@ -290,8 +291,9 @@ export function useGeneralCommand() {
   }, [state.job, patch, addEvent]);
 
   /** 복구 — 재개할 수 없는 지점에서 멈춘 자재를 원래 자리로 되돌린다(서버 restore 작업). 끝나면 서버 기록으로 판정한다. */
-  const restore = useCallback(async () => {
-    const material = state.job && state.job.paused && state.job.paused.material;
+  const restore = useCallback(async (target = null) => {
+    // 대상 자재: 창이 서버 상태에서 고른 멈춘 자재(전체 정지 뒤 포함), 없으면 이 화면이 일시정지한 자재.
+    const material = target || (state.job && state.job.paused && state.job.paused.material);
     if (!material) return;
     patch({ busy: true, pauseNote: null });
     const res = await call('POST', '/v1/sim-demo/jobs', { action: 'restore', material })

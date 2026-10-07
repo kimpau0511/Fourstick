@@ -45,16 +45,26 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   const done = steps ? steps.filter((s) => s.reached).length : 0;
   const stamp = cmd.updatedAt ? timeText(cmd.updatedAt) : null;
   const first = steps ? steps.findIndex((s) => !s.reached) : -1;
-  // 일시정지·재개는 일반 경로 명령(cmd.pause·cmd.resume)에서만. 재개 가능 여부는 서버 자재 상태(actions.resume)다.
-  const canPause = typeof cmd.pause === 'function' && state === 'running' && !(cmd.job && cmd.job.resumed);
+  // 일시정지·재개·복구는 일반 경로 명령(cmd.pause·cmd.resume·cmd.restore)에서. 창이 열려 있으면 늘 보이고,
+  // 쓸 수 없을 때는 잠근 채 이유를 보인다(2026-10-07). 멈춘 자재는 서버 상태에서 찾는다 — 이 창의 일시정지든
+  // 헤더의 즉시 정지든 실행기가 남긴 '정지·미복구' 기록이 기준이다. 재개 가능 여부는 서버 판정(actions.resume).
+  const controls = typeof cmd.pause === 'function' && state !== 'danger';
+  const materials = (server && server.simDemo && server.simDemo.materials) || [];
   const pausedModel = cmd.job && cmd.job.paused ? cmd.job.paused.material : null;
-  const pausedRow = pausedModel ? ((server && server.simDemo && server.simDemo.materials) || []).find((m) => m.model === pausedModel) : null;
-  const canResume = typeof cmd.resume === 'function' && state === 'paused' && !!(pausedRow && pausedRow.actions && pausedRow.actions.resume) && !lock;
-  const resumeWhy = state !== 'paused' || canResume ? null
-    : lock || (pausedRow ? '이 지점에서는 이어서 할 수 없습니다 — 복구하면 원래 자리로 되돌립니다(서버 판정)' : '자재 상태를 아직 받지 못했습니다');
-  // 재개할 수 없을 때만 '복구'(원래 자리로)를 보인다 — 서버가 복구 가능(actions.restore)하다고 할 때.
-  const canRestore = typeof cmd.restore === 'function' && state === 'paused' && !canResume && !lock
-    && !!(pausedRow && pausedRow.actions && pausedRow.actions.restore);
+  const stoppedRow = materials.find((m) => m.model === pausedModel && m.record)
+    || materials.find((m) => m.record && /unrestored|failed|stopped/.test(m.record.state || ''));
+  const moving = state === 'running' || (server && server.simDemo && server.simDemo.running_job);
+  const canPause = controls && state === 'running' && !(cmd.job && cmd.job.resumed);
+  const pauseWhy = canPause ? null : moving ? '이 화면에서 시작한 작업만 일시정지할 수 있습니다' : '실행 중인 작업이 없습니다';
+  const canResume = controls && !moving && !!(stoppedRow && stoppedRow.actions && stoppedRow.actions.resume) && !lock;
+  const resumeWhy = canResume ? null
+    : moving ? '작업이 실행 중입니다'
+      : !stoppedRow ? '멈춘 작업이 없습니다'
+        : lock || '이 지점에서는 이어서 할 수 없습니다 — 복구하면 원래 자리로 되돌립니다(서버 판정)';
+  // 재개할 수 없을 때만 '복구'(원래 자리로) — 서버가 복구 가능(actions.restore)하다고 할 때.
+  const canRestore = controls && !moving && !canResume && !lock
+    && !!(stoppedRow && stoppedRow.actions && stoppedRow.actions.restore);
+  const stoppedName = stoppedRow ? stoppedRow.korean || stoppedRow.model : null;
 
   let card;
   if (state === 'viewing') {
@@ -82,11 +92,11 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   } else if (state === 'paused') {
     card = {
       dot: dotSimStopping, title: '일시정지됨', titleTone: '',
-      sub: `${(pausedRow && pausedRow.korean) || pausedModel} — 정지 지점에서 멈췄습니다. 재개하면 그 지점부터 이어서 옮깁니다`,
+      sub: `${stoppedName || pausedModel} — 정지 지점에서 멈췄습니다. 재개하면 그 지점부터 이어서 옮깁니다`,
       section: '동작 세부 진행 · 일시정지',
       stages: steps && steps.map((s, i) => ({ mark: s.reached ? '✓' : String(i + 1), tone: s.reached ? 'done' : i === first ? 'current' : 'wait', label: s.label })),
       lines: steps && steps.slice(1).map((s) => (s.reached ? 'done' : 'wait')),
-      foot: `${resumeWhy ? `${resumeWhy}   ·   ` : ''}${HEADER_STOP}`,
+      foot: HEADER_STOP,
     };
   } else {
     card = {
@@ -114,8 +124,8 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
         </button>
         {full && <div className="sim-fs-bar">
           <span className={card.titleTone}>{card.title}{state !== 'viewing' && steps ? ` · ${done}/${steps.length} 단계` : ''}</span>
-          {canPause && <button type="button" className="sim-fs-pause" onClick={cmd.pause}>❚❚ 일시정지</button>}
-          {state === 'paused' && <button type="button" className="sim-fs-pause" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={cmd.resume}>▶ 재개</button>}
+          {controls && <button type="button" className="sim-fs-pause" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>}
+          {controls && <button type="button" className="sim-fs-pause" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>}
           <button type="button" className="sim-fs-stop" onClick={cmd.stop}>■ 즉시 정지</button>
         </div>}
       </div>
@@ -128,11 +138,14 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
         </div>)}
       </div> : state !== 'viewing' && <p className="sim-foot">진행 단계 정보 없음</p>}
       <p className="sim-foot">{card.foot}</p>
-      {(canPause || state === 'paused') && <div className="sim-actions" role="group" aria-label="이 작업 제어">
-        {canPause && <button type="button" onClick={cmd.pause}>❚❚ 일시정지</button>}
-        {state === 'paused' && <button type="button" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={cmd.resume}>▶ 재개</button>}
-        {canRestore && <button type="button" disabled={cmd.busy} onClick={cmd.restore}>↺ 복구(원래 자리로)</button>}
+      {controls && <div className="sim-actions" role="group" aria-label="이 작업 제어">
+        <button type="button" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>
+        <button type="button" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>
+        {canRestore && <button type="button" disabled={cmd.busy} onClick={() => cmd.restore(stoppedRow && stoppedRow.model)}>↺ 복구(원래 자리로)</button>}
       </div>}
+      {controls && (stoppedRow || moving) && <p className="sim-foot" role="status">{canPause ? '일시정지: 이 작업만 멈춥니다(전체 정지는 헤더)'
+        : canResume ? `${stoppedName}: 정지 지점에서 이어서 옮길 수 있습니다`
+          : canRestore ? `${stoppedName}: ${resumeWhy}` : resumeWhy}</p>}
       {cmd.pauseNote && <p className={`sim-foot ${cmd.pauseNote.tone}`} role="status">{cmd.pauseNote.text}</p>}
       {/* 위험 판정에서는 판정을 덮어쓰는 승인 버튼을 두지 않는다(피그마 메모). 다시 보내면 서버가 다시 판정한다. */}
       {state === 'danger' && <div className="sim-actions"><button type="button" onClick={cmd.reset}>명령 수정</button><button type="button" disabled={cmd.busy || !!lock} title={lock || undefined} onClick={() => cmd.send(cmd.sent)}>다시 보내기</button></div>}

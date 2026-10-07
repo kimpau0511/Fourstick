@@ -86,7 +86,7 @@ test.describe('현황(홈)', () => {
     await expect(page.getByRole('button', { name: '다시 펼치기' })).toBeVisible(); // 접힌 뒤에도 되돌릴 수 있다
     await page.getByRole('button', { name: '다시 펼치기' }).click();
     await expect(page.getByRole('button', { name: /인지 확인/ })).toBeVisible();
-    await page.locator('header').getByRole('button', { name: /즉시 정지/ }).click({ trial: true }); // 가려지지 않는다
+    await page.locator('header').getByRole('button', { name: /즉시 정지|정지 해제/ }).click({ trial: true }); // 가려지지 않는다(래치 중이면 '정지 해제')
   });
 
   test('[UI-HOME-07][①] 홈 로봇 카드 진행 막대는 이 화면이 따라가는 작업일 때만 그린다(서버 running_job에는 진행률이 없다)', async ({ page }) => {
