@@ -296,6 +296,41 @@ class SqliteRepository(Repository):
         with self._tx() as conn:
             conn.execute("DELETE FROM login_sessions WHERE token_hash = ?", (token_hash,))
 
+    # ── 명령을 보낸 사람 ────────────────────────────────────────────────
+    _ACTOR_COLUMNS = ("audit_id", "recorded_at", "actor_email", "method", "path", "status",
+                      "request_id", "plan_id", "execution_id", "job_id", "goal_id")
+
+    def append_command_actor(self, row: Mapping[str, Any]) -> None:
+        with self._tx() as conn:
+            conn.execute(
+                f"INSERT INTO command_actors ({','.join(self._ACTOR_COLUMNS)})"
+                f" VALUES ({','.join('?' * len(self._ACTOR_COLUMNS))})",
+                tuple(row.get(c) for c in self._ACTOR_COLUMNS),
+            )
+
+    def command_actors_for(
+        self, *, request_ids: Sequence[str] = (), job_ids: Sequence[str] = (),
+    ) -> dict[str, dict]:
+        found: dict[str, dict] = {}
+        for column, ids in (("request_id", request_ids), ("job_id", job_ids)):
+            ids = [i for i in dict.fromkeys(ids) if i]
+            if not ids:
+                continue
+            rows = self._conn.execute(
+                f"SELECT c.{column} AS id, c.actor_email, a.name FROM command_actors c"
+                f" LEFT JOIN accounts a ON a.email = c.actor_email"
+                f" WHERE c.{column} IN ({','.join('?' * len(ids))})"
+                # 요청자 = 그 기록을 **만든** 성공한 명령. 정지·취소·정지 해제 응답에도 대상 작업 id가 실리므로
+                # 빼지 않으면 정지를 누른 사람이 작업 요청자로 보인다.
+                f" AND c.status < 400 AND c.path NOT LIKE '%/stop' AND c.path NOT LIKE '%/cancel'"
+                f" AND c.path <> '/v1/stop/release'"
+                f" ORDER BY c.recorded_at, c.audit_id",
+                tuple(ids),
+            ).fetchall()
+            for r in rows:
+                found.setdefault(r["id"], {"email": r["actor_email"], "name": r["name"]})
+        return found
+
     # ── 공통 ────────────────────────────────────────────────────────────
     def _one(self, sql: str, params: tuple[Any, ...], missing: str) -> sqlite3.Row:
         row = self._conn.execute(sql, params).fetchone()

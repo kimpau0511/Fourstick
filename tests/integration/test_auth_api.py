@@ -18,7 +18,9 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 from integration.asgi_client import HttpClient, WebSocketSession  # noqa: E402
 from server.asgi import Application  # noqa: E402
-from server.auth import COOKIE_NAME, check_id_token, LoginError  # noqa: E402
+from core.constants import TASK_PLAN_SCHEMA_VERSION  # noqa: E402
+from server.auth import COOKIE_NAME, check_id_token, link_ids, LoginError  # noqa: E402
+from storage.records import RequestRecord  # noqa: E402
 from server.config import ServerConfig  # noqa: E402
 from server.runtime import build_runtime  # noqa: E402
 
@@ -33,7 +35,8 @@ def claims(email="operator@example.com", sub="sub-1", **over):
     return base
 
 
-class AuthApiTest(unittest.IsolatedAsyncioTestCase):
+class _AuthBase(unittest.IsolatedAsyncioTestCase):
+    """로그인 시험 공통 준비(구글·시각 주입). 테스트는 아래 하위 클래스에."""
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -69,6 +72,8 @@ class AuthApiTest(unittest.IsolatedAsyncioTestCase):
     def with_cookie(self, token):
         return [(b"cookie", f"{COOKIE_NAME}={token}".encode())]
 
+
+class AuthApiTest(_AuthBase):
     async def test_protected_api_needs_login(self):
         for path in ("/health", "/v1/config", "/v1/sim-demo", "/v1/history"):
             res = await self.client.get(path)
@@ -214,6 +219,74 @@ class LoginConfigFromEnvTest(unittest.TestCase):
         self.assertEqual(config.google_client_id, CLIENT_ID)
         self.assertEqual(config.google_client_secret, "fixture-secret")
         self.assertEqual(config.public_origin, "https://foursticks.example")
+
+
+class CommandActorTest(_AuthBase):
+    """명령을 보낸 사람 기록(결정 Q10)."""
+
+    def fake_plan(self):
+        """계획 생성은 LLM이 필요하다 — 요청 기록을 만들고 request_id를 돌려주는 가짜로 바꾼다(기록 경로는 진짜)."""
+        def create_plan(session_id, utterance, stt_inference_id=None):
+            self.repo.save_request(RequestRecord(request_id="req-1", utterance=utterance,
+                                                 schema_version=TASK_PLAN_SCHEMA_VERSION, created_at=NOW))
+            return {"ok": True, "request_id": "req-1"}
+        self.app.api.create_plan = create_plan
+
+    async def test_history_shows_who_sent_the_command(self):
+        # 실제 HTTP 명령 → asgi가 처리 전에 정한 보낸 사람 → 응답 뒤 기록 → /v1/history의 요청자
+        self.repo.add_account("operator@example.com", at=NOW)
+        token, _ = self.cookie_of(await self.login())
+        self.fake_plan()
+        res = await self.client.request("POST", "/v1/plan", {"session_id": "s1", "utterance": "A자재를 컨베이어로"},
+                                        headers=self.with_cookie(token))
+        self.assertEqual(res.status, 200)
+        history = await self.client.request("GET", "/v1/history", headers=self.with_cookie(token))
+        row = next(c for c in history.json()["commands"] if c["request_id"] == "req-1")
+        self.assertEqual(row["actor"], {"email": "operator@example.com", "name": "김민우"})
+
+    def test_stop_is_not_taken_as_who_started_the_job(self):
+        # 정지 응답에도 대상 작업 id가 실린다 — 정지를 누른 사람(먼저 기록돼도)을 작업 요청자로 보지 않는다
+        self.repo.add_account("a@example.com", at=NOW)
+        self.repo.add_account("b@example.com", at=NOW)
+        base = {"method": "POST", "status": 200, "request_id": None, "plan_id": None, "execution_id": None, "goal_id": None}
+        self.repo.append_command_actor({**base, "audit_id": "1", "recorded_at": NOW, "actor_email": "b@example.com",
+                                        "path": "/v1/sim-demo/stop", "job_id": "simjob_1"})
+        self.assertEqual(self.repo.command_actors_for(job_ids=["simjob_1"]), {})
+        self.repo.append_command_actor({**base, "audit_id": "2", "recorded_at": NOW + 1, "actor_email": "a@example.com",
+                                        "path": "/v1/sim-demo/confirm", "job_id": "simjob_1"})
+        self.repo.append_command_actor({**base, "audit_id": "3", "recorded_at": NOW + 2, "actor_email": "b@example.com",
+                                        "path": "/v1/sim-demo/confirm", "status": 409, "job_id": "simjob_1"})
+        self.assertEqual(self.repo.command_actors_for(job_ids=["simjob_1"])["simjob_1"]["email"], "a@example.com")
+
+    async def test_logged_in_stop_records_the_account(self):
+        self.repo.add_account("operator@example.com", at=NOW)
+        token, _ = self.cookie_of(await self.login())
+        await self.client.request("POST", "/v1/sim-demo/stop", {}, headers=self.with_cookie(token))
+        rows = self.repo._conn.execute("SELECT actor_email FROM command_actors").fetchall()
+        self.assertEqual([r["actor_email"] for r in rows], ["operator@example.com"])
+
+    async def test_stop_without_login_is_recorded_without_actor(self):
+        await self.client.post("/v1/sim-demo/stop", {})
+        rows = self.repo._conn.execute("SELECT actor_email, path FROM command_actors").fetchall()
+        self.assertEqual([(r["actor_email"], r["path"]) for r in rows], [(None, "/v1/sim-demo/stop")])
+
+    async def test_reads_and_login_are_not_commands(self):
+        self.repo.add_account("operator@example.com", at=NOW)
+        token, _ = self.cookie_of(await self.login())
+        await self.client.request("GET", "/v1/sim-demo", headers=self.with_cookie(token))
+        await self.client.request("GET", "/health", headers=self.with_cookie(token))
+        self.assertEqual(self.repo._conn.execute("SELECT COUNT(*) FROM command_actors").fetchone()[0], 0)
+
+
+class LinkIdsTest(unittest.TestCase):
+    def test_takes_top_level_and_own_job_only(self):
+        body = b'{"request_id": "req-1", "job": {"job_id": "simjob_mine"}, "status": {"running_job": {"job_id": "simjob_other"}}}'
+        self.assertEqual(link_ids(body), {"request_id": "req-1", "job_id": "simjob_mine"})
+
+    def test_does_not_borrow_another_jobs_id(self):
+        # 명령 응답에 같이 실린 다른 작업(진행 중·최근 목록)에 이 사람을 붙이지 않는다
+        body = b'{"job": null, "running_job": {"job_id": "simjob_other"}, "recent_jobs": [{"job_id": "simjob_x"}]}'
+        self.assertEqual(link_ids(body), {})
 
 
 class IdTokenCheckTest(unittest.TestCase):

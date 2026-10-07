@@ -103,6 +103,17 @@ class Repository(ABC):
     def delete_login_session(self, token_hash: str) -> None:
         raise NotImplementedError
 
+    # ── 명령을 보낸 사람(append-only) ──────────────────────────────────
+    def append_command_actor(self, row: Mapping[str, Any]) -> None:
+        """키: audit_id·recorded_at·actor_email·method·path·status·request_id·plan_id·execution_id·job_id·goal_id."""
+        raise NotImplementedError
+
+    def command_actors_for(
+        self, *, request_ids: Sequence[str] = (), job_ids: Sequence[str] = (),
+    ) -> dict[str, dict]:
+        """식별자 → {"email", "name"}. 그 기록을 만든 성공한 명령(정지·취소 제외) 중 **가장 이른 것**의 보낸 사람."""
+        raise NotImplementedError
+
     # ── 세션 ────────────────────────────────────────────────────────────
     # 세션은 작업 묶음을 구분하는 식별자다. **인증이 아니다.**
     # 서버는 '현재 계획'을 추정하지 않고, 모든 조회를 명시적 식별자로 한다.

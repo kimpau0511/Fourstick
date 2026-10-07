@@ -365,4 +365,19 @@ test.describe('서버 이력(/v1/history)', () => {
     await page.reload();
     await expect(page.getByText(/서버 이력 조회 실패/)).toBeVisible({ timeout: 15000 });
   });
+
+  test('[UI-RECORD-06][결정 Q10] 요청자 = 서버가 남긴 보낸 사람(이름, 없으면 이메일), 기록이 없으면 "기록 없음"', async ({ page }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const cmd = (id, utterance, actor) => ({ request_id: id, utterance, created_at: now, decision: 'allow', execution_id: null, final_state: null, actor });
+    await mockBackend(page, { overrides: { history: { commands: [
+      cmd('req-a', '이름 있는 사람의 명령', { email: 'a@example.com', name: '홍길동' }),
+      cmd('req-b', '이름 없는 사람의 명령', { email: 'b@example.com', name: null }),
+      cmd('req-c', '예전 명령', null),
+    ] } } });
+    await page.goto('/#/history');
+    const table = page.getByRole('table', { name: '명령 기록' });
+    await expect(table.getByRole('row', { name: /이름 있는 사람의 명령/ })).toContainText('홍길동');
+    await expect(table.getByRole('row', { name: /이름 없는 사람의 명령/ })).toContainText('b@example.com');
+    await expect(table.getByRole('row', { name: /예전 명령/ })).toContainText('기록 없음');
+  });
 });

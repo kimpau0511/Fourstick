@@ -23,8 +23,10 @@ WebSocket 둘. **둘 다 session_id를 요구한다.**
 
 from __future__ import annotations
 
+import asyncio
 import json
 import mimetypes
+import sys
 import urllib.parse
 
 from server.api import Api, ApiError
@@ -108,6 +110,7 @@ class Application:
         method = scope["method"]
         query = _query_dict(scope.get("query_string", b""))
         token = cookie_token(scope.get("headers", []))
+        actor = self.auth.actor_of(method, path, token)
         try:
             if path.startswith(auth_routes.PREFIX):
                 result = await auth_routes.handle(self.auth, self.ctx, method, path, receive, scope.get("headers", []))
@@ -129,6 +132,12 @@ class Application:
         await send({"type": "http.response.start", "status": status,
                     "headers": merged})
         await send({"type": "http.response.body", "body": body})
+        # 명령을 보낸 사람(결정 Q10). 응답을 보낸 **뒤에** 남긴다 — 기록 때문에 정지 응답이 늦어지지 않게.
+        # 기록 실패가 이미 처리된 명령을 실패로 바꾸지 않게 하고, 실패는 숨기지 않고 서버 로그에 남긴다.
+        try:
+            await asyncio.to_thread(self.auth.record_command, method, path, actor, status, body)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[audit] 명령 보낸 사람 기록 실패 {method} {path}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     async def _body(self, receive) -> dict:
         chunks = b""

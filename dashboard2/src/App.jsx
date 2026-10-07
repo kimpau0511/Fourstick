@@ -116,7 +116,7 @@ function DashboardView({ auth, server, cmd, now, page, preview = false }) {
         <div className="col-main">
           {page === 'home' && <Home server={server} cmdJob={cmd.job} />}
           {page === 'robots' && <Robots server={server} />}
-          {page === 'history' && <History server={server} log={cmd.log} />}
+          {page === 'history' && <History server={server} log={cmd.log} user={auth.user} />}
           {page === 'diagnostics' && <Diagnostics server={server} />}
           {page === 'settings' && <Settings server={server} />}
         </div>
