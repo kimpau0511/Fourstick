@@ -4,7 +4,8 @@
 # 돌고 있는 작업 셀(파티션 forstick2_fr3_workcell, ROS 도메인 44)은 건드리지 않는다.
 # 팔 단독 셀을 별도 파티션(forstick2_fr3)·도메인(42)으로 **화면 없이**(gz sim -s) 띄운다.
 # 띄우는 방식은 scripts/run_gazebo_fr3.sh와 같다(같은 xacro·월드·컨트롤러 YAML·spawn·spawner).
-# 다른 점: GUI 없음, robot_state_publisher 없음(시험에 불필요), 모든 프로세스 nice 19.
+# 다른 점: GUI 없음, 모든 프로세스 nice 19.
+# (robot_state_publisher는 필요하다 — gz_ros2_control 3.x가 robot_description 토픽에서 모델을 받는다.)
 # 시험이 끝나면(실패·Ctrl+C 포함) 이 스크립트가 띄운 프로세스만 끈다.
 #
 # 사용: bash run_joint_limit_test.sh <forstick 저장소 경로>
@@ -76,6 +77,19 @@ for _ in $(seq 60); do
   sleep 1
 done
 gz service -l 2>/dev/null | grep -q "/world/$WORLD_NAME/create" || { echo "Gazebo가 60초 안에 뜨지 않았다" >&2; exit 5; }
+
+# robot_state_publisher: URDF를 명령행 인자로 넘기면 파서가 깨진다 — params 파일로 준다(run_gazebo_fr3.sh와 같다).
+python3 - "$URDF_OUT" "$LOG/rsp_params.yaml" <<'PYGEN'
+import sys
+from pathlib import Path
+urdf = Path(sys.argv[1]).read_text(encoding="utf-8")
+body = "\n".join("      " + line for line in urdf.splitlines())
+Path(sys.argv[2]).write_text(
+    "robot_state_publisher:\n  ros__parameters:\n    use_sim_time: true\n"
+    "    robot_description: |\n" + body + "\n", encoding="utf-8")
+PYGEN
+start rsp ros2 run robot_state_publisher robot_state_publisher --ros-args --params-file "$LOG/rsp_params.yaml"
+sleep 3
 
 echo "[2/4] 팔 모델 생성"
 nice -n 19 ros2 run ros_gz_sim create -world "$WORLD_NAME" -file "$URDF_OUT" \
