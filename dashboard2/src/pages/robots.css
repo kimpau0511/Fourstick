@@ -38,3 +38,9 @@
 .cfg-notice { padding: 8px 10px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); font-size: 13px; }
 .cfg-hint { font-size: 12px; }
 .robot-config .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+
+.robot-name { display: grid; gap: 6px; padding: 12px 14px; margin-bottom: 12px; }
+.robot-name h3 { margin: 0; font-size: 15px; }
+.robot-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.robot-name-row input { width: 140px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line, #c9ced6); font-size: 15px; }
+.robot-name-current { margin: 0; }

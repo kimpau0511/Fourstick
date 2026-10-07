@@ -5,25 +5,19 @@ import { SAMPLES, mockBackend, sendCommand } from '../mock.js';
 const panel = (page) => page.locator('section.command');
 
 test.describe('명령 패널', () => {
-  test('[UI-CMD-01][SFR-001·DEV-04] 대기: 텍스트 입력 + 입력칸 안 마이크 + 보내기, STEP 제목·Enter 안내 없음', async ({ page }) => {
+  test('[UI-CMD-01][SFR-001·DEV-04] 대기: 텍스트 입력 + 음성 명령 켜기 + 보내기, STEP 제목·Enter 안내 없음', async ({ page }) => {
     await mockBackend(page);
     await page.goto('/');
     const p = panel(page);
     await expect(p.getByLabel('자연어 명령')).toBeVisible();
-    await expect(p.getByRole('button', { name: /음성 입력/ })).toBeVisible();
+    await expect(p.getByRole('button', { name: '음성 명령 켜기' })).toBeVisible();
     await expect(p.getByRole('button', { name: '보내기' })).toBeVisible();
     await expect(p).not.toContainText('STEP');
     await expect(p).not.toContainText('Enter로 보내기');
-    // 마이크가 입력칸 영역 안에 있다
-    // 서버 값이 오면 스킬 버튼이 생겨 입력칸이 밀린다 — 두 위치를 같은 순간에 잰다.
+    // 서버 값이 오면 스킬 버튼이 생긴다.
     await expect(p.getByRole('button', { name: 'A자재 → 컨베이어' })).toBeVisible();
     // 즉시 정지는 헤더에만 둔다(2026-10-07 사용자 결정) — 명령 패널에는 없다.
     await expect(p.getByRole('button', { name: '즉시 정지' })).toHaveCount(0);
-    const [field, mic] = await p.evaluate((el) => [el.querySelector('#command-input'), el.querySelector('.mic-btn')]
-      .map((n) => { const r = n.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));
-    expect(mic.x).toBeGreaterThanOrEqual(field.x);
-    expect(mic.x + mic.width).toBeLessThanOrEqual(field.x + field.width + 1);
-    expect(mic.y + mic.height).toBeLessThanOrEqual(field.y + field.height + 1);
   });
 
   test('[UI-CMD-02][⑥-2·§4 ASK] 질문은 정보입력 요청 — 서버 질문 문장 + 답 입력칸, 승인 버튼 없음', async ({ page }) => {

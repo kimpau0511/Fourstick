@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { RESULT_LABELS } from '../simCommand.js';
-import { commandLock } from '../server.js';
-import { useVoice } from '../voice.js';
+import { commandLock, robotNameOf } from '../server.js';
+import { useWakeVoice } from '../wakeVoice.js';
 import RepeatPanel from './RepeatPanel.jsx';
 import Spinner from './Spinner.jsx';
+import VoiceControl from './VoiceControl.jsx';
 import './command.css';
 import checkSquare from '../assets/check-square-2.svg';
 import dotPanel from '../assets/dot-panel.svg';
-import mic from '../assets/mic.svg';
 import shieldCheck from '../assets/shield-check.svg';
 
 // 서버 판정 → [톤, 표시]. 판정 코드는 서버 계약(server/routes/sim_demo.py) 그대로다.
@@ -64,23 +64,10 @@ function materialSkills(server) {
 // 로봇 이름은 역할 우선(이송 가능하면 "이송 로봇"), 모델·id는 title로 보조.
 const robotName = (id, profile) => ((profile.supported_skills || []).some((k) => k === 'pick' || k === 'place') ? '이송 로봇' : id);
 
-// 입력칸 안 마이크 버튼. 듣는 동안은 음성 파형(막대 3개), 연결·확정 중에는 스피너를 보인다.
-function MicButton({ voice, locked }) {
-  const { status, unavailable } = voice;
-  const listening = status === 'listening';
-  const busy = status === 'connecting' || status === 'finalizing';
-  const name = unavailable ? '음성 입력(사용할 수 없음)' : listening ? '음성 인식 중 — 누르면 종료'
-    : status === 'connecting' ? '음성 입력 연결 중 — 누르면 취소' : status === 'finalizing' ? '음성 입력 확정 중' : '음성 입력 시작';
-  const onClick = listening ? voice.stop : status === 'connecting' ? voice.cancel : voice.start;
-  return <button type="button" className="mic-btn" aria-label={name} aria-pressed={listening} title={unavailable || undefined}
-    disabled={!!unavailable || status === 'finalizing' || (locked && !listening && !busy)} onClick={onClick}>
-    {listening ? <span className="voice-bars" aria-hidden="true"><i /><i /><i /></span>
-      : busy ? <Spinner size={16} label={name} /> : <img src={mic} alt="" width="16" height="16" />}
-  </button>;
-}
-
-export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
+export default function CommandPanel({ now, sim, server, onOpenSimulation, onStop }) {
   const [text, setText] = useState('');
+  const [recoverBusy, setRecoverBusy] = useState(false);
+  const [recoverNote, setRecoverNote] = useState(null);
   const [picked, setPicked] = useState(null);
   const robots = Object.entries((server && server.robots && server.robots.robots) || {})
     .map(([id, profile]) => ({ id, name: robotName(id, profile), title: profile.profile_id || id }));
@@ -96,12 +83,6 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const skills = materialSkills(server);
   const skillNotes = [...new Set([...skills.map((k) => k.blocked),
     server && server.simDemoFailing && '작업 상태 조회가 실패해 자재 버튼을 잠갔습니다 — 연결을 확인해 주세요'].filter(Boolean))];
-  // 음성 입력. final만 명령으로 보낸다(대상 로봇 선택 유지) — partial·clarify는 보내지 않는다.
-  const voice = useVoice({
-    config: server && server.config, health: server && server.health,
-    // 입력을 받는 단계(대기·되묻기)에서만 보낸다 — 녹음 중 다른 명령으로 확인 카드가 떴으면 그 카드를 덮어쓰지 않는다.
-    onFinal: (utterance, stt) => { if (!sim.busy && !lockReason && (phase === 'idle' || phase === 'ask')) sim.send(utterance, target && target.id, stt); },
-  });
   const { result, pending, job, goal } = sim;
   const gripper = server && server.config && server.config.robot && server.config.robot.has_gripper;
   const [tone, label] = (result && DECISIONS[result.decision]) || ['info', result ? result.decision : ''];
@@ -131,10 +112,47 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const percent = steps.length ? Math.round((steps.filter(Boolean).length / steps.length) * 100) : 0;
   const cardTone = { confirm: expired ? 'warn' : 'ok', running: 'info', done: resultTone, ask: 'warn', other: statusTone }[phase];
 
+  // 호출어 음성 명령(2026-10-07): 마이크 버튼은 켜기/끄기. 호출어 뒤 명령은 텍스트와 같은 계획 요청(sim.send)으로
+  // 보내고, 실행은 아래 확인 카드에서 사람이 '실행 승인'을 눌러야만 한다. 확인·실행 중에는 새 명령을 받지 않는다.
+  const voice = useWakeVoice({
+    config: server && server.config, health: server && server.health, name: robotNameOf(server),
+    flow: { busy: sim.busy, phase, reason: sim.error || (result && (result.reason || result.summary)) || null,
+      started: !!(job || goal), ended: !!sim.error || !!(result && ['CANCELLED', 'BLOCK'].includes(result.decision)) },
+    onCommand: (utterance, stt) => {
+      if (sim.busy || lockReason || phase === 'confirm' || phase === 'running') return;
+      sim.send(utterance, target && target.id, stt);
+    },
+    onStop: () => onStop?.(),
+  });
+  const voiceBusy = ['LISTENING', 'TRANSCRIBING', 'ANALYZING'].includes(voice.state) ? '음성 명령을 받는 중입니다 — 끝난 뒤 입력하세요' : null;
+  // 긴급 정지 뒤 복구(시뮬레이션 보기와 같은 판정: 서버 기록에서 멈춘 자재·actions.resume/restore).
+  const latched = !!(server && server.robots && server.robots.stop_diagnostics && server.robots.stop_diagnostics.stop_latch_active);
+  const stoppedRow = ((server && server.simDemo && server.simDemo.materials) || []).find((m) => m.record && /unrestored|failed|stopped/.test(m.record.state || ''));
+  const cellBusy = !!(server && server.simDemo && server.simDemo.running_job);
+  const recovery = {
+    latched, busy: recoverBusy || cellBusy || sim.busy, note: recoverNote,
+    canResume: !latched && !cellBusy && !!(stoppedRow && stoppedRow.actions && stoppedRow.actions.resume),
+    canRestore: !latched && !cellBusy && !(stoppedRow && stoppedRow.actions && stoppedRow.actions.resume) && !!(stoppedRow && stoppedRow.actions && stoppedRow.actions.restore),
+    summary: latched ? '정지 래치가 걸려 있습니다 — 정지 해제 뒤 재개 또는 복구할 수 있습니다'
+      : stoppedRow ? `${stoppedRow.korean || stoppedRow.model}이(가) 멈춘 자리에 있습니다 — 재개 또는 복구(원래 자리로)를 고르세요`
+        : cellBusy ? '실행 중인 작업이 멈추기를 기다리는 중입니다' : '멈춘 작업이 없습니다 — 호출어 대기로 돌아갈 수 있습니다',
+    release: async () => {
+      setRecoverBusy(true); setRecoverNote(null);
+      try {
+        const res = await fetch('/v1/stop/release', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', cache: 'no-store' });
+        const body = await res.json().catch(() => ({}));
+        if (!body.released) setRecoverNote(body.detail || body.error || `정지 해제 실패 (${res.status})`);
+      } catch (error) { setRecoverNote(`정지 해제 요청 실패: ${error.message}`); }
+      await server.refresh?.();
+      setRecoverBusy(false);
+    },
+    resume: () => stoppedRow && sim.resume?.(stoppedRow.model),
+    restore: () => stoppedRow && sim.restore?.(stoppedRow.model),
+  };
+
   function submit(event) {
     event.preventDefault();
-    if (!sim.busy && !lockReason && text.trim()) {
-      if (voice.status !== 'idle' && voice.status !== 'error') voice.cancel(); // 텍스트가 이긴다 — 듣던 음성은 버린다
+    if (!sim.busy && !lockReason && !voiceBusy && text.trim()) {
       sim.send(text, target && target.id); setText('');
     }
   }
@@ -158,12 +176,8 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
         aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: A 자재를 컨베이어로 옮겨줘'}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
-      <MicButton voice={voice} locked={!!lockReason} />
     </div>
-    {(phase === 'idle' || phase === 'ask') && <button type="submit" className="btn-primary send" disabled={sim.busy || !!lockReason || !text.trim()}>{sim.busy ? '보내는 중…' : phase === 'ask' ? '답변 보내기' : '보내기'}</button>}
-    {voice.partial && <small className="cmd-partial" aria-live="polite">{voice.partial}</small>}
-    {voice.clarify && <small className="cmd-lock" role="status">{voice.clarify}</small>}
-    {(voice.error || voice.unavailable) && <small className="cmd-lock" role="status">{voice.error || voice.unavailable}</small>}
+    {(phase === 'idle' || phase === 'ask') && <button type="submit" className="btn-primary send" disabled={sim.busy || !!lockReason || !!voiceBusy || !text.trim()}>{sim.busy ? '보내는 중…' : phase === 'ask' ? '답변 보내기' : '보내기'}</button>}
     {lockReason && <small className="cmd-lock" role="status">{lockReason}</small>}
   </form>;
 
@@ -186,6 +200,7 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     {stages && <ol className="cmd-stages" aria-label="진행 단계">
       {stages.map((st, i) => <li key={STAGES[i]} className={st}><span aria-hidden="true">{MARK[st]}</span>{STAGES[i]}<span className="sr-only"> {STAGE_TEXT[st]}</span></li>)}
     </ol>}
+    <VoiceControl voice={voice} recovery={recovery} />
     {(phase === 'idle' || phase === 'ask') && targetChips}
     {skillChips}
     {/* 반복 작업: 예제(스킬) 버튼 아래·입력칸 위, 접고 펼침. 상태는 서버 값(server.repeat). */}

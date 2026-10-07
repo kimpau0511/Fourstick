@@ -126,7 +126,7 @@ function DashboardView({ auth, server, cmd, now, page, preview = false }) {
         </div>
         <PanelSeparator width={panelW} onChange={setPanelW} />
         <div className={drawerOpen ? 'col-side open' : 'col-side'} id="command-drawer">
-          <CommandPanel now={now} sim={cmd} server={server} onOpenSimulation={() => setViewOpen(true)} />
+          <CommandPanel now={now} sim={cmd} server={server} onOpenSimulation={() => setViewOpen(true)} onStop={globalStop} />
           {page === 'home' && <Alerts server={server} />}
         </div>
       </div>

@@ -33,6 +33,7 @@ from server.api import Api, ApiError
 from server.auth import AuthService, cookie_token
 from server.config import ServerConfig
 from server.exit_watchdog import arm_exit_watchdog
+from server.robot_names import RobotNames
 from server.routes import (
     HTTP_ROUTES,
     auth as auth_routes,
@@ -78,6 +79,8 @@ class Application:
             state_path = Path(getattr(self.runtime, "simulation_demo_state_path", None) or _STATE)
             self.runtime.repeat_runs = RepeatRuns(api=self.api, runtime=self.runtime,
                                                   path=state_path.with_name("repeat_runs.json"))
+        # 로봇 이름·호출어(2026-10-07): DB 옆 파일 — 새로고침·다른 브라우저에서도 같은 이름.
+        self.runtime.robot_names = RobotNames(self.config.db_path.with_name("robot_settings.json"))
         self.ctx = RouteContext(
             api=self.api, runtime=self.runtime, config=self.config,
             hub=self.hub, read_body=self._body,
@@ -218,7 +221,7 @@ class Application:
             )
             return
         if path == "/v1/stt":
-            await stt_routes.stt_socket(self.ctx, receive, send, session_id)
+            await stt_routes.stt_socket(self.ctx, receive, send, session_id, query.get("mode", ""))
             return
         if path == SCENE_STREAM_PATH:
             await scene_routes.scene_socket(self.ctx, receive, send)
