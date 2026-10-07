@@ -153,6 +153,50 @@ test.describe('호출어 음성 명령', () => {
     await expect.poll(() => stt.control.filter((c) => c.mode === 'wake' && c.type === 'abort').length).toBeGreaterThanOrEqual(1);
   });
 
+  test('[UI-VOICE-11] 호출어를 중간 전사로 받으면, 알아채기 전·안내 중 소리를 명령 소켓에 먼저 넣는다(앞부분 잘림 방지)', async ({ page }) => {
+    await mockBackend(page);
+    await fakeTts(page, 800);
+    const stt = await mockStt(page);
+    await page.goto('/');
+    await turnOn(page, stt);
+    await page.waitForTimeout(3000);                                                   // 기억해 둘 소리가 쌓이게
+    stt.say('wake', { kind: 'partial', text: '지니야' });
+    await expect.poll(() => stt.cmd.length, { timeout: 8000 }).toBe(1);
+    // 세션 안내 직후 한꺼번에 들어온 프레임 = 앞붙인 소리(호출어 직전 2.5초 + 안내 0.8초 + 잔향). 실시간이면 0.1초에 몇 개뿐이다.
+    await page.waitForTimeout(100);
+    expect(stt.frames.cmd).toBeGreaterThan(60);
+  });
+
+  test('[UI-VOICE-12] 명령 문장 앞의 호출어·안내 되울림은 떼고 보낸다', async ({ page }) => {
+    const calls = await mockBackend(page, { command: SAMPLES.confirm(60) });
+    await fakeTts(page);
+    const stt = await mockStt(page);
+    await page.goto('/');
+    await turnOn(page, stt);
+    stt.say('wake', { kind: 'final', text: '지니야', confidence: 0.9 });
+    await expect.poll(() => stt.cmd.length).toBe(1);
+    stt.say('cmd', { kind: 'final', text: '지니야 네, 말씀하세요. A 자재를 컨베이어로 옮겨줘', confidence: 0.9 });
+    await expect.poll(() => calls.filter((c) => c.path.endsWith('/command')).length).toBe(1);
+    expect(calls.find((c) => c.path.endsWith('/command')).body.utterance).toBe('A 자재를 컨베이어로 옮겨줘');
+    await expect(voice(page)).toContainText('인식된 명령: “A 자재를 컨베이어로 옮겨줘”');
+  });
+
+  test('[UI-VOICE-13] 명령 소켓에 "지니야"만 들렸으면 한 번 더 듣는다(두 번째도 없으면 오류)', async ({ page }) => {
+    const calls = await mockBackend(page, { command: SAMPLES.confirm(60) });
+    await fakeTts(page);
+    const stt = await mockStt(page);
+    await page.goto('/');
+    await turnOn(page, stt);
+    stt.say('wake', { kind: 'partial', text: '지니야' });
+    await expect.poll(() => stt.cmd.length, { timeout: 8000 }).toBe(1);
+    stt.say('cmd', { kind: 'final', text: '지니야.', confidence: 0.9 });
+    await expect.poll(() => stt.cmd.length).toBe(2);                                   // 다시 듣기
+    await expect(status(page)).toContainText('LISTENING');
+    expect(calls.filter((c) => c.path.endsWith('/command'))).toHaveLength(0);
+    stt.say('cmd', { kind: 'final', text: 'A 자재를 컨베이어로 옮겨줘', confidence: 0.9 });
+    await expect.poll(() => calls.filter((c) => c.path.endsWith('/command')).length).toBe(1);
+  });
+
   test('[UI-VOICE-04] 호출어 뒤 제한 시간 안에 말이 없으면 호출어 대기로 돌아간다', async ({ page }) => {
     const calls = await mockBackend(page);
     await fakeTts(page);

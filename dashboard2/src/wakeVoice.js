@@ -22,6 +22,10 @@ export const COMMAND_START_SEC = 8;
 /** 말을 시작했어도 이 시간이 지나면 지금까지로 확정한다. */
 export const COMMAND_MAX_SEC = 10;
 const ERROR_HOLD_MS = 2500;
+/** 마이크 소리를 늘 이만큼 기억한다(호출어를 늦게 알아챈 사이 시작한 말을 잃지 않게). */
+const RING_MS = 4000;
+/** 중간 전사로 호출어를 받았을 때 명령 소켓에 앞붙일 소리 길이 — 호출어를 알아채기 전에 시작한 말. */
+export const PREBUFFER_MS = 2500;
 /** 중간 전사가 호출어만 담고 이만큼 바뀌지 않으면 바로 호출어로 본다 — 발화 끝(서버 무음 판정, 정책 3초)을 기다리지 않는다. */
 export const WAKE_PARTIAL_HOLD_MS = 1200;
 const REPLY = '네, 말씀하세요.';
@@ -84,14 +88,14 @@ function distance(a, b) {
 const hangul = (text) => (text || '').replace(/[^가-힣]/g, '');
 export const wakeWordOf = (name) => `${name || DEFAULT_ROBOT_NAME}야`;
 
-/** 문장에서 호출어를 찾는다 → 없으면 null, 있으면 { rest: 호출어 뒤 말 }. */
-export function matchWake(text, name) {
+/** 문장에서 호출어를 찾는다 → 없으면 null, 있으면 { rest: 호출어 뒤 말 }. maxStart: 호출어가 시작할 수 있는 최대 글자 위치. */
+export function matchWake(text, name, { maxStart = Infinity } = {}) {
   const words = (text || '').trim();
   const target = jamo(wakeWordOf(name));
   const compact = hangul(words);
   const n = hangul(wakeWordOf(name)).length;
   for (let len = n - 1; len <= n + 1; len += 1) {
-    for (let i = 0; i + len <= compact.length; i += 1) {
+    for (let i = 0; i + len <= compact.length && i <= maxStart; i += 1) {
       if (len < 2 || distance(jamo(compact.slice(i, i + len)), target) > 1) continue;
       // 호출어 뒤 말: 원문에서 그 글자들이 끝나는 자리 뒤
       let seen = 0;
@@ -103,6 +107,18 @@ export function matchWake(text, name) {
     }
   }
   return null;
+}
+
+/**
+ * 명령 소켓의 확정 문장 → 명령. 호출어 직후·안내 중 소리도 명령 소켓에 넣으므로(앞부분 잘림 방지) 문장 앞에
+ * 호출어("지니야")와 안내 음성의 되울림("네, 말씀하세요")이 붙을 수 있다 — 앞에서만 떼어 낸다. 남는 말이 없으면 ''.
+ */
+export function commandText(text, name) {
+  let t = (text || '').trim();
+  const hit = matchWake(t, name, { maxStart: 3 });
+  if (hit) t = hit.rest;
+  t = t.replace(/^(네[,.!?\s]+)?(말씀\s*하세요[,.!?\s]*)?/, '').trim();
+  return hangul(t).length >= 2 ? t : '';
 }
 
 /** 긴급 정지 말이 들어 있는가(호출어 없이). 서버 STT 정책의 정지어도 함께 본다. */
@@ -225,7 +241,7 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
       if (r.stream) r.stream.getTracks().forEach((t) => t.stop());
       if (r.context && r.context.state !== 'closed') r.context.close().catch(() => {});
     }
-    if (r) { r.speechGen += 1; r.speaking = 0; r.appr = null; }
+    if (r) { r.speechGen += 1; r.speaking = 0; r.appr = null; r.capture = null; }
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch { /* 없음 */ }
     setPartial(''); setHeard(''); setSpeaking(false); setApproval(null); setAnswer('');
     go('OFF');
@@ -235,7 +251,7 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
     if (!r || rt.current !== r) return;
     clearTimers(r);
     closeSocket(r.cmd, 'abort'); r.cmd = null;
-    r.appr = null; setApproval(null);
+    r.appr = null; setApproval(null); r.capture = null;
     if (!r.speaking) r.route = r.wake;
     setPartial('');
     if (message) setNote(message);
@@ -246,7 +262,7 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
     if (!r || rt.current !== r) return;
     clearTimers(r);
     closeSocket(r.cmd, 'abort'); r.cmd = null;
-    r.appr = null; setApproval(null);
+    r.appr = null; setApproval(null); r.capture = null;
     if (!r.speaking) r.route = r.wake;
     setPartial('');
     setNote({ tone: 'danger', text });
@@ -260,7 +276,7 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
     closeSocket(r.cmd, 'abort'); r.cmd = null;
     // 정지가 먼저다: 남은 안내 음성·승인 대기를 모두 버린다.
     r.speechGen += 1; r.speaking = 0; setSpeaking(false);
-    r.appr = null; setApproval(null);
+    r.appr = null; setApproval(null); r.capture = null;
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch { /* 없음 */ }
     r.route = r.wake;
     setPartial('');
@@ -321,13 +337,13 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
           if (rt.current !== r || !['WAKE_WORD_WAITING', 'ERROR'].includes(stateRef.current)) return;
           // 서버의 이 발화는 버린다(abort) — 나중에 같은 "지니야" final이 또 오지 않게.
           abortWake(r);
-          startRef.current?.(r, '');
+          startRef.current?.(r, '', true);
         }, WAKE_PARTIAL_HOLD_MS);
       }
       return;
     }
     if (ev.kind !== 'final' && ev.kind !== 'clarify') return;
-    if (hit) startRef.current?.(r, hit.rest);
+    if (hit) startRef.current?.(r, hit.rest, false);
   }, [emergencyStop, say]);  
 
   const sendCommand = useCallback((r, text, stt) => {
@@ -345,24 +361,23 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
     cbRef.current.onCommand?.(text, stt);
   }, [emergencyStop, go, say]);
 
-  /** 호출어를 들었다: 프레임을 멈추고 '네, 말씀하세요.' → 끝난 뒤 명령 소켓으로 듣는다. */
-  const startCommand = useCallback(async (r, rest) => {
-    setNote(null); setHeard('');
-    r.route = null;                                  // TTS 동안 마이크 프레임을 어디에도 보내지 않는다
-    go('LISTENING');
-    if (rest && rest.length >= 2) {                  // "지니야, A자재 옮겨줘"처럼 한 번에 말했으면 그 뒤 말을 명령으로
-      sendCommand(r, rest, { rawText: rest, confidence: null });
-      return;
-    }
-    await say(r, REPLY);
-    if (rt.current !== r || stateRef.current !== 'LISTENING') return;
+  /**
+   * 명령 소켓으로 듣는다. withCapture: 그동안 모은 소리(호출어 직전·안내 중)를 먼저 보낸다 — 앞부분 잘림 방지.
+   * 확정 문장에서 호출어·안내 되울림을 떼고, 남는 말이 없으면 한 번만 다시 듣는다.
+   */
+  const listenCommand = useCallback((r, { withCapture }) => {
+    if (!withCapture) r.capture = null;
     const socket = openSocket(r, 'command');
     r.cmd = socket;
     socket.onmessage = (message) => {
       if (rt.current !== r || r.cmd !== socket) return;
       let ev;
       try { ev = JSON.parse(message.data); } catch { return; }
-      if (ev.kind === 'session') { if (!r.speaking) r.route = socket; return; }
+      if (ev.kind === 'session') {
+        if (r.capture) { r.capture.forEach((frame) => socket.send(frame)); r.capture = null; }
+        if (!r.speaking) r.route = socket;
+        return;
+      }
       if (ev.kind === 'speech_start') { clearTimeout(r.cmdTimer); r.cmdTimer = null; return; }
       if (ev.kind === 'state' && ev.state === 'finalizing') { go('TRANSCRIBING'); return; }
       if (ev.kind === 'partial') {
@@ -371,9 +386,23 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
         return;
       }
       if (ev.kind === 'final') {
-        const text = (ev.text || ev.raw_text || '').trim();
-        if (!text) { fail(r, '음성을 알아듣지 못했습니다 — 호출어부터 다시 말씀해 주세요'); return; }
-        sendCommand(r, text, { rawText: ev.raw_text || text, confidence: ev.confidence ?? null });
+        const raw = (ev.text || ev.raw_text || '').trim();
+        if (isStopWord(raw, stopWordsRef.current)) { emergencyStop(r, raw); return; }
+        const text = commandText(raw, nameRef.current);
+        if (!text) {
+          if (raw && !r.relistened) {               // "지니야"만 들렸다 — 명령을 한 번 더 듣는다
+            r.relistened = true;
+            clearTimers(r);
+            closeSocket(socket, 'close');
+            r.cmd = null;
+            go('LISTENING');
+            listenCommand(r, { withCapture: false });
+            return;
+          }
+          fail(r, '음성을 알아듣지 못했습니다 — 호출어부터 다시 말씀해 주세요');
+          return;
+        }
+        sendCommand(r, text, { rawText: ev.raw_text || raw, confidence: ev.confidence ?? null });
         return;
       }
       if (ev.kind === 'clarify') { fail(r, '잘 알아듣지 못했습니다 — 호출어부터 다시 말씀해 주세요'); return; }
@@ -394,14 +423,35 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
         go('TRANSCRIBING');
       }
     }, COMMAND_MAX_SEC * 1000);
-  }, [go, sendCommand, fail, toWaiting, emergencyStop, say]);  
+  }, [go, sendCommand, fail, toWaiting, emergencyStop]);  
+
+  /**
+   * 호출어를 들었다: '네, 말씀하세요.' → 끝난 뒤 명령 소켓으로 듣는다. 안내 중에는 소켓으로 보내지 않지만 버리지도 않고
+   * 모아 두었다가(capture) 명령 소켓에 먼저 넣는다. early(중간 전사로 받음)면 호출어를 알아채기 전 소리도 앞붙인다.
+   */
+  const startCommand = useCallback(async (r, rest, early = false) => {
+    setNote(null); setHeard('');
+    r.route = null;
+    r.relistened = false;
+    go('LISTENING');
+    if (rest && rest.length >= 2) {                  // "지니야, A자재 옮겨줘"처럼 한 번에 말했으면 그 뒤 말을 명령으로
+      r.capture = null;
+      sendCommand(r, rest, { rawText: rest, confidence: null });
+      return;
+    }
+    const now = performance.now();
+    r.capture = early ? r.ring.filter(([t]) => now - t <= PREBUFFER_MS).map(([, frame]) => frame) : [];
+    await say(r, REPLY);
+    if (rt.current !== r || stateRef.current !== 'LISTENING') { r.capture = null; return; }
+    listenCommand(r, { withCapture: true });
+  }, [go, sendCommand, say, listenCommand]);
   useEffect(() => { startRef.current = startCommand; });
 
   /** 켜기: 마이크 하나 + 호출어 대기 소켓. */
   const on = useCallback(async () => {
     if (unavailable || rt.current) return;
     const r = { route: null, wake: null, cmd: null, stream: null, context: null, node: null, sessionId: null,
-      epoch: 0, speaking: 0, speechGen: 0, speech: null, appr: null };
+      epoch: 0, speaking: 0, speechGen: 0, speech: null, appr: null, ring: [], capture: null, relistened: false };
     rt.current = r;
     setNote(null); setHeard(''); setPartial('');
     go('WAKE_WORD_WAITING');
@@ -438,7 +488,15 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
         setNote({ tone: 'danger', text: '음성 서버와 연결이 끊겨 음성 명령을 껐습니다' });
       };
       const node = new AudioWorkletNode(r.context, 'pcm-frame-processor');
-      node.port.onmessage = (m) => { const s = r.route; if (s && s.readyState === WebSocket.OPEN) s.send(m.data); };
+      node.port.onmessage = (m) => {
+        // 최근 소리는 늘 기억하고(RING_MS), 명령을 기다리는 동안에는 모은다(capture) — 보낼 곳이 없을 때도 잃지 않게.
+        const now = performance.now();
+        r.ring.push([now, m.data]);
+        while (r.ring.length && now - r.ring[0][0] > RING_MS) r.ring.shift();
+        if (r.capture) r.capture.push(m.data);
+        const s = r.route;
+        if (s && s.readyState === WebSocket.OPEN) s.send(m.data);
+      };
       r.context.createMediaStreamSource(r.stream).connect(node);
       r.node = node;
     } catch (e) {
@@ -477,7 +535,7 @@ export function useWakeVoice({ config, health, name, flow, onCommand, onStop, on
     } else if (s === 'CONFIRMING') {
       // 승인 응답 사이의 중간 상태로 판단하지 않는다 — 서버가 시작·취소·거부를 알려 준 뒤에만 말하고 옮긴다.
       if (f.accepted || phase === 'done') {
-        r.appr = null; setApproval(null);
+        r.appr = null; setApproval(null); r.capture = null;
         say(r, SAY.start);
         if (phase === 'done') toWaiting(r, { tone: 'muted', text: '작업이 끝났습니다 — 호출어 대기로 돌아갑니다' }); else go('EXECUTING');
       } else if (f.cancelled) {
