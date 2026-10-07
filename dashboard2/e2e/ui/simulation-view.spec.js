@@ -20,7 +20,7 @@ for (const mode of ['sim', 'general']) {
       const dialog = page.getByRole('dialog', { name: '시뮬레이션 보기', exact: true });
       await expect(dialog).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('manual-view.png') });
-      await dialog.getByRole('button', { name: '⛶ 전체화면', exact: true }).click();
+      await dialog.getByRole('button', { name: '전체화면', exact: true }).click();
       await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
       await expect(dialog.getByRole('button', { name: '■ 즉시 정지', exact: true })).toBeVisible();
       await dialog.getByRole('button', { name: '전체화면 종료 (Esc)', exact: true }).click();
@@ -47,4 +47,29 @@ test('실행 중 창을 닫고 다시 열어도 서버 작업 상태를 유지�
   await page.getByRole('button', { name: '시뮬레이션 보기', exact: true }).click();
   await expect(dialog).toBeVisible();
   expect(calls.filter((call) => call.method !== 'GET')).toHaveLength(writesBefore);
+});
+
+test('[2026-10-07 요청] 머리 오른쪽은 아이콘만(전체화면·창 닫기), 마우스를 올리면 이름이 보이고, 창 바깥을 눌러도 닫힌다', async ({ page }) => {
+  await page.route('**/v1/**', (route) => route.fulfill({ status: 503, json: {} }));
+  await mockBackend(page);
+  await page.goto('/');
+  const open = page.getByRole('button', { name: '시뮬레이션 보기', exact: true });
+  await open.click();
+  const dialog = page.getByRole('dialog', { name: '시뮬레이션 보기', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText('창만 닫음');
+  await expect(dialog.locator('hr')).toHaveCount(0);
+  for (const name of ['전체화면', '창 닫기']) {
+    const btn = dialog.getByRole('button', { name, exact: true });
+    await expect(btn).toHaveText(''); // 아이콘만
+    await btn.hover();
+    await expect.poll(() => btn.evaluate((el) => [getComputedStyle(el, '::after').content, getComputedStyle(el, '::after').opacity])).toEqual([JSON.stringify(name), '1']);
+  }
+  const order = await dialog.locator('.sim-head-actions button').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
+  expect(order).toEqual(['전체화면', '창 닫기']); // 전체화면이 창 닫기 왼쪽
+  await page.mouse.click(1430, 890); // 창 바깥(덮개) — 화면 폭 1440×900의 오른쪽 아래 구석
+  await expect(dialog).toHaveCount(0);
+  await open.click();
+  await dialog.click({ position: { x: 40, y: 40 } }); // 창 안을 누르면 닫히지 않는다
+  await expect(dialog).toBeVisible();
 });
