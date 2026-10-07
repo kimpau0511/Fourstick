@@ -102,7 +102,7 @@ export function useGeneralCommand() {
       // 계획을 못 만들었다: 되묻기(clarification)면 ASK, 그 밖(모델 없음·슬롯 부족 등)은 실행 없음.
       const decision = p.clarification ? 'ASK' : 'BLOCK';
       const reason = p.clarification || p.detail || reasonOf(res);
-      patch({ busy: false, result: { decision, reason } });
+      patch({ busy: false, result: { decision, reason, code: p.reason_code || null } });
       addEvent('decision', decision === 'ASK' ? '추가 확인 필요' : '계획 실패', reason, id);
       return;
     }
@@ -111,7 +111,8 @@ export function useGeneralCommand() {
     addEvent('decision', label, reason || '', id);
     const latch = p.stop_latch || {};
     if (decision !== 'CONFIRM' || !p.executable) {
-      patch({ busy: false, result: { decision: decision === 'CONFIRM' ? 'BLOCK' : decision, reason: reason || '실행할 수 없는 계획입니다' } });
+      patch({ busy: false, result: { decision: decision === 'CONFIRM' ? 'BLOCK' : decision, reason: reason || '실행할 수 없는 계획입니다',
+        code: (p.validation || {}).reason_code || null } });
       return;
     }
     bundleRef.current = p;
@@ -166,7 +167,7 @@ export function useGeneralCommand() {
     if (!res.ok || !res.payload.ok) {
       const what = action === 'cancel' ? '취소' : '승인';
       addEvent('error', `${what} 거부됨`, reasonOf(res), id);
-      patch({ busy: false, result: { decision: 'BLOCK', rejected: true, reason: `${what}이 거부되었습니다 — ${reasonOf(res)}` } });
+      patch({ busy: false, result: { decision: 'BLOCK', rejected: true, reason: `${what}이 거부되었습니다 — ${reasonOf(res)}`, code: res.payload.reason_code || null } });
       return;
     }
     if (action === 'cancel') {
@@ -191,7 +192,8 @@ export function useGeneralCommand() {
       // 실행 허가 거부·관문 변경·정지 래치 등 — 실행이 만들어지지 않았다.
       const why = (e.reasons || []).map((r) => r.detail || r.reason).filter(Boolean).join(' · ') || reasonOf(exec);
       addEvent('result', '실행 안 됨', why, id);
-      patch({ job: null, result: { decision: 'BLOCK', rejected: true, reason: `실행하지 않았습니다 — ${why}` } });
+      patch({ job: null, result: { decision: 'BLOCK', rejected: true, reason: `실행하지 않았습니다 — ${why}`,
+        code: e.reason_code || ((e.reasons || [])[0] || {}).reason_code || null } });
       return;
     }
     const final = e.final || {};
@@ -208,7 +210,10 @@ export function useGeneralCommand() {
     const paused = pauseAsked.current && !!e.interrupted && material ? { material } : null;
     patch({
       job: { job_id: transferId, execution_id: e.execution_id, status: 'finished', report, paused,
-        general: { state: final.state, tone, label: paused ? '일시정지됨' : report && RESULT_LABELS[report.status] ? `${label} · ${RESULT_LABELS[report.status][1]}` : label } },
+        general: { state: final.state, tone, label: paused ? '일시정지됨' : report && RESULT_LABELS[report.status] ? `${label} · ${RESULT_LABELS[report.status][1]}` : label,
+          // 오류 안내(시뮬레이션 보기)용 서버 근거 — 표시만 한다.
+          code: e.interrupted || final.reason_code || null,
+          detail: (final.evidence && final.evidence.detail) || (report && report.status) || null } },
       updatedAt: Date.now(),
     });
   }, [state.pending, patch, addEvent, watchTransfer]);

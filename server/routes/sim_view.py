@@ -2,7 +2,7 @@
 
 | 경로 | 내용 |
 |---|---|
-| GET `/v1/sim-view/model` | 화면용 URDF(시각 메시만) · 셀 상자 · 자재 크기·색 |
+| GET `/v1/sim-view/model` | 화면용 URDF(시각 메시만) · 셀 상자 · 자재 크기·색 · 관절 허용 범위(Profile, 읽기 전용) |
 | GET `/v1/sim-view/mesh/<n>/<파일>` | 허용 목록의 메시 파일 |
 | GET `/v1/sim-view/state` | 최신 관측(관절·그리퍼·자재 pose) + 나이 · stale |
 | WS `/v1/sim-view/stream` | 같은 관측을 새 값이 올 때마다(최대 30 Hz) |
@@ -27,6 +27,22 @@ def _view(ctx: RouteContext):
     return getattr(ctx.runtime, "sim_view", None)
 
 
+def _joint_limits(runtime) -> dict:
+    """현재 로봇 Profile의 관절 한계(제어·검증 — 장면 관절 한계 검사·Capability 사전 검사가 쓰는 값).
+
+    `declared`(실기 준비용 선언)는 쓰지 않는다. Profile이 없으면 값을 만들지 않고 없다고 알린다.
+    """
+    profile = getattr(runtime, "profile", None)
+    if profile is None:
+        return {"available": False, "detail": "로봇 Profile이 없다", "joints": {}}
+    return {
+        "available": True,
+        "source": f"capability profile {profile.profile_id} {profile.profile_version}",
+        "joints": {j.name: {"lower": j.lower, "upper": j.upper, "unit": j.unit, "kind": j.kind}
+                   for j in profile.joint_limits},
+    }
+
+
 async def handle(ctx: RouteContext, method: str, path: str, receive,
                  query: dict[str, str]) -> Response | None:
     if method != "GET" or not path.startswith(PREFIX + "/"):
@@ -37,6 +53,9 @@ async def handle(ctx: RouteContext, method: str, path: str, receive,
                               "detail": "작업 셀 3D 화면이 구성되지 않았다"}, status=503)
     if path == f"{PREFIX}/model":
         model = view.model()
+        if model.get("available"):
+            # 관절 상태 패널의 허용 범위(2026-10-07). 지금 로봇의 제어·검증이 쓰는 Profile 값 그대로(읽기 전용).
+            model = {**model, "joint_limits": _joint_limits(ctx.runtime)}
         return json_response(model, status=200 if model.get("available") else 503)
     if path == f"{PREFIX}/state":
         return json_response(view.state.sample())

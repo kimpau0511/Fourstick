@@ -3,6 +3,9 @@ import { repeatAction } from '../repeatApi.js';
 import SimView3D from '../SimView3D.jsx';
 import { commandLock } from '../server.js';
 import { simLabel } from '../simLabel.js';
+import { simAlertOf } from '../simPanels.js';
+import JointPanel from './JointPanel.jsx';
+import SimAlert from './SimAlert.jsx';
 import dotSimDanger from '../assets/dot-sim-danger.svg';
 import dotSimRunning from '../assets/dot-sim-running.svg';
 import dotSimStopping from '../assets/dot-sim-stopping.svg';
@@ -22,6 +25,12 @@ function stepsOf(cmd) {
 export default function SimOverlay({ overlay, cmd, server, onClose }) {
   const [scene, setScene] = useState({ mode: '3d', status: 'connecting', fps: 0 });
   const onView = useCallback((view) => setScene(view), []);
+  // 관절 상태: SimView3D가 관측 원본·신선도를 초당 최대 10번 알린다.
+  const [joints, setJoints] = useState(null);
+  const onJoints = useCallback((data) => setJoints(data), []);
+  const alert = simAlertOf({ cmd, server });
+  const [dismissed, setDismissed] = useState(null);
+  const showAlert = alert && alert.key !== dismissed ? alert : null;
   // 시뮬레이션 화면 전체화면. 브라우저 전체화면 API를 쓰고, Esc로도 나온다. 화면 크기가 바뀌면
   // SimView3D가 ResizeObserver로 다시 그린다. 전체화면에서는 헤더가 가려지므로 같은 정지(cmd.stop)를 안에 둔다.
   const videoRef = useRef(null);
@@ -88,11 +97,12 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   } else if (state === 'danger') {
     card = {
       // 서버 BLOCK은 안전 판정 말고도(입력 오류·서비스 꺼짐 등) 나온다 — 안전 검사를 했다고 단정하지 않고 서버 사유만 보인다.
-      dot: dotSimDanger, title: '실행 불가 — 서버가 차단했습니다', titleTone: 'danger', sub: cmd.result.reason || '실행 차단',
+      // 사유·조치는 아래 오류 안내 한 곳에서만 보인다(중복 표시 통합, 2026-10-07).
+      dot: dotSimDanger, title: '실행 불가 — 서버가 차단했습니다', titleTone: 'danger', sub: '서버 판정 사유는 아래 안내에 있습니다',
       section: '서버 판정 결과',
       stages: [{ mark: '✓', tone: 'done', label: '명령 접수' }, { mark: '✕', tone: 'danger', label: '실행 차단' }],
       lines: ['danger'],
-      foot: `서버가 이 명령을 차단했습니다   ·   ${HEADER_STOP}`,
+      foot: HEADER_STOP,
     };
   } else if (state === 'running') {
     card = {
@@ -140,8 +150,12 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
           </button>
         </div>
       </div>
-      <div className="sim-video" ref={videoRef}>
-        <SimView3D onView={onView} />
+      {/* 왼쪽 관절 상태 · 오른쪽 실시간 시뮬레이션(좁으면 관절 상태가 아래). 전체화면은 이 묶음 전체다. */}
+      <div className="sim-stage" ref={videoRef}>
+      <JointPanel data={joints} />
+      <div className="sim-video">
+        <SimView3D onView={onView} onJoints={onJoints} />
+        {full && showAlert && <SimAlert alert={showAlert} compact onDismiss={() => setDismissed(showAlert.key)} />}
         {full && <button type="button" className="sim-fullscreen sim-fullscreen-exit" onClick={toggleFull} aria-pressed>전체화면 종료 (Esc)</button>}
         {full && <div className="sim-fs-bar">
           <span className={card.titleTone}>{card.title}{state !== 'viewing' && steps ? ` · ${done}/${steps.length} 단계` : ''}</span>
@@ -155,6 +169,8 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
           <button type="button" className="sim-fs-stop" onClick={cmd.stop}>■ 즉시 정지</button>
         </div>}
       </div>
+      </div>
+      {!full && showAlert && <SimAlert alert={showAlert} onDismiss={() => setDismissed(showAlert.key)} />}
       <p className="sim-section">{card.section}</p>
       {card.stages ? <div className="stages">
         {card.stages.map((s, i) => <div key={i} className="stage-wrap">
@@ -177,7 +193,7 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
       {controls && !repeatRun && (stoppedRow || moving) && <p className="sim-foot" role="status">{canPause ? '일시정지: 이 작업만 멈춥니다(전체 정지는 헤더)'
         : canResume ? `${stoppedName}: 정지 지점에서 이어서 옮길 수 있습니다`
           : canRestore ? `${stoppedName}: ${resumeWhy}` : resumeWhy}</p>}
-      {cmd.pauseNote && <p className={`sim-foot ${cmd.pauseNote.tone}`} role="status">{cmd.pauseNote.text}</p>}
+      {cmd.pauseNote && cmd.pauseNote.tone !== 'danger' && <p className={`sim-foot ${cmd.pauseNote.tone}`} role="status">{cmd.pauseNote.text}</p>}
       {/* 위험 판정에서는 판정을 덮어쓰는 승인 버튼을 두지 않는다(피그마 메모). 다시 보내면 서버가 다시 판정한다. */}
       {state === 'danger' && <div className="sim-actions"><button type="button" onClick={cmd.reset}>명령 수정</button><button type="button" disabled={cmd.busy || !!lock} title={lock || undefined} onClick={() => cmd.send(cmd.sent)}>다시 보내기</button></div>}
     </section>

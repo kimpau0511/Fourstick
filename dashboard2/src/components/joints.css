@@ -1,0 +1,10 @@
+.joint-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: auto; }
+.joint-panel h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--soft); }
+.joint-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.joint-list li { display: grid; grid-template-columns: 28px 1fr; grid-template-rows: auto auto; column-gap: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255, 255, 255, .55); }
+.joint-name { grid-row: 1 / span 2; align-self: center; font-size: 13px; font-weight: 700; color: var(--muted-2); }
+.joint-panel .joint-value { color: var(--soft); font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.joint-range { font-size: 11px; color: var(--muted-2); font-variant-numeric: tabular-nums; }
+.joint-list li.out { background: var(--danger-subtle); outline: 1px solid var(--danger-border); }
+.joint-panel .joint-list li.out .joint-value { color: var(--red); }
+.joint-empty { margin: 0; color: var(--muted-2); }

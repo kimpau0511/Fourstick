@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { RESULT_LABELS } from '../simCommand.js';
 import { commandLock, robotNameOf } from '../server.js';
 import { useWakeVoice } from '../wakeVoice.js';
+import { simAlertOf } from '../simPanels.js';
 import RepeatPanel from './RepeatPanel.jsx';
+import SimAlert from './SimAlert.jsx';
 import Spinner from './Spinner.jsx';
 import VoiceControl from './VoiceControl.jsx';
 import './command.css';
@@ -208,6 +210,11 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation, onSto
     : phase === 'confirm' ? ['done', 'done', 'idle']
     : sim.busy ? ['active', 'idle', 'idle'] : null;
   const [headline, ...details] = interpretation;
+  // 오류 원인·조치(2026-10-07): 시뮬레이션 창이 닫혀도 카드에 남는다. 명령 흐름에서 나온 오류만(서버 상태 오류는 시뮬레이션 보기에서).
+  const cmdAlert = (() => {
+    const a = simAlertOf({ cmd: sim, server: null });
+    return a && ['request', 'decision', 'job', 'control'].includes(a.source) && (phase === 'done' || phase === 'other' || phase === 'ask') ? a : null;
+  })();
 
   const input = <form className="cmd-form" onSubmit={submit}>
     <div className="cmd-field">
@@ -273,6 +280,7 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation, onSto
         {running && <small className="info">{job && job.stage ? `Gazebo에서 실행 중 · ${job.stage}` : 'Gazebo에서 실행 중…'}</small>}
         {phase === 'done' && job && <b className={resultTone}>{resultLabel || `종료 코드 ${job.exit_code}`}</b>}
         {phase === 'done' && goal && !job && <small>목표 상태: {goal.status}</small>}
+        {cmdAlert && <SimAlert alert={cmdAlert} inline shown={[headline, ...details, resultLabel]} />}
         {phase === 'ask' && input}
         {phase === 'confirm' && <div className="approve-row">
           <button className="approve" disabled={sim.busy || expired || !!lockReason} title={lockReason || undefined} onClick={() => sim.answer('confirm')}><span className="icon-play" aria-hidden="true" />{pending.kind === 'goal' ? '전체 실행 승인' : '실행 승인'}</button>

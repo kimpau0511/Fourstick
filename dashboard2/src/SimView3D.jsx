@@ -22,13 +22,18 @@ function color(rgba) {
  *  /v1/sim-view/stream 실측 29.6회/초, 2026-10-02) 시뮬레이션 창의 기본 화면으로 쓴다.
  *  관측 두 개 사이만 보간하고, 끊기거나 낡으면 마지막 관측에 멈추고 그렇다고 알린다.
  *  서버가 3D 모델을 줄 수 없으면 Gazebo 영상(SceneView)으로 대신한다.
- *  `onView`로 { mode: '3d', status, fps, stale, reason } 또는 SceneView의 값을 알린다. */
-export default function SimView3D({ onView }) {
+ *  `onView`로 { mode: '3d', status, fps, stale, reason } 또는 SceneView의 값을 알린다.
+ *  `onJoints`(선택): 관절 상태 패널용 — 마지막 **관측 원본**(보간 전, rad)과 신선도 판정을 초당 최대 10번 알린다.
+ *  { limits, armJoints, joints, seq, stale, reason, connected }. 3D 모델을 못 받으면 { unavailable: true }. */
+const JOINT_REPORT_MS = 100;
+export default function SimView3D({ onView, onJoints }) {
   const frameRef = useRef(null);
   const canvasRef = useRef(null);
   const [mode, setMode] = useState('3d');
   const [observed, setObserved] = useState(false); // 첫 관측이 오면 연결 중 스피너를 지운다
   const onCameraView = useCallback((view) => onView?.({ mode: 'camera', ...view }), [onView]);
+  const jointsRef = useRef(onJoints);
+  useEffect(() => { jointsRef.current = onJoints; });
 
   useEffect(() => {
     if (mode !== '3d') return undefined;
@@ -42,7 +47,7 @@ export default function SimView3D({ onView }) {
     const s = {
       joints: new SampleBuffer(), poses: new SampleBuffer(), skew: new ClockSkew(),
       connected: false, serverStale: true, staleAfter: 0.5, lastJointSeq: null, lastPoseSeq: null,
-      robotPose: null, materials: {}, frames: [],
+      robotPose: null, materials: {}, frames: [], limits: null, armJoints: [], lastJointsReport: 0,
     };
     const report = (view) => {
       const key = JSON.stringify(view);
@@ -172,6 +177,12 @@ export default function SimView3D({ onView }) {
       // FPS를 5 단위로 반올림해 알린다 — 59·60·61로 흔들릴 때마다 상위 컴포넌트를 다시 그리지 않게.
       setObserved(true);
       report({ status: 'live', fps: Math.round(s.frames.length / 5) * 5, stale: status.stale, reason: status.reason });
+      if (nowMs - s.lastJointsReport >= JOINT_REPORT_MS) {
+        s.lastJointsReport = nowMs;
+        const last = s.joints.last;
+        jointsRef.current?.({ limits: s.limits, armJoints: s.armJoints, joints: last ? last.value : null,
+          seq: s.lastJointSeq, stale: status.stale, reason: status.reason, connected: s.connected });
+      }
       world.controls.update();
       renderer.render(world.scene, world.camera);
     }
@@ -184,8 +195,10 @@ export default function SimView3D({ onView }) {
         model = { available: false, detail: String(error) };
       }
       if (disposed) return;
-      if (!model?.available) { setMode('camera'); return; }
+      if (!model?.available) { jointsRef.current?.({ unavailable: true }); setMode('camera'); return; }
       s.staleAfter = model.stale_after_sec || s.staleAfter;
+      s.limits = model.joint_limits || null;
+      s.armJoints = Array.isArray(model.arm_joints) ? model.arm_joints : [];
       const world = buildScene(model);
       connect();
       rafId = requestAnimationFrame((t) => loop(world, t));

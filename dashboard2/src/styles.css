@@ -178,7 +178,7 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 /* ── 시뮬레이션 오버레이(C안) ── */
 /* 스크림은 헤더 아래부터 덮는다 — 헤더의 즉시 정지는 항상 누를 수 있어야 한다(피그마 메모). */
 .scrim { position: fixed; inset: 64px 0 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: var(--scrim); }
-.sim-card { width: 880px; display: flex; flex-direction: column; gap: 20px; padding: 28px 32px; background: var(--panel); border: 2px solid var(--accent-border); border-radius: 24px; box-shadow: var(--raised); }
+.sim-card { container-type: inline-size; width: min(1080px, 100%); max-height: calc(100vh - 112px); overflow: auto; display: flex; flex-direction: column; gap: 20px; padding: 28px 32px; background: var(--panel); border: 2px solid var(--accent-border); border-radius: 24px; box-shadow: var(--raised); }
 .sim-card.stopping, .sim-card.danger { border-color: var(--danger-border); }
 .sim-head { display: flex; gap: 12px; align-items: center; }
 .sim-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -197,7 +197,33 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .sim3d-frame { position: absolute; inset: 0; }
 /* 시뮬레이션 화면 전체화면(SimOverlay). 전체화면에서는 화면을 꽉 채우고, 상태와 즉시 정지를 위에 띄운다. */
 .sim-fullscreen-exit { position: absolute; right: 10px; bottom: 10px; z-index: 2; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .88); font-size: 12px; font-weight: 600; cursor: pointer; }
-.sim-video:fullscreen { width: 100vw; height: 100vh; border: 0; border-radius: 0; }
+/* 시뮬레이션 보기 묶음(2026-10-07): 왼쪽 관절 상태 · 오른쪽 실시간 시뮬레이션. 좁으면 관절 상태가 시뮬레이션 아래로. 전체화면은 묶음 전체. */
+.sim-stage { display: grid; grid-template-columns: 184px minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.sim-stage > .joint-panel { max-height: 420px; }
+.sim-stage:fullscreen { width: 100vw; height: 100vh; padding: 12px; box-sizing: border-box; background: var(--panel); grid-template-columns: 200px minmax(0, 1fr); }
+.sim-stage:fullscreen > .joint-panel { max-height: none; }
+.sim-stage:fullscreen .sim-video { height: 100%; }
+@container (max-width: 760px) {
+  .sim-stage { grid-template-columns: minmax(0, 1fr); }
+  .sim-stage > .joint-panel { order: 2; max-height: none; }
+  .sim-stage > .joint-panel .joint-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sim-video { height: 320px; }
+}
+/* 오류 안내: 오류·안전 차단·확인 필요일 때만(정상이면 없음). */
+.sim-alert { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--danger-border); border-radius: 12px; background: var(--danger-subtle); font-size: 13px; }
+.sim-alert.warn { border-color: #d6a400; background: #fff6d6; }
+.sim-alert-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sim-alert-head b { color: var(--red); font-size: 14px; }
+.sim-alert.warn .sim-alert-head b { color: #7a5b00; }
+.sim-alert p { margin: 0; }
+.sim-alert p > span { display: inline-block; min-width: 34px; margin-right: 6px; font-weight: 700; color: var(--muted-2); }
+.sim-alert details summary { cursor: pointer; font-weight: 600; }
+.sim-alert dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin: 4px 0 0; }
+.sim-alert dt { color: var(--muted-2); }
+.sim-alert dd { margin: 0; word-break: break-all; }
+.sim-alert-close { border: 0; background: none; cursor: pointer; font-size: 14px; color: inherit; }
+.sim-alert.inline { padding: 8px 10px; font-size: 12px; }
+.sim-alert.compact { position: absolute; left: 12px; right: 12px; bottom: 52px; z-index: 2; max-height: 40%; overflow: auto; }
 .sim-fs-bar { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: 10px; background: rgba(255, 255, 255, .9); font-size: 14px; font-weight: 600; }
 .sim-fs-bar .danger { color: var(--danger-bg); }
 .sim-fs-stop { padding: 8px 14px; border: 0; border-radius: 8px; background: var(--danger-bg); color: #fff; font-weight: 700; cursor: pointer; }
