@@ -139,7 +139,7 @@ test.describe('로그인', () => {
     await page.route('**/v1/auth/logout', (route) => { loggedOut = true; return route.fulfill({ json: { ok: true } }); });
     await page.goto('/');
     await page.locator('.profile-btn').click();
-    await page.getByRole('menuitem', { name: '로그아웃' }).click();
+    await page.locator('.profile').getByRole('button', { name: '로그아웃' }).click();
     await expect(card(page)).toBeVisible();
     expect(loggedOut).toBe(true);
   });
@@ -150,13 +150,13 @@ test.describe('로그인', () => {
     await startJob(page);
     await page.getByRole('dialog').getByRole('button', { name: '창 닫기' }).click();
     await page.locator('.profile-btn').click();
-    await page.getByRole('menuitem', { name: '로그아웃' }).click();
+    await page.locator('.profile').getByRole('button', { name: '로그아웃' }).click();
     const confirm = page.getByRole('alertdialog', { name: '로그아웃할까요?' });
     await expect(confirm).toContainText('로그아웃해도 로봇 작업은 멈추지 않습니다');
     await confirm.getByRole('button', { name: '취소' }).click();
     await expect(confirm).toHaveCount(0);
     await page.locator('.profile-btn').click();
-    await page.getByRole('menuitem', { name: '로그아웃' }).click();
+    await page.locator('.profile').getByRole('button', { name: '로그아웃' }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: '로그아웃' }).click();
     await expect(card(page)).toBeVisible();
     expect(calls.some((c) => c.path.endsWith('/stop'))).toBe(false);
@@ -177,7 +177,7 @@ test.describe('로그인', () => {
     await page.route('**/v1/auth/logout', (route) => route.fulfill({ status: 500, json: {} }));
     await page.goto('/');
     await page.locator('.profile-btn').click();
-    await page.getByRole('menuitem', { name: '로그아웃' }).click();
+    await page.locator('.profile').getByRole('button', { name: '로그아웃' }).click();
     await expect(page.locator('.profile').getByRole('alert')).toHaveText('로그아웃을 서버에서 확인하지 못했습니다. 다시 시도하세요.');
     await expect(dash(page)).toBeVisible();
   });
@@ -186,16 +186,20 @@ test.describe('로그인', () => {
     await mockBackend(page, { overrides: { simDemo: { running_job: { job_id: 'other-tab', status: 'running' } } } });
     await page.goto('/');
     await page.locator('.profile-btn').click();
-    await page.getByRole('menuitem', { name: '로그아웃' }).click();
+    await page.locator('.profile').getByRole('button', { name: '로그아웃' }).click();
     await expect(page.getByRole('alertdialog', { name: '로그아웃할까요?' })).toBeVisible();
   });
 
-  test('[UI-LOGIN-17] 프로필 메뉴는 바깥을 누르거나 Esc, 페이지 이동이면 닫힌다', async ({ page }) => {
+  test('[UI-LOGIN-17] 프로필은 그 칸 안에서 펼쳐지고(떠 있는 창 없음), 바깥·Esc·페이지 이동이면 접힌다', async ({ page }) => {
     await mockBackend(page);
     await page.goto('/');
-    const menu = page.getByRole('menu');
+    const menu = page.locator('.profile-actions');
     await page.locator('.profile-btn').click();
     await expect(menu).toBeVisible();
+    // 펼친 로그아웃 버튼이 프로필 칸(사이드바) 안에 있다
+    const [cell, btn] = await Promise.all([page.locator('.profile').boundingBox(), menu.boundingBox()]);
+    expect(btn.x).toBeGreaterThanOrEqual(cell.x);
+    expect(btn.x + btn.width).toBeLessThanOrEqual(cell.x + cell.width + 1);
     await page.locator('.col-main').click({ position: { x: 20, y: 20 } });
     await expect(menu).toHaveCount(0);
     await page.locator('.profile-btn').click();

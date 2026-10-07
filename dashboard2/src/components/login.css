@@ -37,7 +37,7 @@
 .google-btn:hover:not(:disabled) { background: linear-gradient(rgba(48, 48, 48, .08), rgba(48, 48, 48, .08)) var(--google-bg); }
 .google-btn:active:not(:disabled) { background: linear-gradient(rgba(48, 48, 48, .12), rgba(48, 48, 48, .12)) var(--google-bg); }
 .google-btn:disabled { cursor: default; }
-.google-btn:focus-visible, .login-link:focus-visible, .auth-dialog button:focus-visible, .profile-btn:focus-visible, .profile-menu button:focus-visible { outline: 3px solid var(--accent-border); outline-offset: 2px; }
+.google-btn:focus-visible, .login-link:focus-visible, .auth-dialog button:focus-visible, .profile-btn:focus-visible, .profile-logout:focus-visible { outline: 3px solid var(--accent-border); outline-offset: 2px; }
 
 .auth-dialog { width: min(480px, 100%); gap: 20px; padding: 32px; }
 .auth-dialog h2 { color: var(--white); font-size: 20px; font-weight: 700; line-height: 1.45; }
@@ -51,19 +51,15 @@
 .avatar { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 18px; background: #9fcfdb; color: var(--cyan); font-size: 15px; font-weight: 700; object-fit: cover; }
 .profile-btn > div { min-width: 0; }
 .profile-btn strong, .profile-btn small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 프로필 오른쪽(본문 쪽)으로 연다 — 위로 열면 SYSTEM STATUS를 가린다(2026-10-07 결정 A). */
-.sidebar:has(.profile-menu) { z-index: 35; } /* 메뉴가 본문 카드 위로 올라오게(메뉴가 열렸을 때만) */
-.profile-menu { position: absolute; bottom: 12px; left: calc(100% + 8px); z-index: 40; width: 256px; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 12px; word-break: keep-all;
-  background: var(--glass-clear); border: 1px solid var(--border); border-radius: 16px; -webkit-backdrop-filter: blur(15px); backdrop-filter: blur(15px); }
-.profile-menu .who { display: flex; gap: 12px; align-items: center; min-width: 0; }
-.profile-menu .who > div { min-width: 0; }
-.profile-menu .who strong { display: block; font-size: 14px; font-weight: 700; line-height: 1.45; }
-.profile-menu .who small { overflow: hidden; color: var(--btn-secondary-text); font-size: 12px; line-height: 1.45; text-overflow: ellipsis; }
-.profile-menu hr { width: 100%; margin: 0; border: 0; border-top: 1px solid var(--line); }
-.profile-menu button { padding: 8px; border-radius: 8px; color: var(--btn-secondary-text); font-size: 14px; font-weight: 500; text-align: left; }
-.profile-menu button:hover { background: var(--nav-active); }
+/* 프로필을 누르면 이 칸 안에서 펼쳐진다 — 떠 있는 창이 다른 것을 가리지 않는다(2026-10-07 요청). */
+.profile.open { background: var(--nav-active); }
+.profile-actions { display: flex; }
+.profile-logout { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--btn-secondary-bg); color: var(--btn-secondary-text); box-shadow: var(--btn); font-size: 14px; font-weight: 600; }
+.profile-logout:hover { background: var(--nav-active); }
 .profile-error { color: var(--red); font-size: 12px; line-height: 1.45; word-break: keep-all; }
 @media (max-width: 1279px) {
-  .profile { align-items: center; padding: 12px 0; }
+  .sidebar .profile { align-items: center; padding: 12px 0; } /* styles.css의 .profile(16px)보다 뒤에 와도 이기게 */
+  .profile-actions { align-self: stretch; width: 100%; padding: 0 6px; box-sizing: border-box; }
+  .profile-logout { padding: 8px 0; font-size: 11px; white-space: nowrap; }
   .profile-btn { justify-content: center; width: auto; }
 }
