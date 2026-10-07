@@ -93,6 +93,8 @@ class WebCase(unittest.IsolatedAsyncioTestCase):
             enable_stt=False,
             # 존재하지 않는 이름을 줘서 실제 모델 서버를 부르지 않게 한다.
             llm_config_name="__absent__.json",
+            # 로그인 경계는 test_auth_api.py가 따로 검증한다. 여기는 기능 경로만 본다.
+            require_login=False,
         )
         runtime = build_runtime(config)
         self.provider = ScriptedProvider(self.provider_outputs)

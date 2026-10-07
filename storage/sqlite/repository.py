@@ -50,6 +50,7 @@ from storage.mappers import (
     to_state,
 )
 from storage.records import (
+    AccountRecord,
     ApprovalDecision,
     ApprovalRecord,
     ExecutionRecord,
@@ -221,6 +222,79 @@ class SqliteRepository(Repository):
 
     def close(self) -> None:
         self._conn.close()
+
+    # ── 로그인 계정·로그인 세션 ─────────────────────────────────────────
+    @staticmethod
+    def _account_from_row(row: sqlite3.Row) -> AccountRecord:
+        try:
+            return AccountRecord(
+                email=row["email"], enabled=bool(row["enabled"]), created_at=row["created_at"],
+                google_sub=row["google_sub"], name=row["name"], picture=row["picture"],
+                first_login_at=row["first_login_at"], last_login_at=row["last_login_at"],
+            )
+        except ValueError as exc:
+            raise CorruptedRecord(ReasonCode.CONFIG_INVALID, f"계정 기록이 계약에 어긋난다: {exc}") from exc
+
+    def add_account(self, email: str, *, at: float) -> AccountRecord:
+        email = email.strip().lower()
+        with self._tx() as conn:
+            conn.execute(
+                "INSERT INTO accounts (email, enabled, created_at) VALUES (?, 1, ?)"
+                " ON CONFLICT(email) DO NOTHING", (email, at),
+            )
+        return self.get_account(email)
+
+    def get_account(self, email: str) -> AccountRecord | None:
+        row = self._conn.execute(
+            "SELECT * FROM accounts WHERE email = ?", (email.strip().lower(),)
+        ).fetchone()
+        return None if row is None else self._account_from_row(row)
+
+    def list_accounts(self) -> Sequence[AccountRecord]:
+        rows = self._conn.execute("SELECT * FROM accounts ORDER BY email").fetchall()
+        return [self._account_from_row(r) for r in rows]
+
+    def set_account_enabled(self, email: str, enabled: bool) -> AccountRecord:
+        email = email.strip().lower()
+        with self._tx() as conn:
+            changed = conn.execute(
+                "UPDATE accounts SET enabled = ? WHERE email = ?", (1 if enabled else 0, email)
+            ).rowcount
+            if not changed:
+                raise StorageError(ReasonCode.SESSION_ACCOUNT_NOT_REGISTERED, f"등록되지 않은 계정: {email!r}")
+            if not enabled:
+                conn.execute("DELETE FROM login_sessions WHERE email = ?", (email,))
+        return self.get_account(email)
+
+    def open_login_session(
+        self, email: str, *, google_sub: str, name: str | None, picture: str | None,
+        token_hash: str, at: float, expires_at: float,
+    ) -> AccountRecord | None:
+        email = email.strip().lower()
+        with self._tx() as conn:
+            changed = conn.execute(
+                "UPDATE accounts SET google_sub = COALESCE(google_sub, ?), name = ?, picture = ?,"
+                " first_login_at = COALESCE(first_login_at, ?), last_login_at = ?"
+                " WHERE email = ? AND enabled = 1 AND (google_sub IS NULL OR google_sub = ?)",
+                (google_sub, name, picture, at, at, email, google_sub),
+            ).rowcount
+            if not changed:
+                return None
+            conn.execute(
+                "INSERT INTO login_sessions (token_hash, email, created_at, expires_at) VALUES (?,?,?,?)",
+                (token_hash, email, at, expires_at),
+            )
+        return self.get_account(email)
+
+    def get_login_session(self, token_hash: str) -> tuple[str, float] | None:
+        row = self._conn.execute(
+            "SELECT email, expires_at FROM login_sessions WHERE token_hash = ?", (token_hash,)
+        ).fetchone()
+        return None if row is None else (row["email"], row["expires_at"])
+
+    def delete_login_session(self, token_hash: str) -> None:
+        with self._tx() as conn:
+            conn.execute("DELETE FROM login_sessions WHERE token_hash = ?", (token_hash,))
 
     # ── 공통 ────────────────────────────────────────────────────────────
     def _one(self, sql: str, params: tuple[Any, ...], missing: str) -> sqlite3.Row:

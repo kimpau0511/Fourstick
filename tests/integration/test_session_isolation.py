@@ -97,6 +97,7 @@ class IsolationCase(unittest.IsolatedAsyncioTestCase):
             ServerConfig.from_env(),
             db_path=Path(self.tmp.name) / "web.sqlite3",
             enable_stt=False, llm_config_name="__absent__.json",
+            require_login=False,  # 로그인 경계는 test_auth_api.py가 따로 검증한다
         )
         self.runtime = build_runtime(self.config)
         self.runtime.provider = ScriptedProvider([{"steps": TRANSFER_STEPS}])

@@ -39,3 +39,20 @@ $ng = Get-ChildItem "$env:USERPROFILE\scoop\apps\nginx\*\nginx.exe" | Where-Obje
 - 절대 캐시되지 않는 것: `/v1/*`(명령·승인·실행·정지 포함), `/health`, 웹소켓. 오래된 값이 '현재 상태'로 보이면 안 되기 때문이다.
 - 오프라인이면 화면만 뜨고, 서버 값은 '확인 안 됨'으로 보인다.
 - 화면 갱신이 안 보이면 `public/sw.js`의 `CACHE` 버전(`forstick-shell-v1`)을 올린다.
+
+## 로그인(구글만·등록 계정만)
+
+화면은 `/v1/auth/me`가 200일 때만 대시보드를 연다. 서버 쪽 설정 없이 띄우면 누구도 들어갈 수 없다(확인 안 됨은 통과 아님).
+
+백엔드를 띄우는 곳에서:
+
+```bash
+export FORSTICK2_GOOGLE_CLIENT_ID=384167599759-jdn2ci6o8jv336itm8kqctdsd58t5o9b.apps.googleusercontent.com
+export FORSTICK2_GOOGLE_CLIENT_SECRET=...        # 구글 콘솔의 보안 비밀. 저장소·화면에 두지 않는다
+export FORSTICK2_PUBLIC_ORIGIN=https://foursticks.xos.kr   # 화면 주소(구글 코드 교환 redirect_uri)
+python scripts/auth_accounts.py add 사람@gmail.com          # 로그인할 사람을 미리 등록
+```
+
+- `FORSTICK2_REQUIRE_LOGIN`은 기본 켬. 구글 설정 전 개발 PC에서만 `0`.
+- 정지(`/v1/stop`, `/v1/sim-demo/stop`, 목표 정지, `/v1/humanoid/stop`)는 로그인 없이 받는다.
+- 구 웹 화면(`html/`)은 로그인 화면이 없어 로그인이 켜지면 API를 쓸 수 없다.

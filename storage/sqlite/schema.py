@@ -741,6 +741,29 @@ CREATE INDEX ix_sim_verification_scene
 """
 
 
+#: 로그인 계정과 로그인 세션(2026-10-06 결정: 구글만·등록 계정만·12시간).
+#: 세션 토큰 원문은 저장하지 않고 SHA-256만 둔다 — DB가 새도 쿠키를 만들 수 없게.
+MIGRATION_0017 = """
+CREATE TABLE accounts (
+    email           TEXT PRIMARY KEY,
+    google_sub      TEXT UNIQUE,
+    name            TEXT,
+    picture         TEXT,
+    enabled         INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at      REAL NOT NULL,
+    first_login_at  REAL,
+    last_login_at   REAL
+);
+
+CREATE TABLE login_sessions (
+    token_hash      TEXT PRIMARY KEY,
+    email           TEXT NOT NULL REFERENCES accounts(email),
+    created_at      REAL NOT NULL,
+    expires_at      REAL NOT NULL
+);
+CREATE INDEX idx_login_sessions_email ON login_sessions(email);
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "요청·계획·검증·허가·실행·이력 초기 스키마", MIGRATION_0001),
     (2, "확정 요청의 STT 메타데이터 컬럼 추가", MIGRATION_0002),
@@ -758,6 +781,7 @@ MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (14, "시뮬레이터 검증 실행 기록 추가", MIGRATION_0014),
     (15, "MoveIt2 계획·충돌 검사 관측 연결 추가", MIGRATION_0015),
     (16, "STT 원문과 정규화 전사 분리", "ALTER TABLE stt_inferences ADD COLUMN raw_transcript TEXT;"),
+    (17, "로그인 계정·로그인 세션 추가", MIGRATION_0017),
 )
 
 CREATE_MIGRATIONS_TABLE = """

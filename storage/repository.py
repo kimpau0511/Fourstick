@@ -28,6 +28,7 @@ from core.execution_state import ExecutionState
 from core.reason_codes import ReasonCode
 from core.task_plan import TaskPlan
 from storage.records import (
+    AccountRecord,
     ApprovalRecord,
     ExecutionRecord,
     ExecutionTrace,
@@ -66,6 +67,42 @@ class CorruptedRecord(StorageError):
 
 
 class Repository(ABC):
+    # ── 로그인 계정·로그인 세션 ─────────────────────────────────────────
+    # 아래 '세션'(작업 묶음)과 다르다 — 사람이 누구인지 확인한 결과다.
+    # 추상 메서드가 아니다: 로그인을 쓰지 않는 구현체(테스트용 대역)가 이것 때문에 깨지지 않게 한다.
+    # 부르면 NotImplementedError — 조용히 통과시키지 않는다.
+    def add_account(self, email: str, *, at: float) -> AccountRecord:
+        """이메일을 등록한다(사용 가능 상태). 이미 있으면 그대로 돌려준다."""
+        raise NotImplementedError
+
+    def get_account(self, email: str) -> AccountRecord | None:
+        raise NotImplementedError
+
+    def list_accounts(self) -> Sequence[AccountRecord]:
+        raise NotImplementedError
+
+    def set_account_enabled(self, email: str, enabled: bool) -> AccountRecord:
+        """사용 가능 여부를 바꾼다. 끄면 그 계정의 로그인 세션도 지운다."""
+        raise NotImplementedError
+
+    def open_login_session(
+        self, email: str, *, google_sub: str, name: str | None, picture: str | None,
+        token_hash: str, at: float, expires_at: float,
+    ) -> AccountRecord | None:
+        """**한 트랜잭션에서** 계정 상태를 다시 확인하고 로그인을 기록·세션을 만든다.
+
+        사용 가능하고 google_sub가 비었거나 같을 때만 성공(첫 로그인이면 sub를 묶는다). 아니면 None —
+        확인과 저장 사이에 계정이 중지돼도 세션이 생기지 않게 한다.
+        """
+        raise NotImplementedError
+
+    def get_login_session(self, token_hash: str) -> tuple[str, float] | None:
+        """(email, expires_at). 없으면 None."""
+        raise NotImplementedError
+
+    def delete_login_session(self, token_hash: str) -> None:
+        raise NotImplementedError
+
     # ── 세션 ────────────────────────────────────────────────────────────
     # 세션은 작업 묶음을 구분하는 식별자다. **인증이 아니다.**
     # 서버는 '현재 계획'을 추정하지 않고, 모든 조회를 명시적 식별자로 한다.
