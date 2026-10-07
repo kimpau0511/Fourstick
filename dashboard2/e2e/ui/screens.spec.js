@@ -55,6 +55,7 @@ test.describe('현황(홈)', () => {
 
   test('[UI-HOME-02][①·용어표] 로봇 카드 1차 표시는 셀 위치·별칭(모델명 UR5e/FR3 아님)', async ({ page }) => {
     await page.goto('/');
+    await expect(page.locator('.robot-head strong').first()).toBeVisible(); // 로그인 확인 뒤에 대시보드가 그려진다
     const titles = await page.locator('.robot-head strong').allTextContents();
     expect(titles.length).toBeGreaterThan(0);
     for (const t of titles) expect(t).not.toMatch(/UR5e|FR3/);

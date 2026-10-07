@@ -32,6 +32,8 @@ export default defineConfig({
       '/v1/executions': { target: backend, changeOrigin: true, secure: false },
       '/v1/stop': { target: backend, changeOrigin: true, secure: false },
       '/v1/state': { target: backend, changeOrigin: true, secure: false },
+      // 로그인(구글) — 세션 쿠키
+      '/v1/auth': { target: backend, changeOrigin: true, secure: false },
       '/health': { target: backend, changeOrigin: true, secure: false },
     },
   },

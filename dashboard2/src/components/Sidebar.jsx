@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NAV } from '../nav.js';
 import bot from '../assets/bot.svg';
 import StatusWidget from './StatusWidget.jsx';
@@ -11,9 +12,17 @@ function runningBadge(server) {
   return `가동 ${running}/${ids.length}`;
 }
 
-export default function Sidebar({ page, server }) {
+// 구글 프로필 사진이 없거나 못 불러오면 이름 첫 글자.
+function Avatar({ user }) {
+  const [broken, setBroken] = useState(false);
+  if (user.picture && !broken) return <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} />;
+  return <span className="avatar" aria-hidden="true">{(user.name || user.email || '?').slice(0, 1)}</span>;
+}
+
+export default function Sidebar({ page, server, user, onLogout, logoutFailed, inert }) {
   const badge = runningBadge(server);
-  return <aside className="sidebar">
+  const [menuOpen, setMenuOpen] = useState(false);
+  return <aside className="sidebar" inert={inert}>
     <div>
       <div className="brand">
         <span className="brand-mark"><img src={bot} alt="" width="18" height="18" /></span>
@@ -29,9 +38,19 @@ export default function Sidebar({ page, server }) {
     </div>
     <div className="side-bottom">
       <StatusWidget server={server} />
-      <div className="profile rail-hide">
-        {/* 사용자 계정은 인증 도입 뒤에 생긴다 — 이름·근무를 지어내지 않는다(D2). */}
-        <div className="profile-user"><div><strong>작업자</strong><small>로그인 없음 · 인증 도입 전</small></div></div>
+      {/* 계정은 서버(/v1/auth/me)가 준 값만 — 이름·근무를 지어내지 않는다(D2). */}
+      <div className="profile">
+        {menuOpen && <div className="profile-menu" id="profile-menu" role="menu" onKeyDown={(e) => { if (e.key === 'Escape') setMenuOpen(false); }}>
+          <div className="who"><Avatar user={user} /><div><strong>{user.name || user.email}</strong><small>{user.email}</small></div></div>
+          <hr />
+          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}>로그아웃</button>
+        </div>}
+        {logoutFailed && <small className="profile-error" role="alert">로그아웃을 서버에서 확인하지 못했습니다. 다시 시도하세요.</small>}
+        <button type="button" className="profile-btn" aria-haspopup="menu" aria-expanded={menuOpen} aria-controls="profile-menu"
+          aria-label={`${user.name || user.email} 계정 메뉴`} onClick={() => setMenuOpen((v) => !v)}>
+          <Avatar user={user} />
+          <div className="rail-hide"><strong>{user.name || user.email}</strong><small>{user.email}</small></div>
+        </button>
       </div>
     </div>
   </aside>;

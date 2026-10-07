@@ -73,9 +73,10 @@ for (const width of [1024, 820]) {
   test(`[UI-RESP-01][DEV-07] 폭 ${width}px에서 가로 스크롤 없음, 비상 정지 보임`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
+    // 헤더가 보인 뒤에 잰다 — 로그인 확인 중 화면에서 재면 대시보드를 재지 않고 통과한다.
+    await expect(page.locator('header').getByRole('button', { name: /정지/ })).toBeInViewport();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    await expect(page.locator('header').getByRole('button', { name: /정지/ })).toBeInViewport();
   });
 }
 

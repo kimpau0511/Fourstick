@@ -5,6 +5,8 @@ import EmergencyBanner from './components/EmergencyBanner.jsx';
 import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import SimOverlay from './components/SimOverlay.jsx';
+import { LoginScreen, LogoutConfirm, SessionExpired } from './components/Login.jsx';
+import { useAuth } from './auth.js';
 import { NAV } from './nav.js';
 import { useServer } from './server.js';
 import { overlayOf } from './simOverlayState.js';
@@ -63,7 +65,7 @@ function PanelSeparator({ width, onChange }) {
     }} />;
 }
 
-export default function App() {
+function Dashboard({ auth }) {
   const [closedKey, setClosedKey] = useState(null); // 닫은 시뮬레이션 창의 상태 key — 같은 상태 동안은 다시 열지 않는다
   const server = useServer();
   const cmd = useCommand();
@@ -71,9 +73,12 @@ export default function App() {
   const page = usePage();
   const [panelW, setPanelW] = useState(PANEL.def);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [askLogout, setAskLogout] = useState(false);
   const nav = NAV.find((item) => item.id === page);
 
-  const overlay = overlayOf(cmd); // 시뮬레이션 창 상태 = 명령 흐름의 서버 값(null이면 창 없음)
+  const overlay = overlayOf(cmd);
+  // 로그인·로그아웃 창이 열리면 헤더(즉시 정지)만 남기고 뒤쪽은 키보드로도 닿지 않게 한다.
+  const modal = askLogout || auth.expired ? '' : undefined; // 시뮬레이션 창 상태 = 명령 흐름의 서버 값(null이면 창 없음)
 
   // 헤더 즉시 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 실행 중인 시연 작업에
   // 정지를 요청한다(/v1/sim-demo/stop). 결과(요청됨·실패·정지할 작업 없음)는 명령 패널에 서버 응답대로 뜬다.
@@ -83,12 +88,19 @@ export default function App() {
     cmd.stop();
   }
 
+  // 로봇 작업 중이면 확인을 받는다 — 로그아웃은 작업을 멈추지 않는다(결정 Q6).
+  function requestLogout() {
+    // 이 탭의 명령 흐름 + 서버가 보고한 진행 작업(다른 탭·다른 사람이 시작한 작업도) 둘 다 본다.
+    const busy = (overlay && ['running', 'stopping'].includes(overlay.state) && !overlay.confirmed) || !!server.simDemo?.running_job;
+    if (busy) setAskLogout(true); else auth.logout();
+  }
+
   return <div className="app" style={{ '--cmd-w': `${panelW}px` }}>
-    <Sidebar page={page} server={server} />
+    <Sidebar page={page} server={server} user={auth.user} onLogout={requestLogout} logoutFailed={auth.error?.kind === 'logout_failed'} inert={modal} />
     <div className="main">
       <Header title={nav.title} onStop={globalStop} server={server} drawerOpen={drawerOpen} onToggleDrawer={() => setDrawerOpen((v) => !v)} />
       <EmergencyBanner alerts={server.alerts} />
-      <div className="body">
+      <div className="body" inert={modal}>
         <div className="col-main">
           {page === 'home' && <Home server={server} cmdJob={cmd.job} />}
           {page === 'robots' && <Robots server={server} />}
@@ -104,5 +116,14 @@ export default function App() {
       </div>
     </div>
     {overlay && overlay.key !== closedKey && <SimOverlay overlay={overlay} cmd={cmd} server={server} onClose={() => setClosedKey(overlay.key)} />}
+    {askLogout && <LogoutConfirm onCancel={() => setAskLogout(false)} onConfirm={() => { setAskLogout(false); auth.logout(); }} />}
+    {auth.expired && <SessionExpired auth={auth} />}
   </div>;
+}
+
+// 로그인한 뒤에만 대시보드를 만든다 — 로그인 전에는 서버 값을 부르지 않는다(결정 Q2).
+// 주소(#/history 등)는 그대로라 로그인하면 원래 가려던 화면이 열린다(결정 Q7).
+export default function App() {
+  const auth = useAuth();
+  return auth.status === 'signed_in' ? <Dashboard auth={auth} /> : <LoginScreen auth={auth} />;
 }

@@ -1,0 +1,62 @@
+/* 로그인(피그마 Light · Screens "로그인 /", LoginCard B안). 값은 피그마 변수 그대로:
+   surface/glass-clear = 흰 18%, 배경 흐림 30(피그마) ≈ CSS blur 15px, action/retry-bg = 흰색. */
+:root { --glass-clear: rgba(255, 255, 255, .18); --btn-retry-bg: #ffffff; }
+
+.login-page { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg) url('../assets/login-bg.webp') center top / cover no-repeat; }
+.login-page.checking { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; background-image: none; color: var(--muted); font-size: 13px; font-weight: 500; }
+
+.login-card, .auth-dialog {
+  display: flex; flex-direction: column; word-break: keep-all;
+  background: var(--glass-clear); border: 1px solid var(--border); border-radius: 20px;
+  -webkit-backdrop-filter: blur(15px); backdrop-filter: blur(15px);
+}
+.login-card { width: min(440px, 100%); gap: 28px; padding: 64px 32px 32px; }
+.login-head { display: flex; flex-direction: column; gap: 14px; }
+.login-head h1 { color: var(--white); font-size: 34px; font-weight: 500; line-height: 1.3; }
+.login-head p { color: var(--btn-secondary-text); font-size: 17px; line-height: 1.45; }
+.login-help { color: var(--white); font-size: 14px; font-weight: 500; line-height: 1.45; text-align: center; }
+.login-link { align-self: center; margin-top: 12px; color: var(--btn-secondary-text); font-size: 14px; font-weight: 500; }
+
+.auth-notice { display: flex; gap: 10px; align-items: flex-start; padding: 16px; border: 1px solid; border-radius: 12px; color: var(--white); font-size: 14px; font-weight: 500; line-height: 1.45; }
+.auth-notice > div { display: flex; flex-direction: column; gap: 6px; }
+.auth-notice strong { font-size: 16px; font-weight: 700; }
+.auth-notice strong + span { color: var(--btn-secondary-text); }
+.notice-icon { flex: none; margin-top: 1px; }
+.auth-notice.danger { background: var(--danger-subtle); border-color: var(--danger-border); }
+.auth-notice.danger .notice-icon { color: var(--red); }
+.auth-notice.warn { background: var(--warn-subtle); border-color: var(--warn-border); }
+.auth-notice.warn .notice-icon { color: var(--amber); }
+.auth-notice.info { background: var(--info-subtle); border-color: var(--accent-border); }
+.auth-notice.info .notice-icon { color: var(--cyan); }
+
+.google-btn { display: flex; gap: 8px; justify-content: center; align-items: center; min-height: 52px; padding: 0 24px; border-radius: 999px; background: var(--btn-primary-bg); color: var(--btn-primary-text); box-shadow: var(--btn); font-size: 16px; font-weight: 700; }
+.google-btn.retry { background: var(--btn-retry-bg); }
+.google-btn:disabled { cursor: default; }
+.google-btn:focus-visible, .login-link:focus-visible, .auth-dialog button:focus-visible, .profile-btn:focus-visible, .profile-menu button:focus-visible { outline: 3px solid var(--accent-border); outline-offset: 2px; }
+
+.auth-dialog { width: min(480px, 100%); gap: 20px; padding: 32px; }
+.auth-dialog h2 { color: var(--white); font-size: 20px; font-weight: 700; line-height: 1.45; }
+.auth-dialog > p { color: var(--btn-secondary-text); font-size: 15px; line-height: 1.45; }
+.auth-actions { display: flex; gap: 12px; }
+.auth-actions button { flex: 1; min-height: 52px; border-radius: 999px; font-size: 16px; }
+
+/* 사이드바 프로필 메뉴(피그마 "프로필 메뉴 열림") */
+.profile { position: relative; }
+.profile-btn { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; border-radius: 12px; }
+.avatar { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 18px; background: #9fcfdb; color: var(--cyan); font-size: 15px; font-weight: 700; object-fit: cover; }
+.profile-btn > div { min-width: 0; }
+.profile-btn strong, .profile-btn small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu { position: absolute; bottom: calc(100% + 8px); left: 16px; z-index: 40; width: 256px; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 12px; word-break: keep-all;
+  background: var(--glass-clear); border: 1px solid var(--border); border-radius: 16px; -webkit-backdrop-filter: blur(15px); backdrop-filter: blur(15px); }
+.profile-menu .who { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.profile-menu .who > div { min-width: 0; }
+.profile-menu .who strong { display: block; font-size: 14px; font-weight: 700; line-height: 1.45; }
+.profile-menu .who small { overflow: hidden; color: var(--btn-secondary-text); font-size: 12px; line-height: 1.45; text-overflow: ellipsis; }
+.profile-menu hr { width: 100%; margin: 0; border: 0; border-top: 1px solid var(--line); }
+.profile-menu button { padding: 8px; border-radius: 8px; color: var(--btn-secondary-text); font-size: 14px; font-weight: 500; text-align: left; }
+.profile-menu button:hover { background: var(--nav-active); }
+.profile-error { color: var(--red); font-size: 12px; line-height: 1.45; word-break: keep-all; }
+@media (max-width: 1279px) {
+  .profile { align-items: center; padding: 12px 0; }
+  .profile-btn { justify-content: center; width: auto; }
+}
