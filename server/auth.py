@@ -146,6 +146,36 @@ def origin_ok(headers: list[tuple[bytes, bytes]], public_origin: str | tuple[str
     return origin is None or (bool(origin) and origin.rstrip("/") in tuple(o for o in allowed if o))
 
 
+#: '명령'으로 보고 보낸 사람을 남기는 요청(결정 Q10). 조회(GET)·로그인·세션 발급은 넣지 않는다.
+COMMAND_PREFIXES = ("/v1/plan", "/v1/decision", "/v1/execute", "/v1/executions/", "/v1/stop",
+                    "/v1/sim-demo", "/v1/humanoid")
+_LINK_KEYS = ("request_id", "plan_id", "execution_id", "job_id", "goal_id")
+
+
+def is_command(method: str, path: str) -> bool:
+    return method == "POST" and path.startswith(COMMAND_PREFIXES)
+
+
+def link_ids(body: bytes) -> dict:
+    """응답 JSON에서 이 명령이 만든 기록의 식별자를 찾는다.
+
+    맨 위 키와 이 명령이 띄운 `job`·`goal` 안만 본다. 응답에 같이 실리는 상태(진행 중인 다른 작업,
+    최근 작업 목록)까지 뒤지면 남이 시작한 작업에 이 사람을 잘못 붙인다.
+    """
+    try:
+        payload = json.loads(body or b"{}")
+    except ValueError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    found = {k: payload[k] for k in _LINK_KEYS if isinstance(payload.get(k), str) and payload[k]}
+    for holder, key in (("job", "job_id"), ("goal", "goal_id")):
+        inner = payload.get(holder)
+        if key not in found and isinstance(inner, dict) and isinstance(inner.get(key), str) and inner[key]:
+            found[key] = inner[key]
+    return found
+
+
 def public_user(account: AccountRecord) -> dict:
     return {"email": account.email, "name": account.name, "picture": account.picture}
 
@@ -217,6 +247,22 @@ class AuthService:
             return None
         body = json.dumps({"error": "로그인이 필요하다", "reason_code": reason.value}, ensure_ascii=False).encode("utf-8")
         return 401, [], body
+
+    def actor_of(self, method: str, path: str, token: str | None) -> str | None:
+        """명령 요청이면 **처리 전에** 보낸 사람을 정한다. 처리 뒤에 다시 보면 그 사이 로그아웃·만료로 빠진다."""
+        if not (is_command(method, path) and token):
+            return None
+        account = self.resolve(token)[0]
+        return account.email if account else None
+
+    def record_command(self, method: str, path: str, actor_email: str | None, status: int, body: bytes) -> None:
+        """명령 요청이면 보낸 사람을 남긴다(결정 Q10). 로그인 없이 보낸 정지는 actor_email이 비어 있다."""
+        if not is_command(method, path):
+            return
+        self.repository.append_command_actor({
+            "audit_id": secrets.token_hex(12), "recorded_at": self.now(), "actor_email": actor_email,
+            "method": method, "path": path, "status": int(status), **link_ids(body),
+        })
 
     def ws_refused(self, path: str, headers: list[tuple[bytes, bytes]]) -> bool:
         """WebSocket 출입 검사. 로그인 + 다른 출처의 페이지가 쿠키로 붙는 것 거절."""

@@ -117,7 +117,7 @@ test('[UI-RESP-04][1A] 좁은 폭(820px): 핵심 열만 보이고 행 펼침 버
   await expect(first).toHaveAttribute('aria-expanded', 'false');
   await first.click();
   await expect(first).toHaveAttribute('aria-expanded', 'true');
-  await expect(table).toContainText('요청자: 서버 기록');
+  await expect(table).toContainText('요청자: 기록 없음'); // 보낸 사람 기록(결정 Q10)이 없는 작업
   await expect(page.getByRole('region', { name: '명령 상세' })).toHaveCount(0); // 펼침이 행 선택으로 번지지 않는다
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(table.getByRole('button', { name: '자세히' })).toHaveCount(0);
