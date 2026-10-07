@@ -743,7 +743,7 @@ CREATE INDEX ix_sim_verification_scene
 
 #: 로그인 계정과 로그인 세션(2026-10-06 결정: 구글만·등록 계정만·12시간).
 #: 세션 토큰 원문은 저장하지 않고 SHA-256만 둔다 — DB가 새도 쿠키를 만들 수 없게.
-MIGRATION_0017 = """
+MIGRATION_0018 = """
 CREATE TABLE accounts (
     email           TEXT PRIMARY KEY,
     google_sub      TEXT UNIQUE,
@@ -767,7 +767,7 @@ CREATE INDEX idx_login_sessions_email ON login_sessions(email);
 #: 명령을 보낸 사람(2026-10-06 결정 Q10). **덧붙이기만 한다(append-only).** 기존 기록(requests·작업 파일)을
 #: 고치지 않고, 응답에 담긴 식별자(request_id·job_id 등)로 이어 붙인다. 정지는 로그인 없이도 받으므로
 #: actor_email이 비어 있을 수 있다(그때는 '로그인 없이 보낸 요청'이다).
-MIGRATION_0018 = """
+MIGRATION_0019 = """
 CREATE TABLE command_actors (
     audit_id        TEXT PRIMARY KEY,
     recorded_at     REAL NOT NULL,
@@ -802,8 +802,10 @@ MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (14, "시뮬레이터 검증 실행 기록 추가", MIGRATION_0014),
     (15, "MoveIt2 계획·충돌 검사 관측 연결 추가", MIGRATION_0015),
     (16, "STT 원문과 정규화 전사 분리", "ALTER TABLE stt_inferences ADD COLUMN raw_transcript TEXT;"),
-    (17, "로그인 계정·로그인 세션 추가", MIGRATION_0017),
-    (18, "명령을 보낸 사람 기록 추가", MIGRATION_0018),
+    # 17번은 "일반 경로 검증된 작업 의도 기록 추가"(feature/qwen-plan, 김남수). 그 브랜치가 합쳐지기 전까지
+    # 이 브랜치에는 빈 번호로 남는다 — 실제 운영 DB(김남수 PC)가 17·18·19를 이 번호로 이미 적용했다(2026-10-07).
+    (18, "로그인 계정·로그인 세션 추가", MIGRATION_0018),
+    (19, "명령을 보낸 사람 기록 추가", MIGRATION_0019),
 )
 
 CREATE_MIGRATIONS_TABLE = """
