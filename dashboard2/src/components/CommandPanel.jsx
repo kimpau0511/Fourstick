@@ -171,7 +171,6 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const skillChips = (phase === 'idle' || phase === 'ask') && <div className="cmd-chips" role="group" aria-label="스킬 버튼">
     {skills.map((k) => <button key={k.key} type="button" className="chip" title={k.title} disabled={sim.busy || !!lockReason || !!k.blocked}
       onClick={() => sim.send(k.sentence, target && target.id)}>{k.label}</button>)}
-    <button type="button" className="chip chip-stop" onClick={sim.stop}>즉시 정지</button>
     {skillNotes.map((note) => <small key={note} className="cmd-lock" role="status">{note}</small>)}
   </div>;
 

@@ -3,24 +3,25 @@ import { expect, test } from '@playwright/test';
 import { fixture, mockBackend } from '../mock.js';
 
 const side = (page) => page.locator('aside.sidebar');
-const plc = (page) => page.getByRole('group', { name: '상태 위젯 표시' }).getByRole('switch', { name: 'SAFETY PLC' });
+// 2026-10-07: SAFETY PLC 행은 서버 신호가 없어 삭제 — 표시 설정 예시는 LATENCY 행으로 본다.
+const plc = (page) => page.getByRole('group', { name: '상태 위젯 표시' }).getByRole('switch', { name: 'LATENCY' });
 
 test.describe('상태 위젯 표시', () => {
   test.beforeEach(async ({ page }) => { await mockBackend(page); });
 
-  test('[UI-WIDGET-01] SAFETY PLC를 끄면 사이드바에서 사라지고 N/3, 다시 켜면 돌아온다', async ({ page }) => {
+  test('[UI-WIDGET-01] LATENCY를 끄면 사이드바에서 사라지고 N/2, 다시 켜면 돌아온다', async ({ page }) => {
     await page.goto('/#/diagnostics');
     await expect(plc(page)).toHaveAttribute('aria-checked', 'true');
-    await expect(side(page)).toContainText('SAFETY PLC');
+    await expect(side(page)).toContainText('LATENCY');
     await plc(page).click();
     await expect(plc(page)).toHaveAttribute('aria-checked', 'false');
-    await expect(side(page)).not.toContainText('SAFETY PLC');
-    await expect(side(page)).toContainText(/\d\/3 정상/);
+    await expect(side(page)).not.toContainText('LATENCY');
+    await expect(side(page)).toContainText(/\d\/2 정상/);
     await expect(side(page)).toContainText('숨김 1');
-    await expect(page.getByRole('table', { name: '서비스 목록' })).toContainText('SAFETY PLC'); // 진단 목록은 그대로
+    await expect(page.getByRole('table', { name: '서비스 목록' })).toContainText('LATENCY'); // 진단 목록은 그대로
     await page.getByRole('button', { name: '모두 보이기' }).click();
-    await expect(side(page)).toContainText('SAFETY PLC');
-    await expect(side(page)).toContainText(/\d\/4 정상/);
+    await expect(side(page)).toContainText('LATENCY');
+    await expect(side(page)).toContainText(/\d\/3 정상/);
   });
 
   test('[UI-WIDGET-02] 설정은 새로고침 후에도 유지된다', async ({ page }) => {
@@ -28,7 +29,7 @@ test.describe('상태 위젯 표시', () => {
     await plc(page).click();
     await page.reload();
     await expect(plc(page)).toHaveAttribute('aria-checked', 'false');
-    await expect(side(page)).not.toContainText('SAFETY PLC');
+    await expect(side(page)).not.toContainText('LATENCY');
   });
 });
 

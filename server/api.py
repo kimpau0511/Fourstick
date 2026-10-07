@@ -2096,6 +2096,23 @@ class Api:
                 self._stop_requested = False
         return finish({**base, "ok": released, "released": released, "detail": detail})
 
+    def cancel_active_execution(self, *, session_id: str) -> dict:
+        """**이 세션의 실행 중인 작업만 취소**(시뮬레이션 보기의 일시정지). 전체 정지가 아니다.
+
+        이송 실행 중이면 이송 실행기가 정지 절차(취소 → 정지 확인 → 체크포인트)로 멈춘다. 재개는 체크포인트에서
+        `POST /v1/sim-demo/jobs {action: "resume"}`로 하고, 실행기가 실행 직전에 다시 검증한다.
+        """
+        self.require_session(session_id)
+        with self._flag_lock:
+            mine = [eid for eid, sid in self._active_executions.items() if sid == session_id]
+        if not mine:
+            return {"ok": True, "requested": False, "execution_ids": [],
+                    "detail": "이 세션에서 실행 중인 작업이 없습니다"}
+        for execution_id in mine:
+            self.cancel_execution(session_id=session_id, execution_id=execution_id)
+        return {"ok": True, "requested": True, "execution_ids": mine,
+                "detail": "일시정지를 요청했습니다 — 실행기가 정지 지점(체크포인트)을 남기고 멈춥니다"}
+
     def cancel_execution(self, *, session_id: str, execution_id: str) -> dict:
         """**특정 실행 취소.** 전체 정지와 다른 계약이다.
 

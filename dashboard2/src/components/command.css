@@ -9,7 +9,6 @@
 .chip { padding: 5px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); color: var(--muted); font-size: 12px; font-weight: 600; }
 .chip[aria-pressed='true'] { border-color: var(--accent-border); color: var(--cyan); background: var(--info-subtle); }
 .chip:disabled { opacity: .45; }
-.chip-stop { border-color: var(--danger-border); color: var(--red); }
 .cmd-lock { color: var(--red); font-size: 12px; }
 .cmd-target { color: var(--muted); font-size: 12px; font-weight: 600; }
 

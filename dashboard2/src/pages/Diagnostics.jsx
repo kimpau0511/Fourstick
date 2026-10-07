@@ -11,7 +11,7 @@ const SCENE_POLL_MS = 10000; // 장면 카메라 상태 조회 주기(화면 갱
 const STATUS = {
   ok: ['정상', 'ok', '●'], warn: ['경고', 'warn', '▲'], fail: ['장애', 'danger', '■'], none: ['수신 없음', 'muted', '?'],
 };
-const WIDGET_ROWS = [['ros2', 'ROS 2'], ['planner', 'PLANNER'], ['safety-plc', 'SAFETY PLC'], ['latency', 'LATENCY']]; // StatusWidget 행 id
+const WIDGET_ROWS = [['ros2', 'ROS 2'], ['planner', 'PLANNER'], ['latency', 'LATENCY']]; // StatusWidget 행 id
 // 내보내기에 넣을 항목(⑲-5). payload의 키는 항목마다 정해져 있다.
 const EXPORT_ITEMS = [
   ['connection', '연결 상태'], ['services', '서비스 상태'], ['state_changes', '상태 변화 이력'],
@@ -82,7 +82,6 @@ function buildServices(server, scene) {
     { id: 'db', name: 'DB', ...feature(health?.db, 'DB'), checked, raw: health?.db },
     { id: 'obs', name: '3D 관측', ...obs, checked, raw: simState && { stale: simState.stale, joint_age_sec: simState.joint_age_sec, pose_age_sec: simState.pose_age_sec } },
     { id: 'camera', name: '장면 카메라', ...cam, checked: scene.at, raw: scene },
-    { id: 'safety-plc', name: 'SAFETY PLC', status: 'none', error: '서버가 안전 PLC 신호를 주지 않습니다', checked, raw: null },
     { id: 'latency', name: 'LATENCY (서버 응답)', ...latency, checked, raw: { latency_ms: conn?.latencyMs ?? null, limit_ms: Number.isFinite(ackLimitMs) ? ackLimitMs : null } },
   ];
 }

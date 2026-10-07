@@ -7,9 +7,9 @@ const STATE = {
   none: { icon: '?', text: '수신 없음', cls: 'muted' },
 };
 
-const ROWS = [['ros2', 'ROS 2'], ['planner', 'PLANNER'], ['safety-plc', 'SAFETY PLC'], ['latency', 'LATENCY']];
+const ROWS = [['ros2', 'ROS 2'], ['planner', 'PLANNER'], ['latency', 'LATENCY']];
 
-// 반환: [{ id, label, state }] — 사이드바 위젯과 헤더 "N/4 정상"이 같은 계산을 쓴다.
+// 반환: [{ id, label, state }] — 사이드바 위젯과 헤더 "N/3 정상"이 같은 계산을 쓴다.
 function systemRows(server) {
   const { health, robots, robotsFailing, conn, config } = server;
   // 연결이 정상이 아니면 보관된 마지막 값으로 '정상'이라 하지 않는다 — 전부 '수신 없음'(설계원칙 4).
@@ -23,7 +23,6 @@ function systemRows(server) {
   return [
     { id: 'ros2', label: 'ROS 2', state: ros },
     { id: 'planner', label: 'PLANNER', state: planner },
-    { id: 'safety-plc', label: 'SAFETY PLC', state: 'none' }, // 서버에 값 없음
     { id: 'latency', label: 'LATENCY', state: latency, extra: typeof conn?.latencyMs === 'number' ? `${Math.round(conn.latencyMs)}ms` : null },
   ];
 }

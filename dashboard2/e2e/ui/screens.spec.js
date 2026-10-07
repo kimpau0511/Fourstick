@@ -39,11 +39,12 @@ test.describe('공통 레이아웃', () => {
     expect(await cmdW()).toBe('320px');
   });
 
-  test('[UI-LAYOUT-04][가-4·§15] 사이드바 System status 위젯 4행(ROS 2·PLANNER·SAFETY PLC·LATENCY) + "N/4 정상"', async ({ page }) => {
+  test('[UI-LAYOUT-04][가-4·§15] 사이드바 System status 위젯 3행(ROS 2·PLANNER·LATENCY) + "N/3 정상" — SAFETY PLC는 서버 신호가 없어 삭제(2026-10-07)', async ({ page }) => {
     await page.goto('/');
     const side = page.locator('aside.sidebar');
-    for (const row of ['ROS 2', 'PLANNER', 'SAFETY PLC', 'LATENCY']) await expect(side).toContainText(row);
-    await expect(side).toContainText(/\d\/4 정상/);
+    for (const row of ['ROS 2', 'PLANNER', 'LATENCY']) await expect(side).toContainText(row);
+    await expect(side).not.toContainText('SAFETY PLC');
+    await expect(side).toContainText(/\d\/3 정상/);
   });
 });
 
@@ -245,7 +246,7 @@ test.describe('진단·설정·공통', () => {
 
   test('[UI-DIAG-03][⑲-3] 서비스 행의 원시 샘플은 마지막 정상과 현재를 함께 보인다(본 적 없으면 그렇게 적는다)', async ({ page }) => {
     await page.goto('/#/diagnostics');
-    const row = page.locator('#svc-safety-plc'); // 서버가 신호를 주지 않아 늘 '수신 없음'
+    const row = page.locator('#svc-camera'); // 모의 서버가 장면 카메라를 주지 않아(503) 늘 '수신 없음'
     await row.getByRole('button', { name: '문제 전후 원시 샘플 보기' }).click();
     await expect(row.locator('pre')).toContainText('마지막 정상');
     await expect(row.locator('pre')).toContainText('이 화면이 본 적 없음');

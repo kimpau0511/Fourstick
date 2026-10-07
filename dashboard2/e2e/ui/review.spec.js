@@ -70,10 +70,10 @@ test('[UI-REV-07][§15] 받던 서버 연결이 끊기면 상태 위젯은 마�
   await page.route('**/health', (route) => (down ? route.fulfill({ status: 500, json: {} }) : route.fallback()));
   await page.goto('/');
   const side = page.locator('aside.sidebar');
-  await expect(side).toContainText(/[1-9]\/4 정상/); // 먼저 정상 값을 받는다
+  await expect(side).toContainText(/[1-9]\/3 정상/); // 먼저 정상 값을 받는다(SAFETY PLC 삭제로 3행, 2026-10-07)
   down = true;
   // 서버 정책 environment_max_age_sec(고정 응답 5초)이 지나면 연결이 끊김으로 바뀐다.
-  await expect(side).toContainText('0/4 정상', { timeout: 15_000 });
+  await expect(side).toContainText('0/3 정상', { timeout: 15_000 });
 });
 
 test('[UI-REV-08] 실행 진행 막대에 이름이 있다', async ({ page }) => {
@@ -168,14 +168,14 @@ test.describe('명령 잠금(결정3)', () => {
   const stop = fixture('robots').stop_diagnostics;
   const send = (page) => panel(page).getByRole('button', { name: '보내기' });
 
-  test('[UI-REV-17][§1] 긴급(정지 래치)이면 보내기·스킬 버튼이 잠기고 즉시 정지는 잠기지 않는다', async ({ page }) => {
+  test('[UI-REV-17][§1] 긴급(정지 래치)이면 보내기·스킬 버튼이 잠기고 헤더의 즉시 정지는 잠기지 않는다', async ({ page }) => {
     await mockBackend(page, { overrides: { simState: { stale: false }, robots: { stop_diagnostics: { ...stop, stop_latch_active: true } } } });
     await page.goto('/');
     await panel(page).getByLabel('자연어 명령').fill('A 자재를 컨베이어로 옮겨줘');
     await expect(panel(page)).toContainText('긴급 상태(정지 래치)라 새 명령을 보낼 수 없습니다');
     await expect(send(page)).toBeDisabled();
     await expect(panel(page).getByRole('button', { name: 'A자재 → 컨베이어' })).toBeDisabled();
-    await expect(panel(page).getByRole('button', { name: '즉시 정지' })).toBeEnabled();
+    await expect(panel(page).getByRole('button', { name: '즉시 정지' })).toHaveCount(0); // 즉시 정지는 헤더에만(2026-10-07)
     await expect(headerStop(page)).toBeEnabled();
   });
 
@@ -185,7 +185,8 @@ test.describe('명령 잠금(결정3)', () => {
     await panel(page).getByLabel('자연어 명령').fill('A 자재를 컨베이어로 옮겨줘');
     await expect(panel(page)).toContainText('로봇 상태를 확인할 수 없어 명령을 보낼 수 없습니다 — 3D 관측이 오래되었습니다');
     await expect(send(page)).toBeDisabled();
-    await expect(panel(page).getByRole('button', { name: '즉시 정지' })).toBeEnabled();
+    await expect(panel(page).getByRole('button', { name: '즉시 정지' })).toHaveCount(0); // 즉시 정지는 헤더에만(2026-10-07)
+    await expect(headerStop(page)).toBeEnabled();
   });
 
   test('[UI-REV-19][§1] 확인 카드의 실행 승인도 같은 잠금을 따른다', async ({ page }) => {

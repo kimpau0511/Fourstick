@@ -16,7 +16,9 @@ test.describe('명령 패널', () => {
     await expect(p).not.toContainText('Enter로 보내기');
     // 마이크가 입력칸 영역 안에 있다
     // 서버 값이 오면 스킬 버튼이 생겨 입력칸이 밀린다 — 두 위치를 같은 순간에 잰다.
-    await expect(p.getByRole('button', { name: '즉시 정지' })).toBeVisible();
+    await expect(p.getByRole('button', { name: 'A자재 → 컨베이어' })).toBeVisible();
+    // 즉시 정지는 헤더에만 둔다(2026-10-07 사용자 결정) — 명령 패널에는 없다.
+    await expect(p.getByRole('button', { name: '즉시 정지' })).toHaveCount(0);
     const [field, mic] = await p.evaluate((el) => [el.querySelector('#command-input'), el.querySelector('.mic-btn')]
       .map((n) => { const r = n.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));
     expect(mic.x).toBeGreaterThanOrEqual(field.x);
