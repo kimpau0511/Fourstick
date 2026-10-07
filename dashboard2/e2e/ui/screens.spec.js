@@ -151,6 +151,15 @@ test.describe('로봇 관리', () => {
     await expect(page.locator('.col-main')).toContainText(/운용 가능|운용 불가/);
   });
 
+  test('[UI-ROBOTS-06][2026-10-07 요청] 목록 머리글은 기록 화면과 같은 "로봇", 운용 가능은 초록·운용 불가는 빨강', async ({ page }) => {
+    await page.goto('/#/robots');
+    const table = page.getByRole('table', { name: '로봇 목록' });
+    await expect(table.locator('thead th').first()).toHaveText('로봇');
+    const cell = table.locator('tbody td').getByText(/^운용 (가능|불가)$/);
+    const text = await cell.textContent();
+    await expect(cell).toHaveCSS('color', text === '운용 가능' ? 'rgb(6, 95, 70)' : 'rgb(168, 25, 25)');
+  });
+
   test('[UI-ROBOTS-03][⑬-2] 상세 탭 3개: 개요·도구 장착 이력·프로파일 버전', async ({ page }) => {
     await page.goto('/#/robots');
     // 2026-10-02 사용자 결정: 상세 탭은 우측 창의 '상세' 버튼을 눌러야 펼친다.
