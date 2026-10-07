@@ -28,6 +28,10 @@ test.describe('로그인', () => {
     await expect(card(page).getByRole('heading', { name: '로그인' })).toBeVisible();
     await expect(card(page)).toContainText('등록된 Google 계정으로 로그인하세요');
     await expect(googleBtn(page)).toHaveText('Google로 로그인');
+    // 구글 로그인 브랜드 지침(밝은 테마) — 흰 바탕·#747775 테두리·#1F1F1F 글자
+    await expect(googleBtn(page)).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(googleBtn(page)).toHaveCSS('border-top-color', 'rgb(116, 119, 117)');
+    await expect(googleBtn(page)).toHaveCSS('color', 'rgb(31, 31, 31)');
     await expect(card(page)).toContainText('계정이 없나요? 관리자에게 등록을 요청하세요.');
     await expect(dash(page)).toHaveCount(0);
     expect(asked).toEqual([]);
@@ -73,7 +77,7 @@ test.describe('로그인', () => {
     });
   }
 
-  test('[UI-LOGIN-06] 구글 창을 닫으면 "취소", 팝업이 막히면 "다시 시도"(흰 버튼)', async ({ page }) => {
+  test('[UI-LOGIN-06] 구글 창을 닫으면 "취소", 팝업이 막히면 "다시 시도"', async ({ page }) => {
     await mockBackend(page, { overrides: { auth: false } });
     await gsi(page, { error: 'popup_closed' });
     await page.goto('/');
@@ -83,7 +87,6 @@ test.describe('로그인', () => {
     await googleBtn(page).click();
     await expect(card(page).getByRole('alert')).toHaveText('브라우저가 로그인 창을 막았습니다. 팝업을 허용한 뒤 다시 시도하세요.');
     await expect(googleBtn(page)).toHaveText('다시 시도');
-    await expect(googleBtn(page)).toHaveClass(/retry/);
   });
 
   test('[UI-LOGIN-07] 구글 창이 열린 동안: 안내 문구가 바뀌고 버튼은 잠긴 채 로딩 표시', async ({ page }) => {
