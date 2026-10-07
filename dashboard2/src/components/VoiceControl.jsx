@@ -8,7 +8,11 @@ const TEXT = {
   LISTENING: () => '듣는 중… 명령을 말씀하세요.',
   TRANSCRIBING: () => '음성을 텍스트로 변환 중',
   ANALYZING: () => '명령 분석 중',
-  CONFIRMING: () => '실행 확인 대기 — 아래 카드에서 실행 또는 취소를 누르세요',
+  CONFIRMING: (w, approval) => ({
+    speaking: '작업 계획을 안내하는 중입니다',
+    listening: '“네·진행해” 또는 “아니·취소해”라고 말씀하세요 — 아래 버튼으로도 됩니다',
+    processing: '승인 응답을 서버에 보내는 중입니다',
+  }[approval] || '실행 확인 대기 — 아래 카드에서 실행 승인 또는 취소를 누르세요'),
   EXECUTING: () => '작업 실행 중 — ‘정지’라고 말하면 즉시 멈춥니다',
   ERROR: () => '오류 또는 인식 실패',
   STOPPED: () => '정지됨',
@@ -28,8 +32,11 @@ export default function VoiceControl({ voice, recovery }) {
       <small className="voice-wake">현재 호출어: <b>{wakeWord}</b></small>
     </div>
     <p className={`voice-status ${TONE[state]}`} role="status" aria-live="polite">
-      <code className="voice-code">{state}</code>{TEXT[state](wakeWord)}
+      <code className="voice-code">{state}</code>{TEXT[state](wakeWord, voice.approval)}
     </p>
+    {/* 안내 음성이 다시 인식되지 않게 재생 중에는 마이크를 보내지 않는다 — 그동안은 음성 정지도 듣지 못한다. */}
+    {voice.speaking && <small className="voice-note warn" role="status">안내 음성 재생 중 — 이 동안은 음성 ‘정지’를 듣지 않습니다. 급하면 헤더의 ‘즉시 정지’를 누르세요.</small>}
+    {voice.answer && state === 'CONFIRMING' && <small className="voice-heard">들은 응답: “{voice.answer}”</small>}
     {voice.partial && <small className="voice-partial">{voice.partial}</small>}
     {voice.heard && state !== 'OFF' && <small className="voice-heard">인식된 명령: “{voice.heard}”</small>}
     {voice.note && <small className={`voice-note ${voice.note.tone}`} role="status">{voice.note.text}</small>}

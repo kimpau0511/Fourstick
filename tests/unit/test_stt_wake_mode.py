@@ -114,6 +114,9 @@ class WakeModeTest(unittest.TestCase):
         kinds = [e["kind"] for e in sent]
         self.assertEqual(kinds.count("final"), 1, kinds)                            # 버린 발화의 final은 없다
         self.assertNotIn("__closed__", kinds)
+        # abort 두 번 → 세대 2. 그 뒤 새 발화의 이벤트만 세대 2를 단다.
+        self.assertEqual([e["epoch"] for e in sent if e["kind"] == "final"], [2])
+        self.assertEqual(sent[1]["epoch"], 0)                                      # session 다음 첫 이벤트
 
     def test_command_mode_is_unchanged(self):
         repo = SpyRepository()

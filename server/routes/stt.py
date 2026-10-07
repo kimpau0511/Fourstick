@@ -14,6 +14,8 @@ STT 스트림 WebSocket과 partial/final 전달.
   않는다**(주변 말소리는 명령이 아니다) — 호출어 뒤 명령은 화면이 일반 모드 소켓으로 따로 받는다.
   발화가 없는 동안 쌓인 무음은 `WAKE_IDLE_RESET_SEC`마다 버리고, 발화 시작이 잘리지 않게 마지막
   `WAKE_PREROLL_SEC` 프레임을 새 발화 세션에 다시 넣는다.
+  화면이 `abort`를 보내면 지금 발화를 버리고 **세대(epoch)**를 하나 올린다. 이후 이벤트에는 새 세대 번호가
+  붙는다 — 화면은 안내 음성(TTS)이 끝난 뒤 abort를 보내, 그 뒤의 새 발화만 승인 응답으로 쓴다.
 """
 
 from __future__ import annotations
@@ -108,11 +110,14 @@ async def stt_socket(ctx: RouteContext, receive, send, session_id: str, mode: st
         "mode": "wake" if wake else "command",
     }, ensure_ascii=False)})
 
+    epoch = 0                         # 호출어 대기: abort마다 하나씩 오르는 발화 세대
+
     async def emit(events) -> None:
         for event in events:
-            await send({"type": "websocket.send", "text": json.dumps(
-                _stt_event(event, session_id, stream_id), ensure_ascii=False
-            )})
+            payload = _stt_event(event, session_id, stream_id)
+            if wake:
+                payload["epoch"] = epoch
+            await send({"type": "websocket.send", "text": json.dumps(payload, ensure_ascii=False)})
 
     await emit(session.start(at_utc=time.time()))
     audio_sec = 0.0
@@ -173,8 +178,11 @@ async def stt_socket(ctx: RouteContext, receive, send, session_id: str, mode: st
                 )
                 await emit(events)
             elif kind == "abort":
-                if wake and session.state is SttSessionState.CLOSED:
-                    continue                # 호출어 대기: 버릴 발화가 없다 — 다음 프레임이 새 발화를 연다
+                if wake:
+                    epoch += 1
+                    del recent[:]           # 버린 발화의 끝을 새 발화에 다시 넣지 않는다
+                    if session.state is SttSessionState.CLOSED:
+                        continue            # 버릴 발화가 없다 — 다음 프레임이 새 발화를 연다
                 events = session.abort(at_utc=time.time())
                 await emit(events)
             elif kind == "close":

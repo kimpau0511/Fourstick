@@ -121,7 +121,8 @@ export function useGeneralCommand() {
     const ttlMs = typeof plan.ttl_sec === 'number' ? plan.ttl_sec * 1000 : null;
     patch({
       busy: false, result: { decision: 'CONFIRM', reason: null },
-      pending: { kind: 'plan', summary: `계획 ${steps.length}단계 — 안전 확인됨`, steps,
+      // plan_id: 이 확인 카드의 식별자(음성 승인이 같은 카드에만 적용되게). planSteps: 음성 안내용 원래 단계(자원 id).
+      pending: { kind: 'plan', summary: `계획 ${steps.length}단계 — 안전 확인됨`, steps, plan_id: plan.plan_id, planSteps: plan.steps || [],
         created_at: plan.created_at, latch: latch.cleared === false ? latch.detail || '정지 래치가 풀리지 않았습니다' : null },
       deadline: ttlMs ? Date.now() + ttlMs : null,
     });
@@ -143,7 +144,7 @@ export function useGeneralCommand() {
     return seen;
   }, [patch, addEvent]);
 
-  const answer = useCallback(async (action) => {
+  const answerOnce = useCallback(async (action) => {
     const bundle = bundleRef.current;
     if (!state.pending || !bundle) return;
     const id = currentId.current;
@@ -211,6 +212,13 @@ export function useGeneralCommand() {
       updatedAt: Date.now(),
     });
   }, [state.pending, patch, addEvent, watchTransfer]);
+  // 승인·취소는 한 번만 — 음성 승인과 버튼이 겹쳐도 응답이 올 때까지 다음 요청을 보내지 않는다(두 번 실행 방지).
+  const answering = useRef(false);
+  const answer = useCallback(async (action) => {
+    if (answering.current) return false;
+    answering.current = true;
+    try { await answerOnce(action); return true; } finally { answering.current = false; }
+  }, [answerOnce]);
 
   /** 전체 정지(/v1/stop). 확인 없이 즉시. 서버가 접수·확인한 만큼만 말한다. */
   const stop = useCallback(async () => {

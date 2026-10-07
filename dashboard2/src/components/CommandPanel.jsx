@@ -61,6 +61,31 @@ function materialSkills(server) {
   });
 }
 
+// 음성 안내용 작업 요약(자재·출발지·목적지). 일반 경로는 계획 단계의 자원 id를 서버 카탈로그 이름으로 바꾼다.
+const final = (word) => { const c = word.charCodeAt(word.length - 1) - 0xac00; return c >= 0 && c <= 11171 ? c % 28 : -1; };
+const eul = (w) => `${w}${final(w) > 0 ? '을' : '를'}`;
+const ro = (w) => `${w}${final(w) > 0 && final(w) !== 8 ? '으로' : '로'}`;
+function speechSummary(pending, config) {
+  if (!pending) return '';
+  const steps = pending.planSteps || [];
+  if (steps.length) {
+    const cat = (config && config.catalogs) || {};
+    const names = Object.fromEntries([...(cat.locations || []), ...(cat.objects || [])].map((r) => [r.resource_id, r.display_name]));
+    const ids = (step) => Object.values((step && step.args) || {}).map(String);
+    const pick = steps.find((x) => x.skill === 'pick');
+    const place = steps.find((x) => x.skill === 'place');
+    const mat = ids(pick).find((v) => v.startsWith('mat_')) || ids(place).find((v) => v.startsWith('mat_'));
+    const from = ids(pick).find((v) => v.startsWith('loc_'));
+    const to = ids(place).find((v) => v.startsWith('loc_'));
+    if (mat && from && to) {
+      const [m, a, b] = [names[mat] || mat, names[from] || from, names[to] || to];
+      return `${eul(m)} ${a}에서 ${ro(b)} 옮깁니다.`;
+    }
+  }
+  return `${(pending.summary || '').replace(/[.。]?$/, '.')}${pending.evidence && pending.evidence.slot_label ? ` 놓을 자리는 ${pending.evidence.slot_label}입니다.` : ''}`;
+}
+const pendingKeyOf = (pending) => (pending ? pending.plan_id || pending.token || pending.goal_id || null : null);
+
 // 로봇 이름은 역할 우선(이송 가능하면 "이송 로봇"), 모델·id는 title로 보조.
 const robotName = (id, profile) => ((profile.supported_skills || []).some((k) => k === 'pick' || k === 'place') ? '이송 로봇' : id);
 
@@ -116,13 +141,27 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation, onSto
   // 보내고, 실행은 아래 확인 카드에서 사람이 '실행 승인'을 눌러야만 한다. 확인·실행 중에는 새 명령을 받지 않는다.
   const voice = useWakeVoice({
     config: server && server.config, health: server && server.health, name: robotNameOf(server),
-    flow: { busy: sim.busy, phase, reason: sim.error || (result && (result.reason || result.summary)) || null,
-      started: !!(job || goal), ended: !!sim.error || !!(result && ['CANCELLED', 'BLOCK'].includes(result.decision)) },
+    flow: {
+      busy: sim.busy, phase, reason: sim.error || (result && (result.reason || result.summary)) || null,
+      // 서버가 실행을 받아들였다 = 이송 작업(job_id)·목표가 생겼다. 승인 직후 응답 대기 중인 '실행 중' 표시는 아직 아니다.
+      accepted: !!((job && (job.job_id || job.execution_id)) || goal),
+      cancelled: !!(result && result.decision === 'CANCELLED'),
+      // 서버가 승인·실행을 거부했다(확인 요청 실패·실행 허가 거부 등) — '시작했다'고 말하지 않고 사유를 안내한다.
+      rejected: !!sim.error || !!(result && result.rejected),
+      expired: phase === 'confirm' && expired,
+      pendingKey: pendingKeyOf(pending), summary: speechSummary(pending, server && server.config),
+    },
     onCommand: (utterance, stt) => {
       if (sim.busy || lockReason || phase === 'confirm' || phase === 'running') return;
       sim.send(utterance, target && target.id, stt);
     },
     onStop: () => onStop?.(),
+    // 음성 승인·취소: 화면 버튼과 같은 sim.answer. 지금 떠 있는 그 카드에만, 만료·처리 중이면 하지 않는다.
+    onAnswer: (action, key) => {
+      if (!pending || pendingKeyOf(pending) !== key || expired || sim.busy || (action === 'confirm' && lockReason)) return false;
+      sim.answer(action);
+      return true;
+    },
   });
   const voiceBusy = ['LISTENING', 'TRANSCRIBING', 'ANALYZING'].includes(voice.state) ? '음성 명령을 받는 중입니다 — 끝난 뒤 입력하세요' : null;
   // 긴급 정지 뒤 복구(시뮬레이션 보기와 같은 판정: 서버 기록에서 멈춘 자재·actions.resume/restore).
@@ -163,7 +202,7 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation, onSto
   else if (pending) interpretation = [pending.summary, pending.evidence && pending.evidence.slot_label].filter(Boolean);
   else if (result && result.decision === 'PASS_THROUGH') interpretation = ['이 화면은 시연 명령(자재 이송·복귀·정지·이어서)만 처리합니다.'];
   else if (result && result.decision === 'STOP') interpretation = [result.stop?.requested === true ? '전체 정지를 요청했습니다.' : result.stop?.detail || '정지할 작업이 없습니다'];
-  else if (result) interpretation = [result.summary || (job && `${job.action_label || job.action} · ${job.slot_label || ''}`), result.reason].filter(Boolean);
+  else if (result) interpretation = [result.summary || (job && [job.action_label || job.action, job.slot_label].filter(Boolean).join(' · ')), result.reason].filter(Boolean);
   const stages = phase === 'done' ? ['done', 'done', resultTone === 'ok' ? 'done' : 'fail']
     : phase === 'running' ? ['done', 'done', 'active']
     : phase === 'confirm' ? ['done', 'done', 'idle']
