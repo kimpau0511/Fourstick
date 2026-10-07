@@ -39,7 +39,7 @@ export default function Sidebar({ page, server, user, onLogout, logoutFailed, in
     <div className="side-bottom">
       <StatusWidget server={server} />
       {/* 계정은 서버(/v1/auth/me)가 준 값만 — 이름·근무를 지어내지 않는다(D2). */}
-      <div className="profile">
+      {user && <div className="profile">
         {menuOpen && <div className="profile-menu" id="profile-menu" role="menu" onKeyDown={(e) => { if (e.key === 'Escape') setMenuOpen(false); }}>
           <div className="who"><Avatar user={user} /><div><strong>{user.name || user.email}</strong><small>{user.email}</small></div></div>
           <hr />
@@ -51,7 +51,7 @@ export default function Sidebar({ page, server, user, onLogout, logoutFailed, in
           <Avatar user={user} />
           <div className="rail-hide"><strong>{user.name || user.email}</strong><small>{user.email}</small></div>
         </button>
-      </div>
+      </div>}
     </div>
   </aside>;
 }

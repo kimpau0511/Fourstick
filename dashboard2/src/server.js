@@ -101,6 +101,9 @@ function derive(s) {
   return { ...s, conn, robotStatus: deriveRobotStatus(s, conn), alerts: deriveAlerts(s, conn, s.alerts) };
 }
 
+// 로그인 화면 뒤에 그리는 대시보드용 — 아직 아무것도 받지 않은 상태("연결 확인 중"). 서버를 부르지 않는다(결정 Q2).
+export const previewServer = () => derive({ ...INITIAL, nowMs: Date.now() });
+
 export function useServer() {
   const [state, setState] = useState(INITIAL);
 
