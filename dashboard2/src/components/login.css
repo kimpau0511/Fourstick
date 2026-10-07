@@ -1,6 +1,8 @@
 /* 로그인(피그마 Light · Screens "로그인 /", LoginCard B안). 값은 피그마 변수 그대로:
-   surface/glass-clear = 흰 18%, 배경 흐림 30(피그마) ≈ CSS blur 15px, action/retry-bg = 흰색. */
-:root { --glass-clear: rgba(255, 255, 255, .18); --btn-retry-bg: #ffffff; }
+   surface/glass-clear = 흰 18%, 배경 흐림 30(피그마) ≈ CSS blur 15px.
+   구글 버튼은 구글 로그인 브랜드 지침의 밝은 테마(흰 바탕·#747775 테두리·#1F1F1F 글자, 2026-10-07 사용자 결정 C).
+   마우스 올림·누름은 지침대로 #303030을 8%·12% 겹친다. 대시보드 뉴모피즘 버튼과 일부러 다르게 둔다. */
+:root { --glass-clear: rgba(255, 255, 255, .18); --google-bg: #ffffff; --google-border: #747775; --google-text: #1f1f1f; }
 
 /* 로그인 카드는 뒤에 그린 실제 대시보드(.login-backdrop) 위에 뜬다. 배경은 그림이 아니라 원래 크기의 화면이다. */
 .login-backdrop { height: 100vh; overflow: hidden; }
@@ -31,8 +33,9 @@
 .auth-notice.info { background: var(--info-subtle); border-color: var(--accent-border); }
 .auth-notice.info .notice-icon { color: var(--cyan); }
 
-.google-btn { display: flex; gap: 8px; justify-content: center; align-items: center; min-height: 52px; padding: 0 24px; border-radius: 999px; background: var(--btn-primary-bg); color: var(--btn-primary-text); box-shadow: var(--btn); font-size: 16px; font-weight: 700; }
-.google-btn.retry { background: var(--btn-retry-bg); }
+.google-btn { display: flex; gap: 10px; justify-content: center; align-items: center; min-height: 52px; padding: 0 24px; border: 1px solid var(--google-border); border-radius: 999px; background: var(--google-bg); color: var(--google-text); font-size: 16px; font-weight: 500; }
+.google-btn:hover:not(:disabled) { background: linear-gradient(rgba(48, 48, 48, .08), rgba(48, 48, 48, .08)) var(--google-bg); }
+.google-btn:active:not(:disabled) { background: linear-gradient(rgba(48, 48, 48, .12), rgba(48, 48, 48, .12)) var(--google-bg); }
 .google-btn:disabled { cursor: default; }
 .google-btn:focus-visible, .login-link:focus-visible, .auth-dialog button:focus-visible, .profile-btn:focus-visible, .profile-menu button:focus-visible { outline: 3px solid var(--accent-border); outline-offset: 2px; }
 
