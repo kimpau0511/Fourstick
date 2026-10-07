@@ -65,7 +65,7 @@ function execFromJob(j) {
 }
 
 // jobsById: 로그의 'job' 이벤트(detail = job_id)와 이어지는 서버 작업. 있으면 row.job으로 붙여 한 줄로 보인다.
-function fromLog(e, robotFallback, jobsById) {
+function fromLog(e, robotFallback, jobsById, me) {
   const ev = (k) => e.events.filter((x) => x.kind === k);
   const decision = ev('decision')[0];
   const result = ev('result')[0];
@@ -78,7 +78,7 @@ function fromLog(e, robotFallback, jobsById) {
   if (!exec && ev('cancel').length) exec = { label: '실행 안 함(취소)', kind: null };
   if (!exec && ev('error').length) exec = { label: ev('error')[0].label, kind: '실패' };
   return {
-    key: `L${e.id}`, at: e.sentAt, robot: e.robot || robotFallback, text: e.text, requester: '이 화면',
+    key: `L${e.id}`, at: e.sentAt, robot: e.robot || robotFallback, text: e.text, requester: me ? me.name || me.email : '이 화면',
     verify: decision ? decision.label : '확인 안 됨',
     // 차단·되묻기·계획 실패로 끝난 명령은 실행 자체가 없다.
     exec: exec || { label: !decision ? '확인 안 됨' : ['실행 차단', '추가 확인 필요', '계획 실패', '시연 명령 아님'].includes(decision.label) ? '실행 없음' : '진행 중 또는 실행 전', kind: null },
@@ -86,13 +86,16 @@ function fromLog(e, robotFallback, jobsById) {
   };
 }
 
+// 요청자 = 서버가 남긴 보낸 사람(command_actors, 결정 Q10). 기록 기능 전 명령·로그인 없이 보낸 정지는 "기록 없음".
+const actorLabel = (a) => (a ? a.name || a.email : '기록 없음');
+
 // 서버 요청 기록(/v1/history commands 한 줄). created_at·execution_started_at은 초 단위.
 function fromCommand(c, robot) {
   const v = c.decision ? VERIFY_LABELS[c.decision] || '확인 안 됨' : '검증 기록 없음';
   const st = c.final_state ? STATE_LABELS[c.final_state] : null;
   const exec = st ? { label: st[0], kind: st[1] } : c.execution_id ? { label: '확인 안 됨', kind: null } : { label: '실행 없음', kind: null };
   return {
-    key: `R${c.request_id}`, at: c.created_at * 1000, robot, text: c.utterance, requester: '서버 기록', verify: v, exec,
+    key: `R${c.request_id}`, at: c.created_at * 1000, robot, text: c.utterance, requester: actorLabel(c.actor), verify: v, exec,
     search: `${c.utterance} ${c.request_id}${c.execution_id ? ` ${c.execution_id}` : ''}`, command: c,
   };
 }
@@ -101,7 +104,7 @@ function fromCommand(c, robot) {
 function jobFromFile(f) {
   const at = Date.parse(f.written_at);
   return { job_id: f.job_id, action: f.action, action_label: f.action_label, material: f.material, status: 'finished',
-    result_status: f.status, started_at: Number.isFinite(at) ? at / 1000 : null, fromFile: true };
+    result_status: f.status, started_at: Number.isFinite(at) ? at / 1000 : null, fromFile: true, actor: f.actor };
 }
 
 function fromJob(j, robot, names, actionLabels = {}) {
@@ -110,7 +113,7 @@ function fromJob(j, robot, names, actionLabels = {}) {
   const label = j.action_label && j.action_label !== j.action ? j.action_label : actionLabels[j.action] || '작업';
   const summary = [label, names[j.material] || j.material].filter(Boolean).join(' · ');
   return {
-    key: j.job_id, at: j.started_at * 1000, robot, text: summary, requester: '서버 기록', verify: '서버 기록 없음', exec: execFromJob(j),
+    key: j.job_id, at: j.started_at * 1000, robot, text: summary, requester: actorLabel(j.actor), verify: '서버 기록 없음', exec: execFromJob(j),
     search: `${summary} ${j.job_id}`, job: j,
   };
 }
@@ -149,7 +152,7 @@ function Timeline({ row }) {
   </ol>;
 }
 
-export default function History({ server, log = [] }) {
+export default function History({ server, log = [], user = null }) {
   const [verify, setVerify] = useState('전체');
   const [exec, setExec] = useState('전체');
   const [robot, setRobot] = useState('전체');
@@ -162,13 +165,15 @@ export default function History({ server, log = [] }) {
   const expand = useExpand();
   const history = useHistory();
   // 시연 작업 = 메모리 recent_jobs(시작 시각 있음) + 결과 파일(/v1/history, 서버 재시작 뒤에도 남음). 같은 id는 recent_jobs 우선.
-  const memJobs = server?.simDemo?.recent_jobs || [];
+  // 보낸 사람은 이력 API에만 있다(sim_jobs의 actor, recent_jobs용 job_actors) — recent_jobs 줄에도 붙인다.
+  const fileActor = { ...Object.fromEntries((history.data?.sim_jobs || []).map((f) => [f.job_id, f.actor])), ...(history.data?.job_actors || {}) };
+  const memJobs = (server?.simDemo?.recent_jobs || []).map((j) => ({ ...j, actor: fileActor[j.job_id] }));
   const memIds = new Set(memJobs.map((j) => j.job_id));
   const serverJobs = [...memJobs, ...(history.data?.sim_jobs || []).filter((f) => !memIds.has(f.job_id)).map(jobFromFile)];
   const jobsById = Object.fromEntries(serverJobs.map((j) => [j.job_id, j]));
   const names = Object.fromEntries((server?.simDemo?.materials || []).map((m) => [m.model, m.korean]));
   // 이 탭에서 보낸 명령(log)과 이어진 서버 작업은 로그 행에 붙이고, recent_jobs 쪽 줄은 빼서 같은 명령이 두 줄로 나오지 않게 한다.
-  const logRows = log.map((e) => fromLog(e, robotId, jobsById));
+  const logRows = log.map((e) => fromLog(e, robotId, jobsById, user));
   const linked = new Set(logRows.filter((r) => r.job).map((r) => r.job.job_id));
   // 목표(여러 단계) 명령의 단계 작업도 그 명령 줄에 속한다.
   log.forEach((e) => e.events.forEach((x) => { if (x.kind === 'goal_job') linked.add(x.detail); }));

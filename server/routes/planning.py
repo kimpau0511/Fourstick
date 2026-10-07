@@ -41,6 +41,6 @@ async def handle(
             stt_inference_id=payload.get("stt_inference_id"),
         )
         # 계획을 만들지 못한 경우도 이유 코드와 함께 돌려준다(422).
-        return json_response(result, 200 if result.get("ok") else 422)
+        return json_response(result, 200 if result.get("ok") or result.get("stopped") else 422)
 
     return None

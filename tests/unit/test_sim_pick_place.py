@@ -11,6 +11,7 @@ import json
 import sys
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -361,6 +362,75 @@ class ExecuteTransferTest(ContractBase):
     def run_transfer(self, on_poll, view):
         runtime = SimpleNamespace(sim_demo_jobs=self.jobs, sim_view=view)
         return execute_transfer(runtime, self.UNIT, goal_id="genexec_t", interruption=on_poll)
+
+    def test_general_transfer_uses_execution_snapshot_even_after_setting_zero(self):
+        from core.motion_speed import MotionSpeedPolicy
+        from server.sim_demo_motion import MotionSettings
+        settings = MotionSettings(MotionSpeedPolicy.from_config(json.loads(
+            (ROOT / "config/workcell/fr3_2f85_workcell_motion.json").read_text())), self.tmp / "speed.json")
+        self.jobs.motion = settings
+        snapshot = settings.snapshot()
+        settings.set_percent(0)
+        def poll():
+            self.finish("simulation_transfer_completed")
+            return None
+        runtime = SimpleNamespace(sim_demo_jobs=self.jobs,
+            sim_view=FakeView({"material_a": [0.251, -0.5, 0.75, 0, 0, 0, 1]}))
+        result = execute_transfer(runtime, self.UNIT, goal_id="genexec_t", interruption=poll,
+                                  speed_percent=snapshot)
+        argv = self.popen.calls[-1]["argv"]
+        self.assertEqual(argv[argv.index("--speed-percent") + 1], "50")
+        self.assertEqual(result.state, ExecutionState.COMPLETED, result.evidence)
+
+    # 실측 콘솔(2026-10-07 복제 셀 simjob_5919645b587e)의 단계 줄.
+    STAGES = ["안전 home", "팔레트 접근", "pre-grasp", "그리퍼 열기", "pick 접근", "그리퍼 닫기", "lift",
+              "컨베이어 접근", "place 접근", "그리퍼 열기(해제)", "retreat", "안전 home 복귀"]
+
+    def stage_line(self, n):
+        return f"  [{n:2d}/12] {self.STAGES[n - 1]:<16} 오차 0.00010 rad · 도달=True\n"
+
+    def test_progress_moves_through_plan_steps_in_order_while_running(self):
+        """진행 표시: 이송 한 번이 끝나기 전에 계획 스텝 1→2→3→4를 차례로 알린다(끝에 한꺼번에가 아니다)."""
+        seen, lines = [], iter(range(1, 13))
+
+        def poll():
+            job = self.jobs.running()
+            n = next(lines, None)
+            if job is not None and n is not None:
+                with open(job["console_path"], "a", encoding="utf-8") as fh:
+                    fh.write(self.stage_line(n))
+            elif n is None:
+                self.finish("simulation_transfer_completed")
+            return None
+
+        runtime = SimpleNamespace(sim_demo_jobs=self.jobs,
+                                  sim_view=FakeView({"material_a": [0.251, -0.5, 0.75, 0, 0, 0, 1]}))
+        with mock.patch("server.sim_pick_place.POLL_SEC", 0):
+            result = execute_transfer(runtime, self.UNIT, goal_id="genexec_t", interruption=poll,
+                                      on_progress=lambda done, stage: seen.append((done, stage and stage["label"])))
+        self.assertEqual(result.state, ExecutionState.COMPLETED, result.evidence)
+        done = [d for d, _ in seen]
+        self.assertEqual(done, sorted(done))                       # 되돌아가지 않는다
+        self.assertEqual(sorted(set(done)), [0, 1, 2, 3, 4])       # 0~4를 모두 지난다
+        self.assertIn((2, "lift"), seen)
+        self.assertIn((3, "그리퍼 열기(해제)"), seen)
+
+    def test_progress_mapping_for_transfer_and_return_consoles(self):
+        from server.sim_pick_place import transfer_progress
+        rows = lambda labels: [{"label": x, "reached": True} for x in labels]  # noqa: E731
+        self.assertEqual(transfer_progress([]), 0)
+        self.assertEqual(transfer_progress(rows(self.STAGES[:3])), 0)       # 출발지 접근 중
+        self.assertEqual(transfer_progress(rows(self.STAGES[:4])), 1)       # 그리퍼 열기 = 출발지 도착
+        self.assertEqual(transfer_progress(rows(self.STAGES[:6])), 1)       # 닫았지만 아직 들지 않음
+        self.assertEqual(transfer_progress(rows(self.STAGES[:7])), 2)
+        self.assertEqual(transfer_progress(rows(self.STAGES[:10])), 3)
+        self.assertEqual(transfer_progress(rows(self.STAGES[:11])), 4)
+        back = ["안전 home", "컨베이어 접근", "pre-grasp(컨베이어)", "그리퍼 열기", "컨베이어 pick 접근", "그리퍼 닫기",
+                "lift", "원래 팔레트 접근", "원래 슬롯 접근", "그리퍼 열기(해제)", "retreat", "안전 home 복귀"]
+        self.assertEqual([transfer_progress(rows(back[:n])) for n in range(13)],
+                         [0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 4, 4])
+        # 도달하지 못한 단계는 세지 않는다.
+        self.assertEqual(transfer_progress([{"label": "그리퍼 열기", "reached": False}]), 0)
 
     def test_success_needs_executor_record_and_fresh_pose(self):
         def poll():

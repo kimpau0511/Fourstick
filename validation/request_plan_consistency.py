@@ -143,10 +143,68 @@ def resolved_from_slots(slots, catalog: ResourceCatalog) -> tuple[ResolvedResour
     return tuple(out)
 
 
+def _check_against_intent(plan: TaskPlan, intent, catalog: ResourceCatalog) -> ConsistencyReport:
+    """검증된 작업 의도(`core/task_intent.py`)와 계획을 **역할까지** 대조한다.
+
+    의도의 id마다 근거(원문·상태·등록)가 있으므로 요청 리소스는 의도에서 온다. 계획이 쓰는 것은
+    의도의 자재를 의도의 출발지에서 집어 의도의 목적지에 놓는 것뿐이어야 한다 — 다른 자재·다른
+    출발지·다른 목적지·뒤바뀐 역할은 모두 불일치다. 계획을 근거로 요청 리소스를 더하지 않는다.
+    """
+    refs = (("자재", intent.material), ("출발지", intent.source), ("목적지", intent.destination))
+    request_resources = tuple(
+        ResolvedResource(
+            surface=f"{ref.evidence.text} [{ref.evidence.kind}]", resource_id=ref.resource_id,
+            kind=catalog.kind_of(ref.resource_id).value if catalog.has(ref.resource_id) else "",
+            display_name=(catalog.get(ref.resource_id).display_name
+                          if catalog.has(ref.resource_id) else ref.resource_id))
+        for _, ref in refs)
+    used = plan_resource_ids(plan)
+    material, source, destination = (intent.material.resource_id, intent.source.resource_id,
+                                     intent.destination.resource_id)
+    problems: list[str] = []
+    picks = [s for s in plan.steps if s.skill == "pick"]
+    places = [s for s in plan.steps if s.skill == "place"]
+    if len(picks) != 1 or len(places) != 1:
+        problems.append(f"집기 {len(picks)}회·놓기 {len(places)}회 — 이송 의도는 각 1회다")
+    for step in picks:
+        if step.args.get("object") != material or step.args.get("from") != source:
+            problems.append(f"집기({step.args.get('object')}@{step.args.get('from')})가 의도"
+                            f"({material}@{source})와 다르다")
+    for step in places:
+        if step.args.get("object") != material or step.args.get("to") != destination:
+            problems.append(f"놓기({step.args.get('object')}→{step.args.get('to')})가 의도"
+                            f"({material}→{destination})와 다르다")
+    for step in plan.steps:
+        if step.skill == "move" and step.args.get("to") not in (source, destination):
+            problems.append(f"이동 목적지 {step.args.get('to')}는 의도의 출발·목적지가 아니다")
+    extra = tuple(r for r in used if r not in (material, source, destination))
+    if extra:
+        problems.append(f"의도에 없는 리소스: {', '.join(extra)}")
+    if problems:
+        return ConsistencyReport(
+            status=ConsistencyStatus.MISMATCH, reason=ReasonCode.PLAN_RESOURCE_MISMATCH,
+            request_resources=request_resources, plan_resources=used,
+            only_in_plan=extra, only_in_request=tuple(
+                r for r in (material, source, destination) if r not in used),
+            detail="계획이 검증된 작업 의도와 다르다: " + "; ".join(dict.fromkeys(problems)),
+        )
+    return ConsistencyReport(
+        status=ConsistencyStatus.CONSISTENT, reason=None,
+        request_resources=request_resources, plan_resources=used,
+        detail="계획이 검증된 작업 의도(자재·출발지·목적지, 근거 포함)와 같다",
+    )
+
+
 def check_request_plan_consistency(
-    *, plan: TaskPlan, slots, catalog: ResourceCatalog
+    *, plan: TaskPlan, slots, catalog: ResourceCatalog, intent=None,
 ) -> ConsistencyReport:
-    """계획이 요청에서 확인된 리소스만 쓰는지 본다."""
+    """계획이 요청에서 확인된 리소스만 쓰는지 본다.
+
+    `intent`(검증된 작업 의도)가 있으면 그 의도와 역할까지 대조한다(이송 요청). 없으면 슬롯
+    (별칭으로 확인된 리소스) 기준의 기존 규칙이다(이동·복귀 등 자재 없는 요청).
+    """
+    if intent is not None:
+        return _check_against_intent(plan, intent, catalog)
     request_resources = resolved_from_slots(slots, catalog)
     confirmed = {r.resource_id for r in request_resources}
     used = plan_resource_ids(plan)

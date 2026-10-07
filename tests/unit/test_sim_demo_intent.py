@@ -47,17 +47,16 @@ PLACES = ("loc_pallet_1", "loc_pallet_2", "loc_pallet_3",
 
 
 def ok(payload, min_confidence=0.7, places=PLACES):
-    """스키마는 **선언형 작업 다섯 칸**이다. 읽기 쉽게 `intent`로 적어도
-    `action`으로 옮기고, 말하지 않은 자리는 `None`으로 채운다."""
+    """스키마는 **선언형 작업 여섯 칸**(intent·material_id·source_id·destination_id·
+    confidence·reason)이다. 말하지 않은 자리는 `None`, 근거는 빈 문자열로 채운다."""
     if not isinstance(payload, dict):
         return validate(payload, candidates=CANDIDATES,
                         min_confidence=min_confidence, places=places)
     body = dict(payload)
-    if "intent" in body:
-        body["action"] = body.pop("intent")
-    if "action" in body:                      # 필드 누락 시험은 그대로 둔다
-        body.setdefault("source_resource", None)
-        body.setdefault("destination_resource", None)
+    if "intent" in body:                      # 필드 누락 시험은 그대로 둔다
+        body.setdefault("source_id", None)
+        body.setdefault("destination_id", None)
+        body.setdefault("reason", "")
     return validate(body, candidates=CANDIDATES, min_confidence=min_confidence,
                     places=places)
 
@@ -66,13 +65,13 @@ class SchemaTest(unittest.TestCase):
     def test_schema_lists_only_this_cells_materials_and_places(self):
         schema = output_json_schema(CANDIDATES, PLACE_IDS)
         self.assertEqual(sorted(schema["required"]),
-                         ["action", "confidence", "destination_resource",
-                          "material_id", "source_resource"])
+                         ["confidence", "destination_id", "intent",
+                          "material_id", "reason", "source_id"])
         self.assertIs(schema["additionalProperties"], False)
-        self.assertEqual(schema["properties"]["action"]["enum"], list(INTENTS))
+        self.assertEqual(schema["properties"]["intent"]["enum"], list(INTENTS))
         self.assertEqual(schema["properties"]["material_id"]["enum"],
                          ["material_a", "material_b", "material_c", None])
-        for field in ("source_resource", "destination_resource"):
+        for field in ("source_id", "destination_id"):
             with self.subTest(field=field):
                 self.assertEqual(schema["properties"][field]["enum"],
                                  [*PLACE_IDS, None])
@@ -195,10 +194,10 @@ class FakeClient:
 
 class ClassifierTest(unittest.TestCase):
     def test_sends_the_structured_output_schema_and_validates_the_answer(self):
-        client = FakeClient('{"action":"return","material_id":"material_b",'
-                            '"source_resource":"slot_1",'
-                            '"destination_resource":"loc_pallet_2",'
-                            '"confidence":0.88}')
+        client = FakeClient('{"intent":"return","material_id":"material_b",'
+                            '"source_id":"slot_1",'
+                            '"destination_id":"loc_pallet_2",'
+                            '"confidence":0.88,"reason":"B = material_b"}')
         result = IntentClassifier(client=client, min_confidence=0.7).classify(
             "컨베이어 1번 자리의 B를 2번 팔레트로", ROWS, PLACE_ROWS)
         self.assertTrue(result.ok)
@@ -211,7 +210,7 @@ class ClassifierTest(unittest.TestCase):
         self.assertEqual(sent["properties"]["material_id"]["enum"],
                          ["material_a", "material_b", "material_c", None])
         # **자리도 열거값이다** — 모델이 없는 자리를 쓸 칸이 없다.
-        self.assertEqual(sent["properties"]["destination_resource"]["enum"],
+        self.assertEqual(sent["properties"]["destination_id"]["enum"],
                          [*PLACE_IDS, None])
         # 자유 계획을 담을 칸이 없다.
         self.assertNotIn("joint_rad", sent["properties"])
@@ -233,9 +232,9 @@ class ClassifierTest(unittest.TestCase):
         self.assertIn("연결 실패", result.reason)
 
     def test_raw_output_is_kept_for_the_screen(self):
-        client = FakeClient('{"action":"transfer","material_id":"material_a",'
-                            '"source_resource":null,"destination_resource":null,'
-                            '"confidence":0.3}')
+        client = FakeClient('{"intent":"transfer","material_id":"material_a",'
+                            '"source_id":null,"destination_id":null,'
+                            '"confidence":0.3,"reason":"낮은 확신"}')
         result = IntentClassifier(client=client, min_confidence=0.7).classify("x", ROWS)
         self.assertEqual(result.failure, "confidence")
         self.assertIn("material_a", result.raw)

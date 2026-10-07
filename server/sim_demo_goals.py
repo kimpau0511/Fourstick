@@ -20,6 +20,7 @@ import re
 from typing import Any, Callable, Mapping
 
 from core.transfer_skill import path_obstructions
+from core.workcell_paths import log_dir
 
 from server.sim_demo_arrangement import (
     GOAL_ARRANGE,
@@ -95,7 +96,7 @@ class SimDemoGoals:
         self._environment_path = Path(
             environment_path if environment_path is not None else
             (Path(state_path).with_name("sim_demo_environment.json") if state_path
-             else "/tmp/forstick2_workcell/sim_demo_environment.json"))
+             else log_dir() / "sim_demo_environment.json"))
         self._clock = clock
         self._sleep = sleep
         self._poll_sec = poll_sec

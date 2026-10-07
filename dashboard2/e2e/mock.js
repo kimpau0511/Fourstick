@@ -38,10 +38,16 @@ export const SAMPLES = {
 };
 
 /** 모든 서버 경로를 막고, 명령 응답만 주어진 값으로 돌려준다. 호출 기록을 돌려준다. */
+export const QA_USER = { email: 'operator@example.com', name: '김민우', picture: null };
+
 export async function mockBackend(page, { command, confirm, jobs = [], overrides = {} } = {}) {
   const calls = [];
   // page.route는 나중에 등록한 것이 먼저 처리된다 — 겹치는 경로는 pathname으로 직접 가른다.
   const pathOf = (url) => new URL(url).pathname;
+  // 로그인 — 기본은 로그인된 상태(대시보드 검사용). overrides.auth: false면 로그인 안 됨(401), 객체면 그 사용자.
+  const user = overrides.auth === undefined ? QA_USER : overrides.auth;
+  await page.route('**/v1/auth/me', (route) => (user ? route.fulfill({ json: { user } }) : route.fulfill({ status: 401, json: { reason_code: 'session.unauthenticated' } })));
+  await page.route('**/v1/auth/logout', (route) => route.fulfill({ json: { ok: true } }));
   await page.route('**/health', (route) => (pathOf(route.request().url()) === '/health'
     ? route.fulfill({ json: fixture('health', overrides.health) }) : route.fallback()));
   await page.route('**/v1/config', (route) => route.fulfill({ json: fixture('config', overrides.config) }));

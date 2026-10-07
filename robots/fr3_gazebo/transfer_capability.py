@@ -73,7 +73,11 @@ class Fr3TransferCapability:
         base = root / "config/workcell"
         load = lambda n: json.loads((base / n).read_text(encoding="utf-8"))  # noqa: E731
         clearance_path = base / "fr3_2f85_workcell_path_clearance.json"
-        return cls(workcell=load("fr3_2f85_workcell.json"),
+        from core.workcell_paths import workcell_config
+
+        workcell = json.loads(workcell_config().read_text(encoding="utf-8")) if root == ROOT \
+            else load("fr3_2f85_workcell.json")
+        return cls(workcell=workcell,
                    grasp=load("fr3_2f85_workcell_grasp.json"),
                    poses=load("fr3_2f85_workcell_poses.json"),
                    clearance=(load(clearance_path.name) if clearance_path.exists() else None))

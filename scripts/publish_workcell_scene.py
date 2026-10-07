@@ -24,7 +24,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-WORKCELL = ROOT / "config/workcell/fr3_2f85_workcell.json"
+from core.workcell_paths import workcell_config  # noqa: E402
+
+WORKCELL = workcell_config()  # 현장 2는 FORSTICK2_WORKCELL_CONFIG로 바꾼다(기본 = 현장 1)
 OUT = ROOT / "reports/workcell/planning_scene.json"
 #: 받침대 윗면을 이만큼 낮춰 등록한다(지지 접촉을 충돌로 세지 않기 위해).
 PEDESTAL_TOP_RELIEF_M = 0.002

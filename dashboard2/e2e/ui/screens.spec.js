@@ -39,11 +39,12 @@ test.describe('공통 레이아웃', () => {
     expect(await cmdW()).toBe('320px');
   });
 
-  test('[UI-LAYOUT-04][가-4·§15] 사이드바 System status 위젯 4행(ROS 2·PLANNER·SAFETY PLC·LATENCY) + "N/4 정상"', async ({ page }) => {
+  test('[UI-LAYOUT-04][가-4·§15] 사이드바 System status 위젯 3행(ROS 2·PLANNER·LATENCY) + "N/3 정상" — SAFETY PLC는 서버 신호가 없어 삭제(2026-10-07)', async ({ page }) => {
     await page.goto('/');
     const side = page.locator('aside.sidebar');
-    for (const row of ['ROS 2', 'PLANNER', 'SAFETY PLC', 'LATENCY']) await expect(side).toContainText(row);
-    await expect(side).toContainText(/\d\/4 정상/);
+    for (const row of ['ROS 2', 'PLANNER', 'LATENCY']) await expect(side).toContainText(row);
+    await expect(side).not.toContainText('SAFETY PLC');
+    await expect(side).toContainText(/\d\/3 정상/);
   });
 });
 
@@ -55,6 +56,7 @@ test.describe('현황(홈)', () => {
 
   test('[UI-HOME-02][①·용어표] 로봇 카드 1차 표시는 셀 위치·별칭(모델명 UR5e/FR3 아님)', async ({ page }) => {
     await page.goto('/');
+    await expect(page.locator('.robot-head strong').first()).toBeVisible(); // 로그인 확인 뒤에 대시보드가 그려진다
     const titles = await page.locator('.robot-head strong').allTextContents();
     expect(titles.length).toBeGreaterThan(0);
     for (const t of titles) expect(t).not.toMatch(/UR5e|FR3/);
@@ -84,7 +86,7 @@ test.describe('현황(홈)', () => {
     await expect(page.getByRole('button', { name: '다시 펼치기' })).toBeVisible(); // 접힌 뒤에도 되돌릴 수 있다
     await page.getByRole('button', { name: '다시 펼치기' }).click();
     await expect(page.getByRole('button', { name: /인지 확인/ })).toBeVisible();
-    await page.locator('header').getByRole('button', { name: /즉시 정지/ }).click({ trial: true }); // 가려지지 않는다
+    await page.locator('header').getByRole('button', { name: /즉시 정지|정지 해제/ }).click({ trial: true }); // 가려지지 않는다(래치 중이면 '정지 해제')
   });
 
   test('[UI-HOME-07][①] 홈 로봇 카드 진행 막대는 이 화면이 따라가는 작업일 때만 그린다(서버 running_job에는 진행률이 없다)', async ({ page }) => {
@@ -150,14 +152,25 @@ test.describe('로봇 관리', () => {
     await expect(page.locator('.col-main')).toContainText(/운용 가능|운용 불가/);
   });
 
+  test('[UI-ROBOTS-06][2026-10-07 요청] 목록 머리글은 기록 화면과 같은 "로봇", 운용 가능은 초록·운용 불가는 빨강', async ({ page }) => {
+    await page.goto('/#/robots');
+    const table = page.getByRole('table', { name: '로봇 목록' });
+    await expect(table.locator('thead th').first()).toHaveText('로봇');
+    const cell = table.locator('tbody td').getByText(/^운용 (가능|불가)$/);
+    const text = await cell.textContent();
+    await expect(cell).toHaveCSS('color', text === '운용 가능' ? 'rgb(6, 95, 70)' : 'rgb(168, 25, 25)');
+  });
+
   test('[UI-ROBOTS-03][⑬-2] 상세 탭 3개: 개요·도구 장착 이력·프로파일 버전', async ({ page }) => {
     await page.goto('/#/robots');
     // 2026-10-02 사용자 결정: 상세 탭은 우측 창의 '상세' 버튼을 눌러야 펼친다.
     const more = page.getByRole('button', { name: '상세', exact: true });
     await expect(more).toHaveAttribute('aria-expanded', 'false');
-    await expect(page.getByRole('tab')).toHaveCount(0);
+    // 화면 탭(로봇 목록 / 구성 · 작업 셀)은 늘 보이므로 상세 패널 안의 탭만 센다(2026-10-06).
+    const detail = page.getByLabel('로봇 상세');
+    await expect(detail.getByRole('tab')).toHaveCount(0);
     await more.click();
-    for (const tab of ['개요', '도구 장착 이력', '프로파일 버전']) await expect(page.getByRole('tab', { name: tab })).toBeVisible();
+    for (const tab of ['개요', '도구 장착 이력', '프로파일 버전']) await expect(detail.getByRole('tab', { name: tab })).toBeVisible();
   });
   test('[UI-ROBOTS-04][2026-10-02 결정] 우측 창은 좌측 목록과 겹치는 항목(이름·셀·도구·운용 가능 여부)을 되풀이하지 않는다', async ({ page }) => {
     await page.goto('/#/robots');
@@ -242,7 +255,7 @@ test.describe('진단·설정·공통', () => {
 
   test('[UI-DIAG-03][⑲-3] 서비스 행의 원시 샘플은 마지막 정상과 현재를 함께 보인다(본 적 없으면 그렇게 적는다)', async ({ page }) => {
     await page.goto('/#/diagnostics');
-    const row = page.locator('#svc-safety-plc'); // 서버가 신호를 주지 않아 늘 '수신 없음'
+    const row = page.locator('#svc-camera'); // 모의 서버가 장면 카메라를 주지 않아(503) 늘 '수신 없음'
     await row.getByRole('button', { name: '문제 전후 원시 샘플 보기' }).click();
     await expect(row.locator('pre')).toContainText('마지막 정상');
     await expect(row.locator('pre')).toContainText('이 화면이 본 적 없음');
@@ -354,5 +367,20 @@ test.describe('서버 이력(/v1/history)', () => {
     await page.route('**/v1/history**', (route) => route.fulfill({ status: 500, json: {} }));
     await page.reload();
     await expect(page.getByText(/서버 이력 조회 실패/)).toBeVisible({ timeout: 15000 });
+  });
+
+  test('[UI-RECORD-06][결정 Q10] 요청자 = 서버가 남긴 보낸 사람(이름, 없으면 이메일), 기록이 없으면 "기록 없음"', async ({ page }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const cmd = (id, utterance, actor) => ({ request_id: id, utterance, created_at: now, decision: 'allow', execution_id: null, final_state: null, actor });
+    await mockBackend(page, { overrides: { history: { commands: [
+      cmd('req-a', '이름 있는 사람의 명령', { email: 'a@example.com', name: '홍길동' }),
+      cmd('req-b', '이름 없는 사람의 명령', { email: 'b@example.com', name: null }),
+      cmd('req-c', '예전 명령', null),
+    ] } } });
+    await page.goto('/#/history');
+    const table = page.getByRole('table', { name: '명령 기록' });
+    await expect(table.getByRole('row', { name: /이름 있는 사람의 명령/ })).toContainText('홍길동');
+    await expect(table.getByRole('row', { name: /이름 없는 사람의 명령/ })).toContainText('b@example.com');
+    await expect(table.getByRole('row', { name: /예전 명령/ })).toContainText('기록 없음');
   });
 });

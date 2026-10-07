@@ -741,6 +741,75 @@ CREATE INDEX ix_sim_verification_scene
 """
 
 
+#: 일반 경로 이송 요청의 검증된 작업 의도(`core/task_intent.py`). 요청당 하나, 추가만 한다(트리거 메시지에 END가 든 낱말을 쓰지 않는다 — 문장 분리기가 BEGIN·END 수로 트리거 본문을 묶는다).
+#: 실행 직전 재검증이 계획을 만들 때와 **같은 의도**를 다시 읽는다(모델을 다시 부르지 않는다).
+MIGRATION_0017 = """
+CREATE TABLE request_intents (
+    request_id   TEXT PRIMARY KEY REFERENCES requests(request_id),
+    intent_json  TEXT NOT NULL,
+    interpreter  TEXT NOT NULL,
+    created_at   REAL NOT NULL
+);
+
+CREATE TRIGGER trg_request_intents_no_update
+BEFORE UPDATE ON request_intents
+BEGIN
+    SELECT RAISE(ABORT, '작업 의도 기록은 고칠 수 없다(추가만 한다)');
+END;
+
+CREATE TRIGGER trg_request_intents_no_delete
+BEFORE DELETE ON request_intents
+BEGIN
+    SELECT RAISE(ABORT, '작업 의도 기록은 지울 수 없다(추가만 한다)');
+END;
+"""
+
+
+#: 로그인 계정과 로그인 세션(2026-10-06 결정: 구글만·등록 계정만·12시간).
+#: 번호 18: 17번(일반 경로 작업 의도)이 먼저 운영 DB에 적용돼 있어 뒤로 붙였다(2026-10-07 병합).
+#: 세션 토큰 원문은 저장하지 않고 SHA-256만 둔다 — DB가 새도 쿠키를 만들 수 없게.
+MIGRATION_0018 = """
+CREATE TABLE accounts (
+    email           TEXT PRIMARY KEY,
+    google_sub      TEXT UNIQUE,
+    name            TEXT,
+    picture         TEXT,
+    enabled         INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at      REAL NOT NULL,
+    first_login_at  REAL,
+    last_login_at   REAL
+);
+
+CREATE TABLE login_sessions (
+    token_hash      TEXT PRIMARY KEY,
+    email           TEXT NOT NULL REFERENCES accounts(email),
+    created_at      REAL NOT NULL,
+    expires_at      REAL NOT NULL
+);
+CREATE INDEX idx_login_sessions_email ON login_sessions(email);
+"""
+
+#: 명령을 보낸 사람(2026-10-06 결정 Q10). **덧붙이기만 한다(append-only).** 기존 기록(requests·작업 파일)을
+#: 고치지 않고, 응답에 담긴 식별자(request_id·job_id 등)로 이어 붙인다. 정지는 로그인 없이도 받으므로
+#: actor_email이 비어 있을 수 있다(그때는 '로그인 없이 보낸 요청'이다).
+MIGRATION_0019 = """
+CREATE TABLE command_actors (
+    audit_id        TEXT PRIMARY KEY,
+    recorded_at     REAL NOT NULL,
+    actor_email     TEXT,
+    method          TEXT NOT NULL,
+    path            TEXT NOT NULL,
+    status          INTEGER NOT NULL,
+    request_id      TEXT,
+    plan_id         TEXT,
+    execution_id    TEXT,
+    job_id          TEXT,
+    goal_id         TEXT
+);
+CREATE INDEX idx_command_actors_request ON command_actors(request_id);
+CREATE INDEX idx_command_actors_job ON command_actors(job_id);
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "요청·계획·검증·허가·실행·이력 초기 스키마", MIGRATION_0001),
     (2, "확정 요청의 STT 메타데이터 컬럼 추가", MIGRATION_0002),
@@ -758,6 +827,9 @@ MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (14, "시뮬레이터 검증 실행 기록 추가", MIGRATION_0014),
     (15, "MoveIt2 계획·충돌 검사 관측 연결 추가", MIGRATION_0015),
     (16, "STT 원문과 정규화 전사 분리", "ALTER TABLE stt_inferences ADD COLUMN raw_transcript TEXT;"),
+    (17, "일반 경로 검증된 작업 의도 기록 추가", MIGRATION_0017),
+    (18, "로그인 계정·로그인 세션 추가", MIGRATION_0018),
+    (19, "명령을 보낸 사람 기록 추가", MIGRATION_0019),
 )
 
 CREATE_MIGRATIONS_TABLE = """

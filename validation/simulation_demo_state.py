@@ -85,6 +85,8 @@ import os
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
+
+from core.workcell_paths import log_dir
 from typing import Any, Mapping, Sequence
 
 from core.reason_codes import ReasonCode
@@ -97,7 +99,7 @@ POLICIES: tuple[str, ...] = (POLICY_E2E_RESET, POLICY_DEMO_HOLD)
 DISPLAY_LABEL = "시뮬레이션 시연 · 상태 유지"
 
 #: 시연 스크립트는 별도 프로세스라 파일로 남긴다(정지 래치와 같은 자리).
-DEFAULT_PATH = Path("/tmp/forstick2_workcell/sim_demo_state.json")
+DEFAULT_PATH = log_dir() / "sim_demo_state.json"
 
 SCHEMA = "forstick2.simulation_demo_state/1"
 

@@ -27,6 +27,8 @@ import threading
 import time
 import uuid
 from pathlib import Path
+
+from core.workcell_paths import log_dir
 from typing import Any, Callable, Mapping, Sequence
 
 from server.cell_execution import CellExecutionLease, CellExecutionManager
@@ -53,7 +55,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEMO_SCRIPT = ROOT / "scripts" / "demo_workcell_pick_place.sh"
 JOBS_DIR = ROOT / "reports" / "workcell" / "sim_demo_jobs"
 #: 시연 스크립트가 보는 외부 정지 요청 파일(`demo_workcell_pick_place.STOP_REQUEST`).
-STOP_REQUEST = Path("/tmp/forstick2_workcell/sim_demo_stop_request.json")
+STOP_REQUEST = log_dir() / "sim_demo_stop_request.json"
 
 ACTIONS = ("transfer", "return", "move", "route", "spot", "resume_preflight", "resume",
            "restore", "reconcile")
@@ -297,6 +299,7 @@ class SimDemoJobs:
                  poses_config: Mapping[str, Any] | None = None,
                  cell_execution: CellExecutionManager | None = None,
                  surfaces_config: Mapping[str, Any] | None = None,
+                 motion: Any = None,
                  process_identity: Callable[[int], dict] = _linux_process_identity,
                  process_probe: Callable[[Mapping[str, Any]],
                                          tuple[str, str]] = _probe_process_identity):
@@ -312,6 +315,8 @@ class SimDemoJobs:
         # 슬롯에서만 만든다 — 여기 없는 자리는 존재하지 않는 자리다.
         # 빈 위치 놓기를 허용한 표면 선언(매니페스트 `surfaces`). 없으면 그 기능이 꺼진다.
         self.surfaces = dict(surfaces_config or {})
+        # 이동 속도 설정(server/sim_demo_motion.MotionSettings). 없으면 실행기 고정 시간 그대로다.
+        self.motion = motion
         self.places = declared_places(workcell, self.slots, poses_config, self.surfaces)
         self.state = SimulationDemoState(state_path)
         self.jobs_dir = Path(jobs_dir)
@@ -640,7 +645,7 @@ class SimDemoJobs:
 
     def start_transfer(self, material: str, source: str, destination: str, *,
                        goal_id: str | None = None, blocked: tuple[str, ...] = (),
-                       unavailable: tuple[str, ...] = ()) -> dict:
+                       unavailable: tuple[str, ...] = (), speed_percent: int | None = None) -> dict:
         """`transfer(material, source, destination)` — 계약 검사 뒤 로봇 실행기로 보낸다."""
         plan, findings = self.check_transfer(material, source, destination,
                                              blocked=blocked, unavailable=unavailable)
@@ -652,14 +657,14 @@ class SimDemoJobs:
         origin = self._capability().origin_of(material)
         if route == "pallet->conveyor_slot" and source == origin:
             job = self.start("transfer", material, requested_slot=destination,
-                             goal_id=goal_id)
+                             goal_id=goal_id, speed_percent=speed_percent)
         elif route == "conveyor_slot->pallet" and destination == origin:
-            job = self.start("return", material, goal_id=goal_id)
+            job = self.start("return", material, goal_id=goal_id, speed_percent=speed_percent)
         elif route == "conveyor_slot->conveyor_slot":
-            job = self.start("move", material, requested_slot=destination, goal_id=goal_id)
+            job = self.start("move", material, requested_slot=destination, goal_id=goal_id, speed_percent=speed_percent)
         elif route in ("pallet->pallet", "pallet->conveyor_slot", "conveyor_slot->pallet"):
             # 다른 팔레트가 끼는 경로 — 공통 경로 실행기.
-            job = self.start("route", material, goal_id=goal_id, route=(source, destination))
+            job = self.start("route", material, goal_id=goal_id, route=(source, destination), speed_percent=speed_percent)
         else:
             raise SimDemoJobError(409, f"capability.route_unsupported: {route}")
         job["transfer"] = plan.to_dict()
@@ -669,7 +674,8 @@ class SimDemoJobs:
               checkpoint_id: str | None = None, slot: str | None = None,
               *, requested_slot: str | None = None,
               goal_id: str | None = None, route: tuple[str, str] | None = None,
-              spot: Mapping[str, Any] | None = None) -> dict:
+              spot: Mapping[str, Any] | None = None,
+              speed_percent: int | None = None) -> dict:
         """Start one job with its conveyor slot decided under the cell lease.
 
         ``slot`` is retained as an internal compatibility argument, but it is never
@@ -805,6 +811,21 @@ class SimDemoJobs:
                                     spot_path=None if spot_path is None else str(spot_path),
                                     source=(spot or {}).get("source")),
                         "--out", str(report_path)]
+                # 속도는 시작할 때 한 번 정한다 — 실행 중에 설정을 바꿔도 이 작업은 그대로다.
+                if action not in CELL_ACTIONS:
+                    if getattr(self, "motion_error", None):
+                        raise SimDemoJobError(503, self.motion_error)
+                    if self.motion is not None:
+                        from core.policy import PolicyError
+                        try:
+                            speed_percent = (self.motion.snapshot() if speed_percent is None
+                                             else self.motion.policy.execution_percent(speed_percent))
+                        except PolicyError as exc:
+                            raise SimDemoJobError(409, str(exc)) from exc
+                    elif speed_percent is not None:
+                        raise SimDemoJobError(503, "이동 속도 정책이 없습니다")
+                if speed_percent is not None:
+                    argv += ["--speed-percent", str(speed_percent)]
                 job = {"job_id": job_id, "action": action,
                        "action_label": ACTION_LABELS[action], "material": material,
                        "goal_id": goal_id,
@@ -819,7 +840,7 @@ class SimDemoJobs:
                        "console_path": str(console_path),
                        "started_at": self._clock(), "status": "running",
                        "exit_code": None, "report": None, "is_simulated": True,
-                       "stop_requested": None}
+                       "stop_requested": None, "speed_percent": speed_percent}
                 if action not in CELL_ACTIONS:
                     # Close the crash window before spawn.  Until the real PID
                     # identity replaces this launch marker, restart recovery is

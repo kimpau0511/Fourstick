@@ -87,7 +87,7 @@ class FakeTransport:
     def _result(self):
         self.sent += 1
         failed = self.fail_on is not None and self.sent == self.fail_on
-        return types.SimpleNamespace(accepted=True, error_code=-4 if failed else 0,
+        return types.SimpleNamespace(accepted=True, result_received=True, error_code=-4 if failed else 0,
                                      detail="")
 
     def send_arm(self, target, seconds, timeout, **kwargs):
@@ -311,6 +311,19 @@ class PreVerificationBlockTest(ResumeRunBase):
 
 
 class ExecutionFailureTest(ResumeRunBase):
+    def test_gripper_target_without_terminal_confirmation_is_not_success(self):
+        transport = FakeTransport(self.cp["joint_state"]["positions"])
+        original = transport.send_gripper
+        def unconfirmed(*args, **kwargs):
+            result = original(*args, **kwargs)
+            result.result_received = False
+            return result
+        transport.send_gripper = unconfirmed
+        ctx = self.context(transport=transport)
+        report = demo.run_resume(ctx, checkpoint_id=self.cp["checkpoint_id"])
+        self.assertEqual(report["status"], "resume_failed")
+        self.assertNotIn("detach", ctx.fixture.calls)
+
     def test_failure_drops_old_checkpoint_and_requires_reset(self):
         transport = FakeTransport(self.cp["joint_state"]["positions"], fail_on=2)
         ctx = self.context(transport=transport)

@@ -84,6 +84,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from core.motion_speed import MotionSpeedPolicy  # noqa: E402
+from core.policy import PolicyError  # noqa: E402
 from core.reason_codes import ReasonCode  # noqa: E402
 from core.task_plan import TaskStep  # noqa: E402
 from robots.fr3_gazebo.adapter import load_workcell_resources  # noqa: E402
@@ -149,12 +151,17 @@ from validation.simulation_e2e import (  # noqa: E402
 )
 
 ENV_GATE = "FORSTICK2_SIM_PICK_PLACE_DEMO"
-WORKCELL = ROOT / "config/workcell/fr3_2f85_workcell.json"
+from core.workcell_paths import log_dir as _log_dir, workcell_config as _workcell_config  # noqa: E402
+from robots.fr3_gazebo.paths import moveit_urdf as _moveit_urdf  # noqa: E402
+
+WORKCELL = _workcell_config()
 POSES = ROOT / "config/workcell/fr3_2f85_workcell_poses.json"
+MOTION = ROOT / "config/workcell/fr3_2f85_workcell_motion.json"
+CAPABILITY = ROOT / "config/profiles/fr3wms_2f85_workcell_capability.json"
 GRASP = ROOT / "config/workcell/fr3_2f85_workcell_grasp.json"
 MOUNTING = ROOT / "config/profiles/fr3wms_to_robotiq_2f85_mounting.json"
-URDF = Path("/tmp/forstick2_gazebo/workcell/fr3wms_with_2f85.moveit.urdf")
-LOG_DIR = Path("/tmp/forstick2_workcell")
+URDF = _moveit_urdf()
+LOG_DIR = _log_dir()
 LATCH = LOG_DIR / "sim_stop_latch.json"
 OUT = ROOT / "reports/workcell/pick_place_sim_e2e.json"
 #: 실행별 stdout/stderr **원본** 로그. 화면 필터와 별개로 전부 남긴다.
@@ -164,12 +171,9 @@ RAW_LOG: dict = {"path": None, "detail": "원본 로그를 시작하지 않았�
 #: 이번 시연 실행 id와 STOP 체크포인트 결과. 보고서에 남긴다.
 RUN_INFO: dict = {"run_id": None, "stop_checkpoint": None}
 
-#: 단계 이동 시간(초). **이미 검증된 값을 쓴다** — 팔은 어댑터의 이동 시간
-#: (`Fr3GazeboAdapter.move_seconds` 6.0), 그리퍼는 8-08 그리퍼 검증이 쓴 5초다.
-#: 더 짧게 주면 경로 허용치를 위반한다(실측: 1.5초에서 컨트롤러 결과 −4
-#: PATH_TOLERANCE_VIOLATED).
-ARM_SECONDS = 6.0
-GRIPPER_SECONDS = 5.0
+#: 완료 확인의 추가 여유(초). 기존 작업 셀 검증에서 사용한20초를 유지한다.
+#: transport는 궤적 T+이 여유 동안 terminal 결과를 기다리고, 이후 실제 관절을 관측한다.
+#: 궤적 시간이 짧아져도 이 값을 줄이거나 시간이 지났다는 이유로 성공시키지 않는다.
 ACTION_TIMEOUT = 20.0
 JOINT_TOLERANCE_RAD = 0.05
 #: 안착 뒤 배치 구역 높이 허용치. 자재 높이의 10%.
@@ -646,6 +650,72 @@ def record_stop_checkpoint(demo_state, checkpoint: dict | None) -> None:
           f" {len(checkpoint['remaining_stages'])} · 재개 없음")
 
 
+def observed_goal_error(observation, target: dict[str, float]) -> float:
+    # 일부 관절이 없으면 max()의 NaN 비교로 성공할 수 있으므로 전체를 먼저 확인한다.
+    import math
+    if (not observation.valid or not target
+            or any(name not in observation.positions
+                   or not math.isfinite(observation.positions[name]) for name in target)):
+        return float("nan")
+    return max(abs(observation.positions[name] - value) for name, value in target.items())
+
+
+class StageTiming:
+    """관측된 이동량으로 시간을 계산한다. 관측이 없으면 실행을 거부한다."""
+
+    def __init__(self) -> None:
+        self.policy: MotionSpeedPolicy | None = None
+        self.limits: dict[str, float] = {}
+        self.percent: int | None = None
+        self.gripper_joint = "robotiq_85_left_knuckle_joint"
+        self.log: list[dict] = []
+
+    def configure(self, percent: int, *, motion_path: Path = MOTION,
+                  capability_path: Path = CAPABILITY) -> None:
+        policy = MotionSpeedPolicy.from_config(
+            json.loads(motion_path.read_text(encoding="utf-8")))
+        profile = json.loads(capability_path.read_text(encoding="utf-8"))
+        limits = {str(j["name"]): float(j["max_velocity"])
+                  for j in profile.get("joint_limits", []) if j.get("max_velocity")}
+        self.percent = policy.execution_percent(percent)
+        self.policy, self.limits = policy, limits
+
+    def _observed(self, transport) -> dict[str, float] | None:
+        observation = transport.joint_observation(1.0)
+        return dict(observation.positions) if observation.valid else None
+
+    def _record(self, kind: str, seconds: float, source: str) -> float:
+        self.log.append({"kind": kind, "seconds": round(seconds, 3), "source": source})
+        return seconds
+
+    def arm(self, transport, target: dict[str, float]) -> float:
+        if self.policy is None:
+            self.configure(MotionSpeedPolicy.from_config(json.loads(MOTION.read_text())).default_percent)
+        start = self._observed(transport)
+        if start is None or any(name not in start for name in target):
+            raise PolicyError(ReasonCode.ROBOT_STATE_UNAVAILABLE, "이동 시간 계산용 관절 관측이 없습니다")
+        seconds = self.policy.arm_seconds(start, target, self.limits, self.percent)
+        return self._record("arm", seconds, "computed")
+
+    def gripper(self, transport, target: float) -> float:
+        if self.policy is None:
+            self.configure(MotionSpeedPolicy.from_config(json.loads(MOTION.read_text())).default_percent)
+        start = self._observed(transport)
+        if start is None or self.gripper_joint not in start:
+            raise PolicyError(ReasonCode.ROBOT_STATE_UNAVAILABLE, "이동 시간 계산용 그리퍼 관측이 없습니다")
+        seconds = self.policy.gripper_seconds(
+            float(start[self.gripper_joint]), float(target), self.percent)
+        return self._record("gripper", seconds, "computed")
+
+    def report(self) -> dict:
+        return {"speed_percent": self.percent,
+                "mode": "not_configured" if self.policy is None else "joint_velocity",
+                "stages": list(self.log)}
+
+
+TIMING = StageTiming()
+
+
 def _raw_log_fields() -> dict:
     path = RAW_LOG.get("path")
     return {"raw_log_path": (str(Path(path).relative_to(ROOT))
@@ -653,6 +723,7 @@ def _raw_log_fields() -> dict:
             "raw_log_detail": RAW_LOG.get("detail"),
             "simulation_demo_run_id": RUN_INFO.get("run_id"),
             "stop_checkpoint": RUN_INFO.get("stop_checkpoint"),
+            "motion_timing": TIMING.report(),
             # 외부 정지 요청(웹 STOP)으로 멈췄으면 그 요청.
             "external_stop_request": EXTERNAL_STOP.seen}
 
@@ -740,6 +811,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("support", help="출발 위치 자원 id 또는 Gazebo 모델")
     parser.add_argument("object", help="자재 자원 id 또는 Gazebo 모델")
     parser.add_argument("--target", default="loc_conveyor")
+    parser.add_argument("--speed-percent", type=int, default=None,
+                        help="관절 이동 속도(%%, 설정 범위·간격). 생략 시 셀 정책의 초기값")
     parser.add_argument("--stop-at", default=None,
                         help="이 단계 이동 중 정지를 한 번 요청한다")
     parser.add_argument("--out", default=str(OUT))
@@ -807,6 +880,13 @@ def main() -> int:
         print("  이 시연은 시뮬레이터 전용이며 실제 pick/place 가능 판정이"
               " 아니다. 일반 웹 UI·API로는 진입할 수 없다.", file=sys.stderr)
         return 3
+    # 설정의 파티션·도메인과 환경이 다른 셀을 가리키면 시작하지 않는다(2026-10-07 복제 셀 실측).
+    from robots.fr3_gazebo.adapter import WorkcellConfigError, check_cell_isolation
+    try:
+        check_cell_isolation(json.loads(WORKCELL.read_text(encoding="utf-8")))
+    except WorkcellConfigError as exc:
+        print(f"거부: {exc}", file=sys.stderr)
+        return 3
 
     label = ("reconcile" if args.reconcile_state
              else "resume" if args.resume_checkpoint
@@ -817,6 +897,14 @@ def main() -> int:
              else "transfer_route" if args.route_to
              else "restore" if args.restore_only else "forward")
     start_raw_log(label=label)
+    try:
+        percent = (MotionSpeedPolicy.from_config(json.loads(MOTION.read_text())).default_percent
+                   if args.speed_percent is None else args.speed_percent)
+        TIMING.configure(percent)
+    except (PolicyError, OSError, ValueError) as exc:
+        print(f"거부: 이동 속도 설정을 쓸 수 없다 — {exc}", file=sys.stderr)
+        return 2
+    print(f"[속도] {TIMING.percent}% — 이동량·속도·가속도로 quintic 단계 시간을 정한다")
     EXTERNAL_STOP.since = time.time()
     RUN_INFO["run_id"] = f"simdemo_{time.strftime('%Y%m%dT%H%M%S')}_{os.getpid()}"
     print(f"[원본 로그] {RAW_LOG['path'] or RAW_LOG['detail']}")
@@ -1193,15 +1281,18 @@ def main() -> int:
         elif stop_here:
             # **이동 중**에 정지한다. 결과를 기다리지 않는 전송으로 보내고,
             # 궤적이 진행되는 동안 취소를 요청한다.
+            seconds = TIMING.arm(transport, arm_target)
             outcome = transport.send_arm_async(
-                arm_target, ARM_SECONDS, ACTION_TIMEOUT)
-            time.sleep(ARM_SECONDS / 3.0)
+                arm_target, seconds, ACTION_TIMEOUT)
+            time.sleep(seconds / 3.0)
         elif stage.kind == "gripper":
             outcome = transport.send_gripper(
-                float(stage.gripper_joint_rad), GRIPPER_SECONDS, ACTION_TIMEOUT,
+                float(stage.gripper_joint_rad),
+                TIMING.gripper(transport, float(stage.gripper_joint_rad)), ACTION_TIMEOUT,
                 should_stop=EXTERNAL_STOP.requested)
         else:
-            outcome = transport.send_arm(arm_target, ARM_SECONDS, ACTION_TIMEOUT,
+            outcome = transport.send_arm(arm_target, TIMING.arm(transport, arm_target),
+                                         ACTION_TIMEOUT,
                                          should_stop=EXTERNAL_STOP.requested)
         external_stop = external_stop or (not stop_here
                                           and EXTERNAL_STOP.requested())
@@ -1280,12 +1371,10 @@ def main() -> int:
         observation = settled_observation(transport)
         if stage.kind == "gripper":
             name = bindings.gripper_joint
-            error = abs(observation.positions.get(name, float("nan"))
-                        - float(stage.gripper_joint_rad))
+            error = observed_goal_error(observation, {name: float(stage.gripper_joint_rad)})
         else:
-            error = max((abs(observation.positions.get(n, float("nan")) - v)
-                         for n, v in arm_target.items()), default=float("nan"))
-        reached = bool(error == error and error <= JOINT_TOLERANCE_RAD)
+            error = observed_goal_error(observation, arm_target)
+        reached = bool(observation.valid and error == error and error <= JOINT_TOLERANCE_RAD)
         per_joint = {name: round(observation.positions.get(name, float("nan")) - v, 6)
                      for name, v in (arm_target if stage.kind != "gripper"
                                      else {bindings.gripper_joint:
@@ -1299,7 +1388,7 @@ def main() -> int:
             "reached": reached,
         }
         stage_records.append(row)
-        if not outcome.accepted or outcome.error_code not in (0, None):
+        if not outcome.accepted or not outcome.result_received or outcome.error_code != 0:
             faults.append((ReasonCode.EXEC_GOAL_REJECTED,
                            f"{stage.label} 컨트롤러 결과 {outcome.error_code}"
                            f" ({outcome.detail})"))
@@ -1921,16 +2010,18 @@ def run_resume(ctx: ResumeContext, *, checkpoint_id: str,
         if stop_at != stage.stage and not external_stop:
             if stage.kind == "gripper":
                 outcome = _send(ctx, "send_gripper", float(stage.gripper_joint_rad),
-                                GRIPPER_SECONDS, ACTION_TIMEOUT,
-                                should_stop=ctx.external_stop)
+                                TIMING.gripper(ctx.transport, float(stage.gripper_joint_rad)),
+                                ACTION_TIMEOUT, should_stop=ctx.external_stop)
             else:
-                outcome = _send(ctx, "send_arm", arm_target, ARM_SECONDS,
+                outcome = _send(ctx, "send_arm", arm_target,
+                                TIMING.arm(ctx.transport, arm_target),
                                 ACTION_TIMEOUT, should_stop=ctx.external_stop)
             external_stop = ctx.external_stop()
         if stop_at == stage.stage or external_stop:
             if not external_stop:
-                _send(ctx, "send_arm_async", arm_target, ARM_SECONDS, ACTION_TIMEOUT)
-                time.sleep(ARM_SECONDS / 3.0)
+                seconds = TIMING.arm(ctx.transport, arm_target)
+                _send(ctx, "send_arm_async", arm_target, seconds, ACTION_TIMEOUT)
+                time.sleep(seconds / 3.0)
             stop_requested = True
             stop_at_time = time.time()
             stop_execution_id = f"simstop_{uuid.uuid4().hex[:16]}"
@@ -1971,18 +2062,16 @@ def run_resume(ctx: ResumeContext, *, checkpoint_id: str,
             follow_samples.extend(follower.samples)
         observation = settled_observation(ctx.transport)
         if stage.kind == "gripper":
-            error = abs(observation.positions.get(bindings.gripper_joint, float("nan"))
-                        - float(stage.gripper_joint_rad))
+            error = observed_goal_error(observation, {bindings.gripper_joint: float(stage.gripper_joint_rad)})
         else:
-            error = max((abs(observation.positions.get(n, float("nan")) - v)
-                         for n, v in arm_target.items()), default=float("nan"))
-        reached = bool(error == error and error <= JOINT_TOLERANCE_RAD)
+            error = observed_goal_error(observation, arm_target)
+        reached = bool(observation.valid and error == error and error <= JOINT_TOLERANCE_RAD)
         stage_records.append({"stage": stage.stage, "label": stage.label,
                               "executed": True, "goal_accepted": outcome.accepted,
                               "controller_error_code": outcome.error_code,
                               "observed_error_rad": None if error != error
                               else round(error, 6), "reached": reached})
-        if not outcome.accepted or outcome.error_code not in (0, None):
+        if not outcome.accepted or not outcome.result_received or outcome.error_code != 0:
             faults.append((ReasonCode.EXEC_GOAL_REJECTED,
                            f"{stage.label} 컨트롤러 결과 {outcome.error_code}"))
             break
@@ -2621,10 +2710,11 @@ def _run_held_route(*, stages, bindings, client, snapshot, transport, fixture,
         if not stop_here and not external_stop:
             if stage.kind == "gripper":
                 outcome = transport.send_gripper(
-                    float(stage.gripper_joint_rad), GRIPPER_SECONDS,
+                    float(stage.gripper_joint_rad),
+                    TIMING.gripper(transport, float(stage.gripper_joint_rad)),
                     ACTION_TIMEOUT, should_stop=EXTERNAL_STOP.requested)
             else:
-                outcome = transport.send_arm(arm_target, ARM_SECONDS,
+                outcome = transport.send_arm(arm_target, TIMING.arm(transport, arm_target),
                                              ACTION_TIMEOUT,
                                              should_stop=EXTERNAL_STOP.requested)
             external_stop = EXTERNAL_STOP.requested()
@@ -2632,8 +2722,9 @@ def _run_held_route(*, stages, bindings, client, snapshot, transport, fixture,
             print(f"[외부 정지 요청] {stage.label} 중 — STOP 절차로 들어간다")
         if stop_here or external_stop:
             if not external_stop:
-                transport.send_arm_async(arm_target, ARM_SECONDS, ACTION_TIMEOUT)
-                time.sleep(ARM_SECONDS / 3.0)
+                seconds = TIMING.arm(transport, arm_target)
+                transport.send_arm_async(arm_target, seconds, ACTION_TIMEOUT)
+                time.sleep(seconds / 3.0)
             stop_requested = True
             stop_requested_at = time.time()
             stop_execution_id = f"simstop_{uuid.uuid4().hex[:16]}"
@@ -2695,15 +2786,14 @@ def _run_held_route(*, stages, bindings, client, snapshot, transport, fixture,
                                                   float("nan"))
                         - float(stage.gripper_joint_rad))
         else:
-            error = max((abs(observation.positions.get(n, float("nan")) - v)
-                         for n, v in arm_target.items()), default=float("nan"))
-        reached = bool(error == error and error <= JOINT_TOLERANCE_RAD)
+            error = observed_goal_error(observation, arm_target)
+        reached = bool(observation.valid and error == error and error <= JOINT_TOLERANCE_RAD)
         stage_records.append({"stage": stage.stage, "label": stage.label,
                               "executed": True, "goal_accepted": outcome.accepted,
                               "controller_error_code": outcome.error_code,
                               "observed_error_rad": None if error != error
                               else round(error, 6), "reached": reached})
-        if not outcome.accepted or outcome.error_code not in (0, None):
+        if not outcome.accepted or not outcome.result_received or outcome.error_code != 0:
             faults.append((ReasonCode.EXEC_GOAL_REJECTED,
                            f"{stage.label} 컨트롤러 결과 {outcome.error_code}"))
             break

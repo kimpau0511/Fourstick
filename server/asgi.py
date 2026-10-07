@@ -10,6 +10,9 @@ ASGI 인터페이스를 직접 쓰는 것이 의존성을 늘리지 않는 가�
 경계 검증은 `server/schemas.py`의 Pydantic 모델이 한다 — 이 파일은 요청 본문을
 읽어 넘기고 결과를 JSON으로 돌려주는 일만 한다.
 
+로그인(`server/auth.py`): `config.require_login`이면 로그인·정지·정적 파일 말고는 로그인 세션 쿠키가
+있어야 한다. 검사는 여기 한 곳에서 한다 — 라우트마다 넣으면 새 라우트가 조용히 열린다.
+
 WebSocket 둘. **둘 다 session_id를 요구한다.**
 - `/v1/events?session_id=…&client_id=…` — 그 세션의 이벤트만 보낸다. 전체
   정지(scope=global)는 로봇 하나를 공유하는 모든 구독자에게 간다.
@@ -20,15 +23,19 @@ WebSocket 둘. **둘 다 session_id를 요구한다.**
 
 from __future__ import annotations
 
+import asyncio
 import json
 import mimetypes
+import sys
 import urllib.parse
 
 from server.api import Api, ApiError
+from server.auth import AuthService, cookie_token
 from server.config import ServerConfig
 from server.exit_watchdog import arm_exit_watchdog
 from server.routes import (
     HTTP_ROUTES,
+    auth as auth_routes,
     execution as execution_routes,
     scene as scene_routes,
     sim_view as sim_view_routes,
@@ -59,6 +66,7 @@ class Application:
         self.runtime = runtime or build_runtime(self.config)
         self.api = Api(runtime=self.runtime)
         self.hub = EventHub()
+        self.auth = AuthService(repository=self.runtime.repository, config=self.config)
         self.api.listeners.append(self.hub.fanout)
         self.ctx = RouteContext(
             api=self.api, runtime=self.runtime, config=self.config,
@@ -101,8 +109,16 @@ class Application:
         path = scope["path"]
         method = scope["method"]
         query = _query_dict(scope.get("query_string", b""))
+        token = cookie_token(scope.get("headers", []))
+        actor = self.auth.actor_of(method, path, token)
         try:
-            status, headers, body = await self._route(method, path, receive, query)
+            if path.startswith(auth_routes.PREFIX):
+                result = await auth_routes.handle(self.auth, self.ctx, method, path, receive, scope.get("headers", []))
+                status, headers, body = result or (404, [], json_bytes({"error": f"경로가 없다: {path}", "reason_code": None}))
+            elif (refused := self.auth.refusal(method, path, token)) is not None:
+                status, headers, body = refused
+            else:
+                status, headers, body = await self._route(method, path, receive, query)
         except ApiError as exc:
             status, headers, body = error_response(exc)
         except Exception as exc:  # noqa: BLE001 — 서버 오류를 성공으로 숨기지 않는다
@@ -116,6 +132,12 @@ class Application:
         await send({"type": "http.response.start", "status": status,
                     "headers": merged})
         await send({"type": "http.response.body", "body": body})
+        # 명령을 보낸 사람(결정 Q10). 응답을 보낸 **뒤에** 남긴다 — 기록 때문에 정지 응답이 늦어지지 않게.
+        # 기록 실패가 이미 처리된 명령을 실패로 바꾸지 않게 하고, 실패는 숨기지 않고 서버 로그에 남긴다.
+        try:
+            await asyncio.to_thread(self.auth.record_command, method, path, actor, status, body)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[audit] 명령 보낸 사람 기록 실패 {method} {path}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     async def _body(self, receive) -> dict:
         chunks = b""
@@ -176,6 +198,10 @@ class Application:
         query = _query_dict(scope.get("query_string", b""))
         session_id = query.get("session_id", "")
         client_id = query.get("client_id", "")
+        if self.auth.ws_refused(path, scope.get("headers", [])):
+            await receive()
+            await send({"type": "websocket.close", "code": 4401})  # accept 전 close → 핸드셰이크 거절
+            return
         if path == "/v1/events":
             await execution_routes.events_socket(
                 self.ctx, receive, send, session_id, client_id

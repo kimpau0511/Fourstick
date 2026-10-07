@@ -36,10 +36,11 @@ export default function Home({ server, cmdJob }) {
       ...(planning ? { badge: planning.detail || '', tone: planning.available ? 'ok' : 'warn' } : {}) },
   ];
   const robot = config?.robot;
-  const job = simDemo?.running_job;
+  const generalRunning = cmdJob?.status === 'running' && !cmdJob.job_id;
+  const job = generalRunning ? cmdJob : simDemo?.running_job;
   const jobs = simDemo?.recent_jobs;
-  // 진행률은 서버 /v1/sim-demo/jobs/<id>의 progress 배열에만 있다 — 이 화면에서 시작해 따라가는 작업만 막대로 보인다.
-  const steps = cmdJob && job && cmdJob.job_id === job.job_id && Array.isArray(cmdJob.progress) && cmdJob.progress.length ? cmdJob.progress : null;
+  // 이 화면의 일반 실행 단계 이벤트 또는 같은 시연 작업의 관측 진행만 표시한다.
+  const steps = cmdJob && job && (generalRunning || cmdJob.job_id === job.job_id) && Array.isArray(cmdJob.progress) && cmdJob.progress.length ? cmdJob.progress : null;
   const percent = steps ? Math.round((steps.filter((p) => p.reached).length / steps.length) * 100) : 0;
   const expand = useExpand();
   const matName = Object.fromEntries((simDemo?.materials || []).map((m) => [m.model, m.korean]));

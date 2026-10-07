@@ -93,6 +93,8 @@ class WebCase(unittest.IsolatedAsyncioTestCase):
             enable_stt=False,
             # 존재하지 않는 이름을 줘서 실제 모델 서버를 부르지 않게 한다.
             llm_config_name="__absent__.json",
+            # 로그인 경계는 test_auth_api.py가 따로 검증한다. 여기는 기능 경로만 본다.
+            require_login=False,
         )
         runtime = build_runtime(config)
         self.provider = ScriptedProvider(self.provider_outputs)
@@ -462,6 +464,53 @@ class TestApprovalAndExecution(WebCase):
         self.assertEqual(
             response.json()["reason_code"], ReasonCode.PLAN_UNKNOWN_RESOURCE.value
         )
+
+
+class TestMotionExecution(WebCase):
+    async def test_zero_blocks_general_execute_before_adapter_motion(self):
+        from types import SimpleNamespace
+        from core.motion_speed import MotionSpeedPolicy
+        from server.sim_demo_motion import MotionSettings
+        settings = MotionSettings(MotionSpeedPolicy.from_config(json.loads(
+            (ROOT / "config/workcell/fr3_2f85_workcell_motion.json").read_text())),
+            Path(self.tmp.name) / "speed.json")
+        self.app.runtime.sim_demo_jobs = SimpleNamespace(motion=settings)
+        payload = (await self.plan()).json()
+        await self.decide(payload["plan"]["plan_id"], bundle=payload)
+        settings.set_percent(0)
+        response = await self.run_execute(payload)
+        self.assertEqual(response.status, 409)
+        self.assertEqual(response.json()["reason_code"], "exec.speed_zero")
+        self.assertEqual(self.app.runtime.repository.executions_for_request(payload["request_id"]), ())
+        self.assertIsNone(self.app.runtime.cell_execution.current())
+
+    async def test_general_execution_snapshots_speed_for_all_steps(self):
+        from types import SimpleNamespace
+        from core.motion_speed import MotionSpeedPolicy
+        from server.sim_demo_motion import MotionSettings
+        settings = MotionSettings(MotionSpeedPolicy.from_config(json.loads(
+            (ROOT / "config/workcell/fr3_2f85_workcell_motion.json").read_text())),
+            Path(self.tmp.name) / "speed.json")
+        settings.set_percent(50)  # 실행 중 0% 변경과 구분할 시작값을 명시한다.
+        self.app.runtime.sim_demo_jobs = SimpleNamespace(motion=settings)
+        adapter = self.app.runtime.adapter()
+        speeds = []
+        adapter.configure_motion = lambda policy, percent: speeds.append(percent)
+        original = adapter.move
+        def move(*args, **kwargs):
+            settings.set_percent(0)
+            return original(*args, **kwargs)
+        adapter.move = move
+        payload = (await self.plan()).json()
+        await self.decide(payload["plan"]["plan_id"], bundle=payload)
+        result = await self.run_execute(payload)
+        self.assertEqual(result.status, 200)
+        self.assertTrue(result.json()["ok"])
+        self.assertEqual(speeds, [50])
+        payload = (await self.plan()).json()
+        await self.decide(payload["plan"]["plan_id"], bundle=payload)
+        self.assertEqual((await self.run_execute(payload)).status, 409)
+        self.assertEqual(speeds, [50])
 
 
 class TestStop(WebCase):

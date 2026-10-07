@@ -3,7 +3,12 @@ import { DetailRow, ExpandButton } from '../components/ExpandRow.jsx';
 import { useExpand } from '../components/useExpand.js';
 import Spinner from '../components/Spinner.jsx';
 import { LEVEL_LABELS } from '../server.js';
+import RobotConfig from './RobotConfig.jsx';
 import './robots.css';
+
+// 화면 탭. 고른 탭은 주소(#/robots?tab=config)에 둔다 — 새로고침해도 같은 탭에 머문다.
+const VIEWS = [['list', '로봇 목록'], ['config', '구성 · 작업 셀']];
+const viewFromHash = () => (new URLSearchParams(window.location.hash.split('?')[1] || '').get('tab') === 'config' ? 'config' : 'list');
 
 const TABS = ['개요', '도구 장착 이력', '프로파일 버전'];
 const NONE = '데이터 없음';
@@ -23,6 +28,24 @@ function operability(server) {
 }
 
 export default function Robots({ server }) {
+  const [view, setView] = useState(viewFromHash);
+  function pick(v) {
+    setView(v);
+    window.history.replaceState(null, '', v === 'config' ? '#/robots?tab=config' : '#/robots');
+  }
+  return <section>
+    <h2>로봇 관리</h2>
+    <div className="page-tabs" role="tablist" aria-label="로봇 관리 화면">
+      {VIEWS.map(([v, label]) => <button key={v} type="button" role="tab" id={`robots-tab-${v}`} aria-controls={`robots-view-${v}`}
+        aria-selected={view === v} onClick={() => pick(v)}>{label}</button>)}
+    </div>
+    <div role="tabpanel" id={`robots-view-${view}`} aria-labelledby={`robots-tab-${view}`}>
+      {view === 'config' ? <RobotConfig server={server} /> : <RobotList server={server} />}
+    </div>
+  </section>;
+}
+
+function RobotList({ server }) {
   const { health, config, robots, robotStatus } = server;
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState(TABS[0]);
@@ -36,12 +59,11 @@ export default function Robots({ server }) {
   const isServerRobot = !!id && health?.robot?.robot_id === id;
   const op = isServerRobot ? operability(server) : NONE;
 
-  return <section>
-    <h2>로봇 관리</h2>
+  return <>
     {!ids.length ? <p className="muted">{!robots && server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p> : <div className="robots-split">
       <div className="card table robots-list">
         <table className="data-table" aria-label="로봇 목록">
-          <thead><tr><th>이름</th><th className="col-extra">모델</th><th className="col-extra">셀</th><th className="col-extra">현재 도구</th><th>운용 여부</th></tr></thead>
+          <thead><tr><th>로봇</th><th className="col-extra">모델</th><th className="col-extra">셀</th><th className="col-extra">현재 도구</th><th>운용 여부</th></tr></thead>
           <tbody>{ids.map((rid) => {
             const r = config?.robot?.robot_id === rid ? config.robot : null;
             const model = robots.robots[rid].profile_id || rid;
@@ -53,7 +75,8 @@ export default function Robots({ server }) {
                 <td className="col-extra">{model}</td>
                 <td className="col-extra">{cell}</td>
                 <td className="col-extra">{tool}</td>
-                <td>{health?.robot?.robot_id === rid ? (operability(server) === '운용 가능' ? '운용 가능' : '운용 불가') : NONE}</td>
+                {/* 운용 가능 초록 · 운용 불가 빨강(2026-10-07 사용자 요청), 확인 안 됨은 색 없이 */}
+                <td>{health?.robot?.robot_id === rid ? (operability(server) === '운용 가능' ? <span className="ok">운용 가능</span> : <span className="danger">운용 불가</span>) : NONE}</td>
               </tr>
               <DetailRow open={expand.isOpen(rid)} span={2} items={[['모델', model], ['셀', cell], ['현재 도구', tool]]} />
             </Fragment>;
@@ -88,5 +111,5 @@ export default function Robots({ server }) {
         </div>}
       </div>
     </div>}
-  </section>;
+  </>;
 }

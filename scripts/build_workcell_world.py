@@ -17,12 +17,16 @@
 from __future__ import annotations
 
 import json
+import math
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = ROOT / "config/workcell/fr3_2f85_workcell.json"
-OUT = ROOT / "config/gazebo/fr3_2f85_workcell.sdf"
+# 현장 2(2026-10-07)는 같은 생성기로 다른 설정·출력 파일을 쓴다. 기본값 = 현장 1.
+CONFIG = Path(os.environ.get("FORSTICK2_WORKCELL_CONFIG") or ROOT / "config/workcell/fr3_2f85_workcell.json")
+OUT = Path(os.environ.get("FORSTICK2_WORLD_SDF") or ROOT / "config/gazebo/fr3_2f85_workcell.sdf")
+MESH_DIR = ROOT / "config/gazebo/meshes"
 
 
 def resolve_frame(frames: dict, name: str) -> list[float]:
@@ -81,6 +85,64 @@ def box_inertia(mass: float, size) -> str:
 """
 
 
+def triangle_prism_obj(side: float, height: float) -> str:
+    """정삼각형 단면 기둥(무게중심 원점). 면마다 꼭짓점·법선을 따로 둔다 — dartsim·ODE 메시는 법선 수가
+    꼭짓점 수와 같아야 받는다(없으면 메시를 버리고 충돌 생성에서 죽었다, 2026-10-07 실측)."""
+    r = side / math.sqrt(3.0)
+    pts = [(r * math.cos(math.radians(a)), r * math.sin(math.radians(a))) for a in (0, 120, 240)]
+    h = height / 2.0
+    verts = [(x, y, -h) for x, y in pts] + [(x, y, h) for x, y in pts]
+    faces = [(1, 3, 2), (4, 5, 6)]
+    for i in range(3):
+        j = (i + 1) % 3
+        faces += [(i + 1, j + 1, j + 4), (i + 1, j + 4, i + 4)]
+    lines, body = ["# 생성 파일 — scripts/build_workcell_world.py", "o triangle_prism"], []
+    for k, face in enumerate(faces):
+        a, b, c = (verts[i - 1] for i in face)
+        u = [b[i] - a[i] for i in range(3)]
+        w = [c[i] - a[i] for i in range(3)]
+        n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]]
+        size = math.sqrt(sum(x * x for x in n))
+        lines += [f"v {x:.6f} {y:.6f} {z:.6f}" for x, y, z in (a, b, c)]
+        lines.append(f"vn {n[0] / size:.6f} {n[1] / size:.6f} {n[2] / size:.6f}")
+        body.append(f"f {3 * k + 1}//{k + 1} {3 * k + 2}//{k + 1} {3 * k + 3}//{k + 1}")
+    return "\n".join(lines + body) + "\n"
+
+
+def cylinder_inertia(mass: float, radius: float, height: float) -> str:
+    ixx = mass * (3 * radius * radius + height * height) / 12.0
+    izz = mass * radius * radius / 2.0
+    return f"""      <inertial>
+        <mass>{mass}</mass>
+        <inertia>
+          <ixx>{ixx:.8f}</ixx><iyy>{ixx:.8f}</iyy><izz>{izz:.8f}</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+"""
+
+
+def material_geometry(model: dict) -> tuple[str, str]:
+    """자재 형상(기본 상자) → (geometry SDF, inertial SDF). 크기는 모두 size_m 외곽(가로·세로·높이) 안이다."""
+    sx, sy, sz = model["size_m"]
+    shape = model.get("shape", "box")
+    if shape == "box":
+        return f"<box><size>{sx} {sy} {sz}</size></box>", box_inertia(model["mass_kg"], model["size_m"])
+    if shape == "cylinder":
+        r = min(sx, sy) / 2.0
+        return (f"<cylinder><radius>{r}</radius><length>{sz}</length></cylinder>",
+                cylinder_inertia(model["mass_kg"], r, sz))
+    if shape == "triangle_prism":
+        side = min(sx, sy)
+        mesh = MESH_DIR / f"triangle_prism_{int(round(side * 1000))}x{int(round(sz * 1000))}.obj"
+        mesh.parent.mkdir(parents=True, exist_ok=True)
+        mesh.write_text(triangle_prism_obj(side, sz), encoding="utf-8")
+        # 관성: 외접원 원통 근사(시뮬레이션 설계값)
+        return (f"<mesh><uri>file://{mesh}</uri></mesh>",
+                cylinder_inertia(model["mass_kg"], side / math.sqrt(3.0), sz))
+    raise SystemExit(f"모르는 자재 형상: {shape}")
+
+
 def main() -> int:
     data = json.loads(CONFIG.read_text(encoding="utf-8"))
     frames = data["frames"]
@@ -115,22 +177,21 @@ def main() -> int:
             continue
         origin = resolve_frame(frames, model["frame"])
         if model["kind"] == "material":
-            size = model["size_m"]
             r, g, b, a = model["color_rgba"]
             mu = model["friction"]
-            sx, sy, sz = size
+            geometry, inertial = material_geometry(model)
             blocks.append(f"""  <model name="{name}">
     <pose>{origin[0]} {origin[1]} {origin[2]} 0 0 0</pose>
     <link name="body">
-{box_inertia(model["mass_kg"], size)}      <collision name="collision">
-        <geometry><box><size>{sx} {sy} {sz}</size></box></geometry>
+{inertial}      <collision name="collision">
+        <geometry>{geometry}</geometry>
         <surface>
           <friction><ode><mu>{mu}</mu><mu2>{mu}</mu2></ode></friction>
           <contact><collide_bitmask>1</collide_bitmask></contact>
         </surface>
       </collision>
       <visual name="visual">
-        <geometry><box><size>{sx} {sy} {sz}</size></box></geometry>
+        <geometry>{geometry}</geometry>
         <material>
           <ambient>{r * 0.6} {g * 0.6} {b * 0.6} {a}</ambient>
           <diffuse>{r} {g} {b} {a}</diffuse>
@@ -194,7 +255,7 @@ def main() -> int:
 
     sdf = f"""<?xml version="1.0" ?>
 <!-- **생성 파일이다. 손으로 고치지 않는다.**
-     출처: config/workcell/fr3_2f85_workcell.json
+     출처: {CONFIG.relative_to(ROOT) if CONFIG.is_relative_to(ROOT) else CONFIG}
      생성: python3 scripts/build_workcell_world.py
 
      forstick2 8-08 FR3-WMS + GRP-CPL-062 + 2F-85 **작업 셀**.
@@ -276,7 +337,7 @@ def main() -> int:
     model_names = [m.get("name") for m in root.findall(".//world/model")]
     collisions = len(root.findall(".//collision"))
     visuals = len(root.findall(".//visual"))
-    print(f"{OUT.relative_to(ROOT)} 생성 — 모델 {len(model_names)}개"
+    print(f"{OUT.relative_to(ROOT) if OUT.is_relative_to(ROOT) else OUT} 생성 — 모델 {len(model_names)}개"
           f" · collision {collisions} · visual {visuals}")
     print(f"  모델: {', '.join(model_names)}")
     if collisions != visuals:

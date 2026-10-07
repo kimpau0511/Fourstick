@@ -20,8 +20,10 @@ FR3_REPO="${FORSTICK2_FR3_REPO:-/home/asd/external/frcobot_ros2}"
 FR3_URDF="$FR3_REPO/fairino_description/urdf/FR3WMS.urdf"
 ROBOTIQ_REPO="${FORSTICK2_ROBOTIQ_REPO:-/home/asd/external/robotiq_ros}"
 ROBOTIQ_DESC="$ROBOTIQ_REPO/grippers/robotiq_description"
-WORKCELL_JSON="$ROOT/config/workcell/fr3_2f85_workcell.json"
-WORLD="$ROOT/config/gazebo/fr3_2f85_workcell.sdf"
+# 현장 2(2026-10-07)처럼 다른 셀을 같은 로봇으로 띄울 때만 아래 셋을 바꾼다. 기본값 = 현장 1.
+WORKCELL_JSON="${FORSTICK2_WORKCELL_CONFIG:-$ROOT/config/workcell/fr3_2f85_workcell.json}"
+WORLD="${FORSTICK2_WORLD_SDF:-$ROOT/config/gazebo/fr3_2f85_workcell.sdf}"
+WORLD_BUILDER="${FORSTICK2_WORLD_BUILDER:-$ROOT/scripts/build_workcell_world.py}"
 XACRO_FILE="$ROOT/config/gazebo/fr3wms_with_2f85.urdf.xacro"
 ARM_CONTROLLERS="$ROOT/config/gazebo/fr3wms_controllers.yaml"
 GRIPPER_CONTROLLERS="$ROOT/config/gazebo/fr3wms_gripper_controllers.yaml"
@@ -29,7 +31,7 @@ MOUNTING="$ROOT/config/profiles/fr3wms_to_robotiq_2f85_mounting.json"
 LOG_DIR="${FORSTICK2_WORKCELL_LOG_DIR:-/tmp/forstick2_workcell}"
 OVERLAY="/tmp/forstick2_gazebo/overlay"
 URDF_DIR="$LOG_DIR/workcell"
-WORLD_NAME="forstick2_fr3_2f85_workcell"
+WORLD_NAME="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['world_name'])" "$WORKCELL_JSON")"
 MODEL_NAME="fr3wms_2f85_workcell"
 export GZ_PARTITION="${GZ_PARTITION:-forstick2_fr3_workcell}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-44}"
@@ -65,7 +67,7 @@ source /opt/ros/lyrical/setup.bash
 alive() { [[ -f "$LOG_DIR/$1.pid" ]] && kill -0 "$(cat "$LOG_DIR/$1.pid")" 2>/dev/null; }
 
 # ── 1. world SDF를 설정에서 생성한다(설정과 world가 어긋나지 않게) ──────
-python3 "$ROOT/scripts/build_workcell_world.py" | sed 's/^/  /'
+python3 "$WORLD_BUILDER" | sed 's/^/  /'
 
 # ── 2. 로봇 설명 생성 ──────────────────────────────────────────────────
 # robotiq_description 오버레이(단순 조립 셀과 공유한다 — 읽기만 한다).
@@ -175,10 +177,13 @@ pathlib.Path(target).write_text(text, encoding="utf-8")
 print(f"[workcell] MoveIt용 메시 URI 치환 {count}건 -> {target}")
 PYGEN
 
-# derive_workcell_poses.py가 /tmp/forstick2_gazebo/workcell/ 를 본다.
-mkdir -p /tmp/forstick2_gazebo/workcell
-ln -sfn "$URDF_DIR/fr3wms_with_2f85.moveit.urdf" \
-        /tmp/forstick2_gazebo/workcell/fr3wms_with_2f85.moveit.urdf
+# derive_workcell_poses.py가 /tmp/forstick2_gazebo/workcell/ 를 본다(현장 1 기본 작업 폴더일 때만 갱신 —
+# 다른 셀이 현장 1의 링크를 자기 폴더로 돌려 놓지 않게).
+if [[ -z "${FORSTICK2_WORKCELL_LOG_DIR:-}" ]]; then
+  mkdir -p /tmp/forstick2_gazebo/workcell
+  ln -sfn "$URDF_DIR/fr3wms_with_2f85.moveit.urdf" \
+          /tmp/forstick2_gazebo/workcell/fr3wms_with_2f85.moveit.urdf
+fi
 
 if [[ "$URDF_ONLY" -eq 1 ]]; then
   say "--urdf-only: Gazebo를 띄우지 않고 끝낸다."

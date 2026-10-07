@@ -46,7 +46,7 @@ function gateReason(bundle) {
 export function useGeneralCommand() {
   const [state, setState] = useState({
     busy: false, sent: '', result: null, pending: null, deadline: null,
-    job: null, goal: null, error: null, stopNote: null, statusUnknown: false, seq: null, updatedAt: null,
+    job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, seq: null, updatedAt: null,
   });
   const [log, setLog] = useState([]);
   const alive = useRef(true);
@@ -54,6 +54,7 @@ export function useGeneralCommand() {
   const nextId = useRef(1);
   const session = useRef(null);
   const bundleRef = useRef(null); // 확인 카드에 보인 계획 묶음 — 승인 때 이 plan_hash로 대조한다
+  const pauseAsked = useRef(false); // 이번 실행에서 '일시정지'를 요청했는가(중단 결과를 일시정지로 표시할지)
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const patch = useCallback((next) => { if (alive.current) setState((s) => ({ ...s, ...next })); }, []);
   const addEvent = useCallback((kind, label, detail = '', id = currentId.current) => {
@@ -174,7 +175,8 @@ export function useGeneralCommand() {
     }
     addEvent('confirm', '승인', '', id);
     // 서버가 실행 직전에 승인 조건·관문·실행 허가를 다시 본다. 응답이 올 때까지는 '실행 중'이다.
-    patch({ busy: false, result: { decision: 'RUN', reason: null }, job: { job_id: null, status: 'running', progress: [] }, updatedAt: Date.now() });
+    pauseAsked.current = false;
+    patch({ busy: false, result: { decision: 'RUN', reason: null }, job: { job_id: null, status: 'running', progress: [] }, pauseNote: null, updatedAt: Date.now() });
     const done = { current: false };
     const watching = watchTransfer(done, id);
     const exec = await call('POST', '/v1/execute', {
@@ -196,13 +198,16 @@ export function useGeneralCommand() {
     addEvent('result', label, final.state || '', id);
     // 이송 작업 결과(시연 실행기 코드)가 있으면 그것도 보인다 — 실행 결과의 근거다.
     let report = null;
+    let material = null;
     if (transferId) {
       const jr = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(transferId)}`).catch(() => null);
-      if (jr && jr.ok) report = jr.payload.report || null;
+      if (jr && jr.ok) { report = jr.payload.report || null; material = jr.payload.material || null; }
     }
+    // 일시정지로 멈췄다(이 실행만 취소 → 실행기가 정지 지점을 남김). 재개 가능 여부는 서버 상태(actions.resume)가 정한다.
+    const paused = pauseAsked.current && !!e.interrupted && material ? { material } : null;
     patch({
-      job: { job_id: transferId, execution_id: e.execution_id, status: 'finished', report,
-        general: { state: final.state, tone, label: report && RESULT_LABELS[report.status] ? `${label} · ${RESULT_LABELS[report.status][1]}` : label } },
+      job: { job_id: transferId, execution_id: e.execution_id, status: 'finished', report, paused,
+        general: { state: final.state, tone, label: paused ? '일시정지됨' : report && RESULT_LABELS[report.status] ? `${label} · ${RESULT_LABELS[report.status][1]}` : label } },
       updatedAt: Date.now(),
     });
   }, [state.pending, patch, addEvent, watchTransfer]);
@@ -228,10 +233,99 @@ export function useGeneralCommand() {
     patch({ stopNote: { tone: 'ok', text: p.confirmed ? '정지를 확인했습니다 — 새 계획을 요청하면 정지 래치가 풀립니다' : '정지를 요청했습니다 — 정지 확인 전입니다' } });
   }, [patch, addEvent, ensureSession]);
 
+  /** 일시정지 — 이 세션의 실행 중인 작업만(전체 정지 아님). 실행기가 정지 지점(체크포인트)을 남기고 멈춘다. */
+  const pause = useCallback(async () => {
+    let res;
+    try {
+      res = await call('POST', '/v1/executions/active/cancel', { session_id: await ensureSession() });
+    } catch (error) {
+      patch({ pauseNote: { tone: 'danger', text: `일시정지 요청을 보내지 못했습니다: ${error.message}` } });
+      return;
+    }
+    if (!res.ok || !res.payload.requested) {
+      patch({ pauseNote: { tone: 'warn', text: res.payload.detail || `일시정지 요청 실패 — ${reasonOf(res)}` } });
+      return;
+    }
+    pauseAsked.current = true;
+    addEvent('pause', '일시정지 요청', res.payload.detail || '');
+    patch({ pauseNote: { tone: 'ok', text: res.payload.detail || '일시정지를 요청했습니다' } });
+  }, [patch, addEvent, ensureSession]);
+
+  /** 재개 — 일시정지한 자재를 정지 지점에서 이어서 옮긴다. 서버가 재개 가능하다고 할 때만, 실행기가 직전에 다시 검증한다. */
+  const resume = useCallback(async (target = null) => {
+    // 대상 자재: 창이 서버 상태에서 고른 멈춘 자재(전체 정지 뒤 포함), 없으면 이 화면이 일시정지한 자재.
+    const material = target || (state.job && state.job.paused && state.job.paused.material);
+    if (!material) return;
+    patch({ busy: true, pauseNote: null });
+    const st = await call('GET', '/v1/sim-demo').catch(() => null);
+    const row = st && st.ok ? (st.payload.materials || []).find((m) => m.model === material) : null;
+    const checkpoint = st && st.ok ? (st.payload.state || {}).checkpoint : null;
+    if (!row || !row.actions || !row.actions.resume || !checkpoint || checkpoint.model !== material) {
+      patch({ busy: false, pauseNote: { tone: 'warn', text: '이 지점에서는 이어서 할 수 없습니다 — 서버가 재개 가능 상태로 보지 않습니다(복구가 필요할 수 있습니다)' } });
+      return;
+    }
+    const res = await call('POST', '/v1/sim-demo/jobs', { action: 'resume', material, checkpoint_id: checkpoint.checkpoint_id })
+      .catch((e) => ({ ok: false, status: 0, payload: { detail: e.message } }));
+    if (!res.ok || !res.payload.job_id) {
+      patch({ busy: false, pauseNote: { tone: 'danger', text: `재개가 거부되었습니다 — ${reasonOf(res)}` } });
+      return;
+    }
+    const jobId = res.payload.job_id;
+    addEvent('resume', '재개', jobId);
+    patch({ busy: false, job: { job_id: jobId, status: 'running', progress: [], resumed: true }, updatedAt: Date.now() });
+    // 재개 작업이 끝날 때까지 진행만 읽는다. 결과는 실행기 보고서(RESULT_LABELS)로 정한다.
+    for (;;) {
+      await sleep(POLL_MS);
+      if (!alive.current) return;
+      const jr = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`).catch(() => null);
+      if (!jr || !jr.ok) continue;
+      if (jr.payload.status === 'running') { patch({ job: { ...jr.payload, status: 'running', resumed: true }, updatedAt: Date.now() }); continue; }
+      const report = jr.payload.report || null;
+      const hit = report && RESULT_LABELS[report.status];
+      const ok = !!hit && hit[0] === 'ok';
+      addEvent('result', hit ? hit[1] : '재개 결과 확인 안 됨', report ? report.status : '');
+      patch({ job: { ...jr.payload, status: 'finished', report, resumed: true,
+        general: { state: ok ? 'completed' : 'failed', tone: hit ? hit[0] : 'warn', label: `재개 · ${hit ? hit[1] : '결과 확인 안 됨'}` } }, updatedAt: Date.now() });
+      return;
+    }
+  }, [state.job, patch, addEvent]);
+
+  /** 복구 — 재개할 수 없는 지점에서 멈춘 자재를 원래 자리로 되돌린다(서버 restore 작업). 끝나면 서버 기록으로 판정한다. */
+  const restore = useCallback(async (target = null) => {
+    // 대상 자재: 창이 서버 상태에서 고른 멈춘 자재(전체 정지 뒤 포함), 없으면 이 화면이 일시정지한 자재.
+    const material = target || (state.job && state.job.paused && state.job.paused.material);
+    if (!material) return;
+    patch({ busy: true, pauseNote: null });
+    const res = await call('POST', '/v1/sim-demo/jobs', { action: 'restore', material })
+      .catch((e) => ({ ok: false, status: 0, payload: { detail: e.message } }));
+    if (!res.ok || !res.payload.job_id) {
+      patch({ busy: false, pauseNote: { tone: 'danger', text: `복구가 거부되었습니다 — ${reasonOf(res)}` } });
+      return;
+    }
+    const jobId = res.payload.job_id;
+    addEvent('restore', '복구', jobId);
+    patch({ busy: false, job: { job_id: jobId, status: 'running', progress: [], resumed: true, restoring: true }, updatedAt: Date.now() });
+    for (;;) {
+      await sleep(POLL_MS);
+      if (!alive.current) return;
+      const jr = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`).catch(() => null);
+      if (!jr || !jr.ok) continue;
+      if (jr.payload.status === 'running') { patch({ job: { ...jr.payload, status: 'running', resumed: true, restoring: true }, updatedAt: Date.now() }); continue; }
+      // 복구 결과는 실행기 말이 아니라 서버 자재 기록으로 본다: 기록이 비면(원래 자리) 복구됨.
+      const st = await call('GET', '/v1/sim-demo').catch(() => null);
+      const row = st && st.ok ? (st.payload.materials || []).find((m) => m.model === material) : null;
+      const ok = jr.payload.exit_code === 0 && !!row && !row.record;
+      addEvent('result', ok ? '복구 완료' : '복구 확인 안 됨', jr.payload.status || '');
+      patch({ job: { ...jr.payload, status: 'finished', resumed: true,
+        general: { state: ok ? 'completed' : 'failed', tone: ok ? 'ok' : 'warn', label: ok ? '복구 완료 · 원래 자리' : '복구 결과 확인 안 됨 — 자재 상태를 확인해 주세요' } }, updatedAt: Date.now() });
+      return;
+    }
+  }, [state.job, patch, addEvent]);
+
   const reset = useCallback(() => {
     bundleRef.current = null;
-    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false, updatedAt: null });
+    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, updatedAt: null });
   }, [patch]);
 
-  return { ...state, log, send, answer, stop, reset, mode: 'general' };
+  return { ...state, log, send, answer, stop, pause, resume, restore, reset, mode: 'general' };
 }

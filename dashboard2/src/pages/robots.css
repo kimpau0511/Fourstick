@@ -19,3 +19,22 @@
 .detail-fixed > .wide { grid-column: 1 / -1; }
 .detail-toggle { align-self: flex-start; padding: 6px 16px; border-radius: 12px; background: var(--panel-2); box-shadow: var(--btn); font-size: 13px; font-weight: 700; color: var(--cyan); }
 .detail-more { display: flex; flex-direction: column; gap: 14px; }
+
+/* 화면 탭(로봇 목록 / 구성 · 작업 셀) — 상세 탭과 같은 밑줄 모양 */
+.page-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.page-tabs [role="tab"] { padding: 8px 14px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 14px; font-weight: 500; }
+.page-tabs [role="tab"][aria-selected="true"] { border-bottom-color: var(--cyan); color: var(--white); font-weight: 600; }
+
+/* 구성 · 작업 셀 탭 */
+.robot-config { display: flex; flex-direction: column; gap: 16px; }
+.cfg-card { display: flex; flex-direction: column; gap: 14px; padding: 18px; }
+.cfg-card h3 { font-size: 14px; font-weight: 700; }
+.cfg-kv { margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.cfg-kv > div { display: grid; grid-template-columns: 110px 1fr; gap: 12px; }
+.cfg-kv dt { color: var(--muted); }
+.cfg-kv dd { margin: 0; overflow-wrap: anywhere; }
+.cfg-label { margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.cfg-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.cfg-notice { padding: 8px 10px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); font-size: 13px; }
+.cfg-hint { font-size: 12px; }
+.robot-config .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }

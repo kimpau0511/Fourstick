@@ -146,6 +146,17 @@ class ReasonCode(str, Enum):
     SESSION_CLIENT_CONFLICT = "session.client_conflict"
     #: 세션의 클라이언트 등록이 없거나 다른 클라이언트의 것이다.
     SESSION_CLIENT_UNKNOWN = "session.client_unknown"
+    # 로그인(구글, 등록 계정만 — 2026-10-06 결정). 위 세션(작업 묶음)과 다른 '사람' 확인이다.
+    #: 로그인 세션 쿠키가 없거나 모르는 값이다.
+    SESSION_UNAUTHENTICATED = "session.unauthenticated"
+    #: 로그인 세션이 만료됐다(유지 시간은 `ServerConfig.login_session_ttl_sec`).
+    SESSION_EXPIRED = "session.expired"
+    #: 구글 계정은 확인됐지만 DB에 등록된 계정이 아니다.
+    SESSION_ACCOUNT_NOT_REGISTERED = "session.account_not_registered"
+    #: 등록은 됐지만 사용이 중지된 계정이다.
+    SESSION_ACCOUNT_DISABLED = "session.account_disabled"
+    #: 구글 인가 코드 교환·ID 토큰 확인에 실패했다(구글 오류·네트워크·토큰 값 불일치).
+    SESSION_LOGIN_FAILED = "session.login_failed"
 
     # ── 로봇 ────────────────────────────────────────────────────────────
     ROBOT_NOT_REGISTERED = "robot.not_registered"
@@ -165,6 +176,7 @@ class ReasonCode(str, Enum):
     EXEC_CANCELED = "exec.canceled"
     EXEC_GOAL_NOT_REACHED = "exec.goal_not_reached"
     EXEC_TASK_FAILED = "exec.task_failed"
+    EXEC_SPEED_ZERO = "exec.speed_zero"
     EXEC_STOPPED = "exec.stopped"
     EXEC_STOP_UNCONFIRMED = "exec.stop_unconfirmed"
     EXEC_ENVIRONMENT_CHANGED = "exec.environment_changed"

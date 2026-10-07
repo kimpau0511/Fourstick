@@ -80,6 +80,11 @@ async def handle(
                 session_id=query_param(query, "session_id"),
                 execution_id=rest,
             ))
+        if method == "POST" and rest == "active/cancel":
+            # 시뮬레이션 보기의 '일시정지': 이 세션에서 지금 실행 중인 작업만 멈춘다(전체 정지 아님).
+            payload = await ctx.read_body(receive)
+            return json_response(api.cancel_active_execution(
+                session_id=body_field(payload, "session_id")))
         if method == "POST" and rest.endswith("/cancel"):
             payload = await ctx.read_body(receive)
             return json_response(api.cancel_execution(

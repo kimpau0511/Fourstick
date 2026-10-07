@@ -73,9 +73,10 @@ for (const width of [1024, 820]) {
   test(`[UI-RESP-01][DEV-07] 폭 ${width}px에서 가로 스크롤 없음, 비상 정지 보임`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/');
+    // 헤더가 보인 뒤에 잰다 — 로그인 확인 중 화면에서 재면 대시보드를 재지 않고 통과한다.
+    await expect(page.locator('header').getByRole('button', { name: /정지/ })).toBeInViewport();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
-    await expect(page.locator('header').getByRole('button', { name: /정지/ })).toBeInViewport();
   });
 }
 
@@ -116,7 +117,7 @@ test('[UI-RESP-04][1A] 좁은 폭(820px): 핵심 열만 보이고 행 펼침 버
   await expect(first).toHaveAttribute('aria-expanded', 'false');
   await first.click();
   await expect(first).toHaveAttribute('aria-expanded', 'true');
-  await expect(table).toContainText('요청자: 서버 기록');
+  await expect(table).toContainText('요청자: 기록 없음'); // 보낸 사람 기록(결정 Q10)이 없는 작업
   await expect(page.getByRole('region', { name: '명령 상세' })).toHaveCount(0); // 펼침이 행 선택으로 번지지 않는다
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(table.getByRole('button', { name: '자세히' })).toHaveCount(0);

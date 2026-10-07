@@ -44,14 +44,14 @@ class HttpClient:
     def __init__(self, app):
         self.app = app
 
-    async def request(self, method: str, path: str, payload: Any = None) -> Response:
+    async def request(self, method: str, path: str, payload: Any = None, headers: list | None = None) -> Response:
         body = b"" if payload is None else json.dumps(payload).encode("utf-8")
         path, query = split_target(path)
         scope = {
             "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
             "method": method, "path": path, "raw_path": path.encode(),
             "query_string": query, "root_path": "", "scheme": "http",
-            "headers": [(b"host", b"test"), (b"content-type", b"application/json")],
+            "headers": [(b"host", b"test"), (b"content-type", b"application/json"), *(headers or [])],
             "client": ("127.0.0.1", 12345), "server": ("test", 80),
         }
         sent: list[dict] = []
@@ -95,6 +95,8 @@ class WebSocketSession:
     accepted: bool = False
     closed: bool = False
     close_code: int | None = None
+    #: 추가 요청 헤더(예: 로그인 쿠키).
+    headers: list = field(default_factory=list)
     _task: asyncio.Task | None = None
 
     async def __aenter__(self) -> "WebSocketSession":
@@ -102,7 +104,7 @@ class WebSocketSession:
         scope = {
             "type": "websocket", "asgi": {"version": "3.0"}, "path": path,
             "raw_path": path.encode(), "query_string": query, "root_path": "",
-            "scheme": "ws", "headers": [(b"host", b"test")],
+            "scheme": "ws", "headers": [(b"host", b"test"), *self.headers],
             "client": ("127.0.0.1", 12345), "server": ("test", 80),
             "subprotocols": [],
         }
