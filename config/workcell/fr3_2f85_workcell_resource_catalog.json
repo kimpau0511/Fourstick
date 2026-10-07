@@ -1,5 +1,5 @@
 {
-  "catalog_version": "fr3_2f85_workcell-0.1.2-design",
+  "catalog_version": "fr3_2f85_workcell-0.1.2-design+shapes",
   "entries": [
     {
       "resource_id": "loc_pallet_1",
@@ -55,8 +55,23 @@
     {
       "resource_id": "mat_a",
       "kind": "object",
-      "display_name": "A자재",
+      "display_name": "사각형 자재",
       "aliases": [
+        "사각형 자재",
+        "사각형자재",
+        "사각형",
+        "사각",
+        "네모",
+        "네모난",
+        "정사각형",
+        "사각 자재",
+        "네모 자재",
+        "네모난 자재",
+        "정사각형 자재",
+        "주황 사각형",
+        "주황색 사각형",
+        "오렌지 사각형",
+        "오렌지색 사각형",
         "A자재",
         "a자재",
         "에이자재",
@@ -71,13 +86,31 @@
         "오렌지 자재",
         "오렌지색 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_a, 프레임 material_a_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준)"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_a, 프레임 material_a_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준) · 2026-10-07 형상 box·이름 '사각형 자재'로 변경(이전 이름 A/B/C자재·번호·색 별칭은 유지)"
     },
     {
       "resource_id": "mat_b",
       "kind": "object",
-      "display_name": "B자재",
+      "display_name": "삼각형 자재",
       "aliases": [
+        "삼각형 자재",
+        "삼각형자재",
+        "삼각형",
+        "삼각",
+        "세모",
+        "세모난",
+        "삼각기둥",
+        "삼각 자재",
+        "세모 자재",
+        "세모난 자재",
+        "삼각기둥 자재",
+        "파랑 삼각형",
+        "파란 삼각형",
+        "파란색 삼각형",
+        "파랑색 삼각형",
+        "하늘 삼각형",
+        "하늘색 삼각형",
+        "블루 삼각형",
         "B자재",
         "b자재",
         "비자재",
@@ -95,13 +128,30 @@
         "하늘색 자재",
         "블루 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_b, 프레임 material_b_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준)"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_b, 프레임 material_b_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준) · 2026-10-07 형상 triangle_prism·이름 '삼각형 자재'로 변경(이전 이름 A/B/C자재·번호·색 별칭은 유지)"
     },
     {
       "resource_id": "mat_c",
       "kind": "object",
-      "display_name": "C자재",
+      "display_name": "원형 자재",
       "aliases": [
+        "원형 자재",
+        "원형자재",
+        "원형",
+        "동그라미",
+        "동그란",
+        "원통",
+        "원기둥",
+        "동그라미 자재",
+        "동그란 자재",
+        "원통 자재",
+        "원기둥 자재",
+        "초록 원형",
+        "초록색 원형",
+        "녹색 원형",
+        "연두 원형",
+        "연두색 원형",
+        "그린 원형",
         "C자재",
         "c자재",
         "씨자재",
@@ -118,7 +168,7 @@
         "연두색 자재",
         "그린 자재"
       ],
-      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_c, 프레임 material_c_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준)"
+      "provenance": "config/workcell/fr3_2f85_workcell.json resource_map — Gazebo 모델 material_c, 프레임 material_c_frame. 좌표는 카탈로그에 두지 않는다 · 번호 별칭(1번 자재 등)은 8-13 명령 평가셋 요구로 추가 · 색 별칭은 셀 설정 resource_map[].korean_colors 선언에서 온다(모델 color_rgba 기준) · 2026-10-07 형상 cylinder·이름 '원형 자재'로 변경(이전 이름 A/B/C자재·번호·색 별칭은 유지)"
     }
   ]
 }

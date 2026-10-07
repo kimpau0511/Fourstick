@@ -5,20 +5,35 @@
 썼다. 그래서 축약 발화에서 역할을 뒤바꾼 계획이 통과하고("a자재 컨베이어로"), 상징 표현으로 만든 맞는
 계획이 막혔다("초록자재 원래자리로" → 3번 팔레트가 '요청에 없는 리소스').
 
+2차(같은 날, 복귀 버튼·긴 문장 실측) 공통 원인:
+- 모델의 **역할 배정**을 그대로 믿었다. "A자재를 원래 자리로 돌려놔"에서 모델이 '원래 자리'를
+  출발지 칸에 적고 목적지를 비워, 복귀 버튼이 매번 "어디로 옮길까요?"로 끝났다. '저기 있는 그',
+  '팔레트'(어느 팔레트인지 없음)를 말한 출발지로 받아 되물었다.
+- 작업 하나만 받는 형식이라 작업 둘·자재 둘·정정을 한 작업으로 뭉갰고, 그 작업이 통과했다.
+- 자재 표현이 있어도 모델이 `other`라 하면 기존 계획 생성으로 빠졌다(없는 자재·'A자재 옮겨줘').
+- 같은 세션 맥락이 없어 '그거'·되묻기 뒤의 답을 이을 수 없었다.
+
 여기서 하는 일:
-1. Qwen이 의도 하나를 고른다(`planning/intent_interpreter.py`): 자재·말한 출발지·목적지(id 또는
-   `origin`·`free_slot`)와 각각의 **원문 표현**.
-2. 서버가 해소·검증한다. 고른 id마다 근거를 남긴다(`core/task_intent.py`):
-   - 자재: 원문 표현이 발화에 있고, 그 표현이 **그 자재만** 가리킨다(카탈로그 별칭·이름·등록 색).
-   - 출발지: 말했으면 원문 근거를 확인하고 **현재 위치(기록)와 다르면 차단**. 말하지 않았으면 현재
-     위치(state 근거). 현재 위치를 모르면 되묻는다.
-   - 목적지: 위치 id면 원문 근거 확인. `origin`은 등록된 원래 팔레트(registry 근거), `free_slot`은
-     컨베이어 빈 칸(state 근거, 없으면 차단). 출발지와 같으면 되묻는다.
-3. 계획은 검증된 의도로 **결정적으로** 만든다(이동→집기→이동→놓기→종료 스킬). 요청↔계획 일치 검증도
+1. Qwen이 작업(들)을 말한 순서대로 읽는다(`planning/intent_interpreter.py`): 자재·출발지·목적지
+   (id 또는 `origin`·`free_slot`)와 각각의 **원문 표현**.
+2. 서버가 모델과 **따로** 원문을 훑는다: 등록된 자재 이름·색, 등록된 장소 표현과 그 **뒤에 붙은 조사**
+   (출발 '에서', 도착 '로' — 등록 파일의 role_markers). 조사가 정한 역할이 모델 배정보다 우선이다.
+   자재가 둘 이상·작업이 둘 이상·목적지가 둘 이상이면 실행 의도를 만들지 않고 되묻는다.
+3. 해소·검증. 고른 id마다 근거를 남긴다(`core/task_intent.py`):
+   - 자재: 원문이 **그 자재만** 가리킨다(카탈로그 별칭·이름·등록 색). 원문에 가리키는 말('그거')만
+     있으면 같은 세션 맥락(직전에 옮긴 자재·앞 질문에서 확인한 자재)으로 — 맥락이 없으면 되묻는다.
+     등록되지 않은 자재 이름은 차단한다.
+   - 출발지: 말했으면(조사 '에서' 등) **현재 위치(기록)와 다르면 차단**. '팔레트'처럼 여러 위치를
+     가리키면 현재 위치가 그중 하나일 때만 받는다. 말하지 않았으면 현재 위치(state 근거).
+   - 목적지: 위치 id면 원문 근거. `origin`은 등록된 원래 팔레트(registry 근거), `free_slot`은
+     컨베이어 빈 칸(state 근거, 없으면 차단). 이미 거기 있으면 실행하지 않고 안내(noop).
+     다른 자재가 있는 팔레트면 차단.
+   - 하나가 모자라면 확인된 것은 세션에 남기고(draft) 모자란 것만 되묻는다.
+4. 계획은 검증된 의도로 **결정적으로** 만든다(이동→집기→이동→놓기→종료 스킬). 요청↔계획 일치 검증도
    같은 의도로 역할까지 대조한다(`validation/request_plan_consistency.py`).
 
 모델이 만든 계획을 근거로 요청 리소스를 더하지 않는다. 표현별 예외 규칙을 두지 않는다 — 표현은
-모델이 읽고, 서버는 등록 정보·상태·원문 포함 여부만 본다.
+모델이 읽고, 서버는 등록 정보(이름·색·장소 표현·조사)·상태·원문 포함 여부만 본다.
 """
 
 from __future__ import annotations
@@ -28,7 +43,9 @@ from typing import Any, Mapping
 
 from core.reason_codes import ReasonCode
 from core.resource_catalog import ResourceCatalog, ResourceKind, normalize
+from planning.intent_interpreter import TaskMention
 from core.task_intent import (
+    CONTEXT,
     REGISTRY,
     STATE,
     TRANSFER,
@@ -39,11 +56,17 @@ from core.task_intent import (
 )
 
 _CONVEYOR = "loc_conveyor"
+#: 앞 질문에서 확인한 값(draft)을 이어 쓰는 시간. 지나면 버린다.
+DRAFT_TTL_SEC = 300.0
 
 
 @dataclass(frozen=True)
 class IntentDecision:
-    """해석 결과. `kind`: intent(검증된 의도) | other(이송 아님 → 기존 계획 생성) | ask | block."""
+    """해석 결과. `kind`: intent(검증된 의도) | other(이송 아님 → 기존 계획 생성) | ask | block
+    | noop(이미 목적지에 있음 — 실행할 것이 없다는 안내).
+
+    `draft`: 되묻기에서 세션에 남길 확인된 값({"material": ref, "destination": ref, "question"}).
+    None이면 세션의 기존 draft를 건드리지 않는다(해석 실패 등)."""
 
     kind: str
     intent: TaskIntent | None = None
@@ -51,6 +74,8 @@ class IntentDecision:
     detail: str = ""
     clarification: str | None = None
     interpretation: Mapping[str, Any] | None = None
+    draft: Mapping[str, Any] | None = None
+    tasks: tuple[str, ...] = ()
 
 
 def _catalog_location(place: str | None, catalog: ResourceCatalog) -> str | None:
@@ -64,14 +89,19 @@ def _catalog_location(place: str | None, catalog: ResourceCatalog) -> str | None
 
 
 def cell_facts(catalog: ResourceCatalog, jobs) -> dict:
-    """셀 설정·등록 정보·상태 기록만으로 만든 사실. 모델 입력과 서버 검증이 같이 쓴다."""
+    """셀 설정·등록 정보·상태 기록만으로 만든 사실. 모델 입력과 서버 검증이 같이 쓴다.
+
+    상태 기록을 읽지 못하면 `state_error`에 이유를 두고 모든 현재 위치를 모름(None)으로 둔다."""
     from validation.conveyor_slots import occupancy
 
     workcell = jobs.workcell
+    state_error = None
     try:
         world = jobs.transfer_world()
-    except Exception:  # noqa: BLE001 — 기록이 확정되지 않았으면 위치를 모른다고 둔다
-        world = None
+        if world is None:
+            state_error = "확정되지 않은 자재 기록이 있습니다"
+    except Exception as exc:  # noqa: BLE001 — 기록이 확정되지 않았으면 위치를 모른다고 둔다
+        world, state_error = None, f"자재 상태 기록을 읽지 못했습니다({exc})"[:160]
     location_of = dict(getattr(world, "location_of", None) or {})
     capability = jobs._capability()
     materials = []
@@ -97,10 +127,14 @@ def cell_facts(catalog: ResourceCatalog, jobs) -> dict:
             "tokens": sorted({normalize(t) for t in (entry.display_name, *entry.aliases)
                               if normalize(t)}),
         })
-    records = ((jobs.status() or {}).get("state") or {}).get("objects") or {}
-    free = [name for name, who in occupancy(jobs.slots, records).items() if who is None] \
-        if getattr(jobs, "slots", None) else []
-    return {"materials": materials, "locations": locations, "free_conveyor_slots": free}
+    try:
+        records = ((jobs.status() or {}).get("state") or {}).get("objects") or {}
+        free = [name for name, who in occupancy(jobs.slots, records).items() if who is None] \
+            if getattr(jobs, "slots", None) else []
+    except Exception as exc:  # noqa: BLE001
+        free, state_error = [], state_error or f"작업 상태를 읽지 못했습니다({exc})"[:160]
+    return {"materials": materials, "locations": locations, "free_conveyor_slots": free,
+            "state_error": state_error}
 
 
 def _in_utterance(text: str | None, utterance: str) -> bool:
@@ -123,6 +157,31 @@ def _names(rows, text: str) -> list[str]:
 def load_place_terms(manifest_path) -> dict[str, dict]:
     """활성 작업 셀 매니페스트의 `place_terms` 파일 → {상징: {terms(정규화), requires_location}}.
     파일이 없으면 빈 dict — 상징 목적지(원래 자리·빈자리)를 받지 않는다(되묻는다)."""
+    data = _place_terms_file(manifest_path)
+    out = {}
+    for symbol, spec in (data.get("symbols") or {}).items():
+        out[symbol] = {"terms": sorted({normalize(t) for t in spec.get("terms") or () if normalize(t)}),
+                       "requires_location": spec.get("requires_location")}
+    return out
+
+
+def load_language_terms(manifest_path) -> dict:
+    """같은 파일의 references(가리키는 말·일반 명사)와 role_markers(역할 조사), 정규화해서.
+    파일이 없으면 빈 목록 — 맥락 해소를 하지 않고(되묻는다) 조사로 역할을 고치지 않는다."""
+    data = _place_terms_file(manifest_path)
+    refs = data.get("references") or {}
+    markers = data.get("role_markers") or {}
+    norm = lambda rows: [normalize(t) for t in rows or () if normalize(t)]  # noqa: E731
+    # 긴 조사부터 본다('에서'가 '에'보다 먼저, '으로'가 '로'보다 먼저).
+    by_length = lambda rows: sorted(set(norm(rows)), key=len, reverse=True)  # noqa: E731
+    return {"context": norm((refs.get("context") or {}).get("terms")),
+            "correction": norm((refs.get("correction") or {}).get("terms")),
+            "generic": by_length((refs.get("generic") or {}).get("terms")),
+            "source": by_length(markers.get("source")),
+            "destination": by_length(markers.get("destination"))}
+
+
+def _place_terms_file(manifest_path) -> dict:
     import json
     from pathlib import Path
 
@@ -131,128 +190,433 @@ def load_place_terms(manifest_path) -> dict[str, dict]:
         name = manifest.get("place_terms")
         if not name:
             return {}
-        data = json.loads((Path(manifest_path).parent / name).read_text(encoding="utf-8"))
+        return json.loads((Path(manifest_path).parent / name).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    out = {}
-    for symbol, spec in (data.get("symbols") or {}).items():
-        out[symbol] = {"terms": sorted({normalize(t) for t in spec.get("terms") or () if normalize(t)}),
-                       "requires_location": spec.get("requires_location")}
+
+
+# ── 원문 훑기(모델과 별개) ──────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class PlaceMention:
+    """원문에서 찾은 등록 장소 표현 하나. `role`은 바로 뒤 조사로 정한다(없으면 None)."""
+
+    kind: str          # location | symbol
+    key: str           # 위치 id 또는 상징(origin·free_slot)
+    start: int
+    end: int
+    surface: str       # 정규화된 원문 조각(표현 + 조사)
+    role: str | None
+
+
+def _find_all(text: str, token: str):
+    start = text.find(token)
+    while token and start >= 0:
+        yield start, start + len(token)
+        start = text.find(token, start + 1)
+
+
+def _marker_role(rest: str, terms: Mapping[str, Any]) -> tuple[str | None, str]:
+    for role in ("source", "destination"):        # 출발 조사를 먼저 본다('에서' ⊃ '에')
+        for marker in terms.get(role) or ():
+            if rest.startswith(marker):
+                return role, marker
+    return None, ""
+
+
+def scan_places(utterance: str, facts: Mapping[str, Any], terms: Mapping[str, Any]) -> list[PlaceMention]:
+    u = normalize(utterance)
+    found = []
+    for loc in facts["locations"]:
+        for tok in loc["tokens"]:
+            found += [("location", loc["id"], s, e) for s, e in _find_all(u, tok)]
+    for symbol, spec in (facts.get("symbols") or {}).items():
+        for tok in spec["terms"]:
+            found += [("symbol", symbol, s, e) for s, e in _find_all(u, tok)]
+    # 더 긴 표현 안에 든 짧은 표현은 버린다('컨베이어벨트' 안의 '벨트', '원래팔레트' 안의 위치 없음).
+    kept = [f for f in found if not any(o is not f and o[2] <= f[2] and f[3] <= o[3]
+                                        and (o[3] - o[2]) > (f[3] - f[2]) for o in found)]
+    out, seen = [], set()
+    for kind, key, s, e in sorted(kept, key=lambda f: f[2]):
+        if (s, e) in seen:
+            continue
+        seen.add((s, e))
+        role, marker = _marker_role(u[e:], terms)
+        out.append(PlaceMention(kind, key, s, e, u[s:e + len(marker)], role))
     return out
+
+
+def scan_materials(utterance: str, facts: Mapping[str, Any]) -> list[str]:
+    """원문이 이름·별칭·색으로 가리킨 자재들(처음 나온 순서)."""
+    u = normalize(utterance)
+    first = {}
+    for m in facts["materials"]:
+        hits = [u.find(tok) for tok in m["tokens"] if tok and tok in u]
+        if hits:
+            first[m["id"]] = min(hits)
+    return sorted(first, key=lambda mid: first[mid])
+
+
+def category_words(facts: Mapping[str, Any]) -> dict[str, list[str]]:
+    """둘 이상의 위치 이름에 같이 들어 있는 낱말(예: '팔레트') → 그 위치들. 등록 이름에서만 뽑는다."""
+    owners: dict[str, set[str]] = {}
+    for loc in facts["locations"]:
+        for name in (loc["name"], *loc.get("aliases", ())):
+            for word in str(name).split():
+                w = normalize(word)
+                if len(w) >= 2 and not any(ch.isdigit() for ch in w):
+                    owners.setdefault(w, set()).add(loc["id"])
+    return {w: sorted(ids) for w, ids in owners.items() if len(ids) > 1}
+
+
+def _strip_markers(text: str, terms: Mapping[str, Any]) -> str:
+    core = normalize(text or "")
+    changed = True
+    while changed and core:
+        changed = False
+        for marker in (*(terms.get("source") or ()), *(terms.get("destination") or ()),
+                       "있는", "있던", "에"):
+            if core.endswith(marker) and len(core) > len(marker):
+                core, changed = core[: -len(marker)], True
+                break
+    return core
+
+
+# ── 판정 ──────────────────────────────────────────────────────────────────────
+
+
+def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
+                  min_confidence: float, context: Mapping[str, Any] | None = None) -> IntentDecision:
+    """해석 결과 → 검증된 의도 · 되묻기 · 차단 · 안내(noop) · 기존 경로(이송 아님).
+
+    **원문 근거가 판정의 기준이다.** 모델이 고른 id·역할은 원문(등록 이름·색·장소 표현·조사)과
+    맞을 때만 쓴다. `context`는 같은 세션의 서버 기록: {"moved": 직전에 옮긴 자재, "draft": 앞
+    질문에서 확인한 값} — 원문에 가리키는 말이 있거나 앞 질문의 답일 때만 쓴다.
+    """
+    materials = {m["id"]: m for m in facts["materials"]}
+    locations = {loc["id"]: loc for loc in facts["locations"]}
+    symbols = facts.get("symbols") or {}
+    terms = facts.get("terms") or {}
+    context = context or {}
+    draft = context.get("draft") or None
+    moved = context.get("moved") or None
+    tasks = tuple(t for t in (getattr(interp, "tasks", ()) or ())
+                  if any((t.material_text, t.material_id, t.source_text, t.destination_text,
+                          t.destination)))
+    task = tasks[0] if tasks else None
+    info = {k: getattr(interp, k, None) for k in (
+        "ok", "action", "confidence", "model_reason", "failure", "reason", "raw", "model_id",
+        "latency_sec", "prompt_tokens")}
+    info["tasks"] = [t.__dict__ for t in tasks]
+    u = normalize(utterance)
+    places = scan_places(utterance, facts, terms)
+    named = scan_materials(utterance, facts)
+    pointing = next((t for t in terms.get("context") or () if t in u), None)
+    loc_name = lambda rid: locations[rid]["name"] if rid in locations else "위치 모름"  # noqa: E731
+    choices = " / ".join(f"{m['name']}({'·'.join(m['colors'][:1]) or '-'}, {loc_name(m['location'])})"
+                         for m in facts["materials"])
+
+    def ask(detail: str, *, code=ReasonCode.PLAN_CLARIFICATION_REQUIRED, keep=None) -> IntentDecision:
+        return IntentDecision("ask", reason_code=code, detail=detail, clarification=detail,
+                              interpretation=info, draft=keep)
+
+    def block(detail: str, code=ReasonCode.PLAN_RESOURCE_MISMATCH) -> IntentDecision:
+        return IntentDecision("block", reason_code=code, detail=detail, interpretation=info, draft={})
+
+    if not interp.ok:
+        return ask(f"요청을 해석하지 못했습니다({interp.reason}) — 자재와 목적지를 말해 주세요: {choices}")
+
+    # ── 여러 작업·여러 자재: 순서는 읽어 보여 주되, 한 작업으로 합치지 않는다 ─────────────────
+    dest_marked = [p for p in places if p.role == "destination"]
+    corrected = next((c for c in terms.get("correction") or () if c in u), None)
+    if corrected and len({(p.kind, p.key) for p in dest_marked}) > 1:
+        said = ", ".join(dict.fromkeys(
+            loc_name(p.key) if p.kind == "location" else {"origin": "원래 자리", "free_slot": "빈자리"}[p.key]
+            for p in dest_marked))
+        return ask(f"목적지를 고쳐 말한 것 같습니다({said}) — 어느 쪽인지 추측하지 않습니다."
+                   " 최종 목적지 하나로 다시 말해 주세요", code=ReasonCode.PLAN_AMBIGUOUS, keep={})
+    if len(tasks) > 1:
+        def label(t):
+            what = materials[t.material_id]["name"] if t.material_id in materials else (t.material_text or "?")
+            where = (loc_name(t.destination) if t.destination in locations
+                     else {"origin": "원래 자리", "free_slot": "빈자리"}.get(t.destination or "", t.destination_text or "?"))
+            return f"{what} → {where}"
+        order = tuple(label(t) for t in tasks)
+        steps = " ".join(f"{i}) {s}" for i, s in enumerate(order, 1))
+        return IntentDecision(
+            "ask", reason_code=ReasonCode.PLAN_AMBIGUOUS, interpretation=info, tasks=order, draft={},
+            detail=f"작업 {len(order)}개로 이해했습니다: {steps}. 지금은 한 번에 이송 하나만 계획합니다"
+                   " — 먼저 할 작업 하나만 말해 주세요",
+            clarification=f"작업 {len(order)}개로 이해했습니다: {steps}. 지금은 한 번에 이송 하나만"
+                          " 계획합니다 — 먼저 할 작업 하나만 말해 주세요")
+    if len(named) > 1:
+        return ask(f"자재가 여럿입니다({', '.join(materials[m]['name'] for m in named)}) — 한 번에 하나만"
+                   " 옮길 수 있습니다. 먼저 옮길 자재 하나만 말해 주세요", code=ReasonCode.PLAN_AMBIGUOUS, keep={})
+
+    # ── 이송 요청인가 ────────────────────────────────────────────────────────────
+    t = task or TaskMention()
+    # 앞 질문("A자재를 어디로 옮길까요?")의 답: 모델이 이송으로 읽었거나, 자재 없이 목적지만 말했다.
+    answers_draft = bool(draft) and (interp.action == "transfer" or (
+        bool(draft.get("material")) and bool(dest_marked) and not named))
+    material_signal = bool(named or t.material_text or t.material_id or pointing)
+    if not material_signal and not answers_draft:
+        if interp.action == "transfer" and dest_marked:
+            # 옮기라는데 자재가 없다 — 목적지는 남기고 무엇을 옮길지만 묻는다.
+            refs = [{"kind": p.kind, "key": p.key, "text": p.surface} for p in dest_marked]
+            what = ", ".join(_describe(r, locations, materials) for r in refs)
+            return ask(f"무엇을 {what} 옮길까요? 자재 이름이나 색으로 말해 주세요: {choices}",
+                       keep=_draft_with(None, refs))
+        if interp.action == "unknown":
+            return ask(f"무엇을 어디로 옮길지 알 수 없습니다 — 자재와 목적지를 말해 주세요: {choices}")
+        return IntentDecision("other", interpretation=info)
+    context_candidates = []
+    if draft and draft.get("material") and draft.get("at", 0) >= (moved or {}).get("at", 0):
+        context_candidates.append(("앞 질문에서 확인한 자재", draft["material"]["resource_id"]))
+    if moved and moved.get("material") in materials:
+        context_candidates.append(("이 대화에서 직전에 옮긴 자재", moved["material"]))
+    if pointing and not named and not context_candidates:
+        # 가리키는 말만 있고 맥락이 없다 — 모델 확신과 상관없이 무엇이 모자란지 구체적으로 묻는다.
+        keep = _draft_with(None, [{"kind": p.kind, "key": p.key, "text": p.surface} for p in dest_marked])
+        return ask(f"'{pointing}'이(가) 어느 자재인지 알 수 없습니다 — 이 대화에서 앞서 옮기거나 확인한"
+                   f" 자재가 없습니다. 자재 이름이나 색으로 말해 주세요: {choices}", keep=keep)
+    uncertain = (interp.action == "unknown" and not answers_draft) \
+        or interp.confidence is None or interp.confidence < min_confidence
+    known = None
+    if len(named) == 1:
+        m = materials[named[0]]
+        known = ResolvedRef(m["id"], Evidence(UTTERANCE, next(tok for tok in m["tokens"] if tok in u)))
+    elif pointing and context_candidates:
+        why, mid = context_candidates[0]
+        known = ResolvedRef(mid, Evidence(CONTEXT, f"{why}({materials[mid]['name']}) ← '{pointing}'"))
+    if uncertain and known and not dest_marked and not _in_utterance(t.destination_text, utterance):
+        # 자재는 원문(또는 '그거' + 세션 맥락)이 가리켰고 목적지만 없다 — 자재는 남기고 목적지만 묻는다.
+        m, ref = materials[known.resource_id], known
+        here, home = m["location"], m["origin"]
+        where = (f"지금 원래 자리인 {loc_name(home)}에 있습니다" if here and here == home
+                 else f"지금 {loc_name(here)}, 원래 자리는 {loc_name(home)}")
+        return ask(f"{m['name']}을(를) 어디로 옮길까요? ({where})", keep=_draft_with(ref, []))
+    if interp.action == "unknown" and not answers_draft:
+        return ask(f"무엇을 어디로 옮길지 알 수 없습니다 — 자재와 목적지를 말해 주세요: {choices}")
+    if interp.confidence is None or interp.confidence < min_confidence:
+        return ask(f"해석 확신이 낮습니다({(interp.confidence or 0):.2f} < {min_confidence:.2f})"
+                   f" — 어느 자재를 어디로 옮길지 말해 주세요: {choices}")
+
+    # ── 목적지 표현(자재보다 먼저 읽어 두고, 자재가 모자랄 때 draft로 남긴다) ─────────────────
+    def place_ref(mention: PlaceMention):
+        return {"kind": mention.kind, "key": mention.key, "text": mention.surface}
+
+    marked = []
+    for p in dest_marked:
+        ref = place_ref(p)
+        if ref not in marked:
+            marked.append(ref)
+    dtext = t.destination_text if _in_utterance(t.destination_text, utterance) else None
+    if dtext and not marked:
+        # 조사가 없는(또는 모델이 조사를 뺀) 목적지: 모델이 적은 표현 안의 등록 표현을 쓴다.
+        inside = [p for p in places if p.role != "source"
+                  and normalize(dtext).find(u[p.start:p.end]) >= 0]
+        for p in inside:
+            ref = place_ref(p)
+            if ref not in [m for m in marked]:
+                marked.append(ref)
+    if not marked and draft and draft.get("destination") and not dtext:
+        marked = [dict(draft["destination"], from_draft=True)]
+
+    # ── 자재 ───────────────────────────────────────────────────────────────────
+    mtext = t.material_text if _in_utterance(t.material_text, utterance) else None
+    material_ref = None
+    if named:
+        mid = named[0]
+        by_text = _names(facts["materials"], mtext) if mtext else []
+        if (t.material_id not in (None, mid)) or (by_text and by_text != [mid]):
+            return ask(f"자재 해석이 엇갈립니다(원문: {materials[mid]['name']}) — 자재를 다시 말해 주세요: {choices}")
+        surface = (mtext if mtext and by_text == [mid]
+                   else next(tok for tok in materials[mid]["tokens"] if tok in u))
+        material_ref = ResolvedRef(mid, Evidence(UTTERANCE, surface))
+    elif pointing or (mtext and any(t_ in normalize(mtext) for t_ in terms.get("context") or ())):
+        if not context_candidates:
+            return ask(f"'{pointing or mtext}'이(가) 어느 자재인지 알 수 없습니다 — 이 대화에서 앞서 옮기거나"
+                       f" 확인한 자재가 없습니다. 자재 이름이나 색으로 말해 주세요: {choices}",
+                       keep=_draft_with(None, marked))
+        why, mid = context_candidates[0]
+        if t.material_id not in (None, mid):
+            return ask(f"'{pointing or mtext}'이(가) 가리키는 자재가 엇갈립니다(맥락: {materials[mid]['name']},"
+                       f" 해석: {materials[t.material_id]['name']}) — 자재 이름으로 말해 주세요")
+        material_ref = ResolvedRef(mid, Evidence(
+            CONTEXT, f"{why}({materials[mid]['name']}) ← '{pointing or mtext}'"))
+    elif mtext:
+        core = _strip_markers(mtext, terms)
+        for g in terms.get("generic") or ():
+            core = core.replace(g, "")
+        if not core:
+            return ask(f"'{mtext}'이(가) 어느 자재인지 알 수 없습니다 — 자재 이름이나 색으로 말해 주세요:"
+                       f" {choices}", keep=_draft_with(None, marked))
+        return block(f"'{mtext}'은(는) 등록된 자재가 아닙니다 — 실행하지 않습니다"
+                     f" (등록된 자재: {', '.join(m['name'] for m in facts['materials'])})",
+                     code=ReasonCode.PLAN_UNKNOWN_RESOURCE)
+    elif answers_draft and draft and draft.get("material"):
+        mid = draft["material"]["resource_id"]
+        material_ref = ResolvedRef(mid, Evidence(
+            CONTEXT, f"앞 질문에서 확인한 자재({materials[mid]['name']}) ← {draft['material']['evidence']['text']}"))
+    elif t.material_id is not None:
+        return ask(f"자재를 가리킨 표현을 발화에서 확인할 수 없습니다 — 자재 이름이나 색으로 말해 주세요: {choices}")
+    else:
+        what = ", ".join(_describe(m, locations, materials) for m in marked) or "어디로"
+        return ask(f"무엇을 {what} 옮길까요? 자재 이름이나 색으로 말해 주세요: {choices}",
+                   keep=_draft_with(None, marked))
+    material = materials[material_ref.resource_id]
+    name = material["name"]
+
+    # ── 목적지 해소 ──────────────────────────────────────────────────────────────
+    resolved = []
+    for ref in marked:
+        out = _resolve_destination(ref, material, facts, locations, symbols, utterance)
+        if isinstance(out, IntentDecision):
+            return out
+        if out.resource_id not in [r.resource_id for r in resolved]:
+            resolved.append(out)
+    if len(resolved) > 1:
+        return ask(f"목적지가 둘 이상입니다({', '.join(loc_name(r.resource_id) for r in resolved)})"
+                   " — 하나만 말해 주세요", code=ReasonCode.PLAN_AMBIGUOUS,
+                   keep=_draft_with(material_ref, []))
+    if not resolved:
+        if dtext:
+            dloc, dcount = _unique_location(facts, dtext)
+            detail = "여러 위치를 가리킵니다" if dcount > 1 else "등록된 위치가 아닙니다"
+            return ask(f"'{dtext}'은(는) {detail} — 목적지를 다시 말해 주세요"
+                       f" (위치: {', '.join(loc['name'] for loc in facts['locations'])})",
+                       keep=_draft_with(material_ref, []))
+        here, home = material["location"], material["origin"]
+        where = (f"지금 원래 자리인 {loc_name(home)}에 있습니다" if here and here == home
+                 else f"지금 {loc_name(here)}, 원래 자리는 {loc_name(home)}")
+        return ask(f"{name}을(를) 어디로 옮길까요? ({where})", keep=_draft_with(material_ref, []))
+    dest_ref = resolved[0]
+    model_dest = t.destination
+    if model_dest in locations and model_dest != dest_ref.resource_id and not marked[0].get("from_draft"):
+        return ask(f"목적지 해석이 엇갈립니다(원문: {loc_name(dest_ref.resource_id)}, 해석: {loc_name(model_dest)})"
+                   " — 목적지를 다시 말해 주세요", keep=_draft_with(material_ref, []))
+
+    # ── 출발지 ─────────────────────────────────────────────────────────────────
+    current = material["location"]
+    stated, stated_text = None, None
+    source_marked = [p for p in places if p.role == "source" and p.kind == "location"]
+    if len({p.key for p in source_marked}) > 1:
+        return ask("출발지가 둘 이상입니다 — 하나만 말하거나 빼고 말해 주세요", code=ReasonCode.PLAN_AMBIGUOUS)
+    if source_marked:
+        stated, stated_text = source_marked[0].key, source_marked[0].surface
+    else:
+        stext = t.source_text if _in_utterance(t.source_text, utterance) else None
+        if stext and not _overlaps(stext, dtext) and not any(
+                normalize(stext).find(u[p.start:p.end]) >= 0 for p in dest_marked):
+            named_locs = [p.key for p in places if normalize(stext).find(u[p.start:p.end]) >= 0
+                          and p.kind == "location"]
+            core = _strip_markers(stext, terms)
+            category = sorted({rid for word, ids in category_words(facts).items()
+                               if word in core for rid in ids})
+            followed = _marker_role(u[u.find(normalize(stext)) + len(normalize(stext)):], terms)[0]
+            ends_source = _marker_role(normalize(stext)[len(core):], terms)[0] == "source"
+            if len(set(named_locs)) == 1:
+                stated, stated_text = named_locs[0], stext
+            elif len(set(named_locs)) > 1:
+                return ask(f"'{stext}'이(가) 어느 위치인지 알 수 없습니다 — 출발지를 다시 말하거나 빼고 말해 주세요")
+            elif category:
+                if current is not None and current not in category:
+                    return block(f"말한 출발지('{stext}')에 {name}이(가) 없습니다(기록: {loc_name(current)})"
+                                 " — 실행하지 않습니다")
+                if current is not None:
+                    stated, stated_text = current, stext
+            elif followed == "source" or ends_source:
+                return ask(f"'{stext}'이(가) 어느 위치인지 알 수 없습니다 — 출발지를 다시 말하거나 빼고 말해 주세요")
+            # 위치 이름도 출발 조사도 없는 말('저기 있는 그')은 출발지를 말한 것이 아니다.
+    if current is None:
+        why = facts.get("state_error") or "자재 상태 기록에 위치가 없습니다"
+        return ask(f"{name}의 현재 위치를 확인할 수 없습니다({why}) — 자재 상태를 정리한 뒤 다시 요청해 주세요")
+    if stated is not None and stated != current:
+        return block(f"말한 출발지({loc_name(stated)})와 {name}의 실제 위치"
+                     f"({loc_name(current)}, 기록)가 다르다 — 실행하지 않는다")
+    source_ref = (ResolvedRef(current, Evidence(UTTERANCE, stated_text or loc_name(current))) if stated is not None
+                  else ResolvedRef(current, Evidence(STATE, f"{name}의 현재 위치(기록)")))
+
+    # ── 이미 목적지에 있음 · 목적지 점유 ──────────────────────────────────────────────
+    if dest_ref.resource_id == source_ref.resource_id:
+        where = loc_name(current)
+        said = "원래 자리" if dest_ref.evidence.kind == REGISTRY else where
+        return IntentDecision(
+            "noop", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED, interpretation=info, draft={},
+            detail=f"{name}은(는) 이미 {said}({where})에 있습니다 — 옮길 필요가 없어 실행하지 않습니다",
+            clarification=f"{name}은(는) 이미 {said}({where})에 있습니다 — 옮길 필요가 없어 실행하지 않습니다")
+    if dest_ref.resource_id != _CONVEYOR:
+        holder = next((m for m in facts["materials"]
+                       if m["id"] != material["id"] and m["location"] == dest_ref.resource_id), None)
+        if holder is not None:
+            said = "원래 자리" if dest_ref.evidence.kind == REGISTRY else "목적지"
+            return block(f"{said}({loc_name(dest_ref.resource_id)})에 {holder['name']}이(가) 있습니다(기록)"
+                         " — 먼저 비워야 합니다. 실행하지 않습니다")
+    intent = TaskIntent(action=TRANSFER, material=material_ref, source=source_ref,
+                        destination=dest_ref, interpreter=str(interp.model_id or ""),
+                        confidence=interp.confidence, model_reason=interp.model_reason)
+    return IntentDecision("intent", intent=intent, interpretation=info, draft={})
+
+
+def _draft_with(material_ref: ResolvedRef | None, marked) -> dict:
+    """되묻기에서 세션에 남길 확인된 값. 목적지는 원문 장소 표현(상징 포함) 그대로 남긴다."""
+    out: dict = {}
+    if material_ref is not None:
+        out["material"] = {"resource_id": material_ref.resource_id,
+                           "evidence": {"kind": material_ref.evidence.kind,
+                                        "text": material_ref.evidence.text}}
+    if len(marked) == 1:
+        out["destination"] = {k: marked[0][k] for k in ("kind", "key", "text")}
+    return out
+
+
+def _describe(ref, locations, materials) -> str:
+    if ref["kind"] == "location":
+        return f"{locations[ref['key']]['name']}(으)로"
+    return {"origin": "원래 자리로", "free_slot": "빈자리로"}.get(ref["key"], "")
+
+
+def _resolve_destination(ref, material, facts, locations, symbols, utterance):
+    """원문 장소 표현(위치·상징) → 목적지 근거. 실패는 IntentDecision(되묻기·차단)."""
+    from_draft = bool(ref.get("from_draft"))
+    kind = CONTEXT if from_draft else UTTERANCE
+    note = (lambda text: f"앞 질문의 답 '{text}'") if from_draft else (lambda text: text)
+    if ref["kind"] == "location":
+        return ResolvedRef(ref["key"], Evidence(kind, note(ref["text"])))
+    if ref["key"] == "origin":
+        origin = material["origin"]
+        if origin is None:
+            return IntentDecision("ask", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED,
+                                  detail=f"{material['name']}의 원래 자리가 등록돼 있지 않습니다 — 위치를 말해 주세요",
+                                  clarification=f"{material['name']}의 원래 자리가 등록돼 있지 않습니다 — 위치를 말해 주세요")
+        return ResolvedRef(origin, Evidence(
+            REGISTRY, f"{material['name']}의 원래 자리(등록: {locations[origin]['name']}) ← '{ref['text']}'"))
+    if ref["key"] == "free_slot":
+        need = (symbols.get("free_slot") or {}).get("requires_location")
+        if not need or need not in locations:
+            text = "빈자리가 어느 위치의 칸인지 등록돼 있지 않습니다 — 목적지를 위치 이름으로 말해 주세요"
+            return IntentDecision("ask", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED,
+                                  detail=text, clarification=text)
+        if need not in _names(facts["locations"], utterance) and not from_draft:
+            text = ("어느 빈자리인지 알 수 없습니다 — 일반 모드의 빈자리는 컨베이어 빈 칸입니다."
+                    " '컨베이어 빈자리로'처럼 말해 주세요")
+            return IntentDecision("ask", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED,
+                                  detail=text, clarification=text)
+        free = list(facts.get("free_conveyor_slots") or ())
+        if not free:
+            return IntentDecision("block", reason_code=ReasonCode.EXEC_SIM_TARGET_OCCUPIED,
+                                  detail="컨베이어에 빈 칸이 없습니다(기록) — 실행하지 않습니다", draft={})
+        return ResolvedRef(need, Evidence(
+            STATE, f"컨베이어 빈 칸 {len(free)}개(기록, 칸은 실행 전 검사가 고른다) ← '{ref['text']}'"))
+    text = "목적지를 알 수 없습니다 — 다시 말해 주세요"
+    return IntentDecision("ask", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED, detail=text,
+                          clarification=text)
 
 
 def _unique_location(facts, text: str | None) -> tuple[str | None, int]:
     named = _names(facts["locations"], text or "")
     return (named[0] if len(named) == 1 else None), len(named)
-
-
-def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
-                  min_confidence: float) -> IntentDecision:
-    """해석 결과 → 검증된 의도 · 되묻기 · 차단 · 기존 경로(이송 아님).
-
-    **원문 근거가 판정의 기준이다.** 모델이 고른 id는 원문 표현이 가리키는 것과 같을 때만 쓴다.
-    근거 없는 출발지 주장은 '말하지 않음'으로 보고 상태 기록을 쓴다. 근거 있는 출발지가 기록과
-    다르면 차단한다. 목적지는 원문이 가리키는 위치, 또는 등록 표현으로 확인된 상징 목적지뿐이다.
-    """
-    materials = {m["id"]: m for m in facts["materials"]}
-    locations = {loc["id"]: loc for loc in facts["locations"]}
-    symbols = facts.get("symbols") or {}
-    info = {k: getattr(interp, k, None) for k in (
-        "ok", "action", "material_id", "material_text", "source_id", "source_text",
-        "destination", "destination_text", "confidence", "model_reason", "failure",
-        "reason", "raw", "model_id", "latency_sec")}
-    choices = " / ".join(f"{m['name']}({'·'.join(m['colors'][:1]) or '-'},"
-                         f" {locations[m['location']]['name'] if m['location'] in locations else '위치 모름'})"
-                         for m in facts["materials"])
-
-    def ask(detail: str) -> IntentDecision:
-        return IntentDecision("ask", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED,
-                              detail=detail, clarification=detail, interpretation=info)
-
-    def block(detail: str) -> IntentDecision:
-        return IntentDecision("block", reason_code=ReasonCode.PLAN_RESOURCE_MISMATCH,
-                              detail=detail, interpretation=info)
-
-    if not interp.ok:
-        return ask(f"요청을 해석하지 못했습니다({interp.reason}) — 자재와 목적지를 말해 주세요: {choices}")
-    if interp.action == "unknown":
-        return ask(f"무엇을 어디로 옮길지 알 수 없습니다 — 자재와 목적지를 말해 주세요: {choices}")
-    # 자재 표현이 없으면 자재 이송이 아니다 — 위치 이동·홈 등은 기존 계획 생성이 맡는다.
-    if interp.action == "other" or (interp.material_id is None and not interp.material_text):
-        return IntentDecision("other", interpretation=info)
-    if interp.confidence is None or interp.confidence < min_confidence:
-        return ask(f"해석 확신이 낮습니다({(interp.confidence or 0):.2f} < {min_confidence:.2f})"
-                   f" — 어느 자재를 어디로 옮길지 말해 주세요: {choices}")
-
-    # ── 자재: 원문 표현이 발화에 있고 **그 자재만** 가리킨다 ──────────────────────────
-    mid = interp.material_id
-    if not _in_utterance(interp.material_text, utterance):
-        return ask(f"자재를 가리킨 표현을 발화에서 확인할 수 없습니다 — 자재 이름이나 색으로 말해 주세요: {choices}")
-    named = _names(facts["materials"], interp.material_text)
-    if len(named) > 1:
-        return ask(f"'{interp.material_text}'에 맞는 자재가 여럿입니다 — 이름으로 말해 주세요: {choices}")
-    if not named or mid not in materials or named != [mid]:
-        return ask(f"'{interp.material_text}'은(는) 등록된 자재가 아닙니다 — 말해 주세요: {choices}")
-    material = materials[mid]
-    material_ref = ResolvedRef(mid, Evidence(UTTERANCE, interp.material_text))
-
-    # ── 목적지: 원문 근거(위치) 또는 등록 표현(상징) ─────────────────────────────────
-    dtext = interp.destination_text
-    if not _in_utterance(dtext, utterance):
-        return ask(f"{material['name']}을(를) 어디로 옮길까요?")
-    dloc, dcount = _unique_location(facts, dtext)
-    symbol = next((sym for sym, spec in symbols.items()
-                   if any(term in normalize(dtext) for term in spec["terms"])), None)
-    if symbol == "origin" and dloc is None:
-        origin = material["origin"]
-        if origin is None:
-            return ask(f"{material['name']}의 원래 자리가 등록돼 있지 않습니다 — 위치를 말해 주세요")
-        dest_ref = ResolvedRef(origin, Evidence(
-            REGISTRY, f"{material['name']}의 원래 자리(등록: {locations[origin]['name']}) ← '{dtext}'"))
-    elif symbol == "free_slot":
-        need = symbols["free_slot"].get("requires_location")
-        if not need or need not in locations:
-            return ask("빈자리가 어느 위치의 칸인지 등록돼 있지 않습니다 — 목적지를 위치 이름으로 말해 주세요")
-        if need not in _names(facts["locations"], utterance):
-            return ask("어느 빈자리인지 알 수 없습니다 — 일반 모드의 빈자리는 컨베이어 빈 칸입니다."
-                       " '컨베이어 빈자리로'처럼 말해 주세요")
-        free = list(facts.get("free_conveyor_slots") or ())
-        if not free:
-            return block("컨베이어에 빈 칸이 없다(기록) — 실행하지 않는다")
-        dest_ref = ResolvedRef(need, Evidence(
-            STATE, f"컨베이어 빈 칸 {len(free)}개(기록, 칸은 실행 전 검사가 고른다) ← '{dtext}'"))
-    elif dloc is not None:
-        if interp.destination not in (None, dloc, "origin", "free_slot"):
-            return ask(f"'{dtext}'이(가) 가리키는 위치({locations[dloc]['name']})와 해석이 다릅니다 — 목적지를 다시 말해 주세요")
-        dest_ref = ResolvedRef(dloc, Evidence(UTTERANCE, dtext))
-    else:
-        detail = ("여러 위치를 가리킵니다" if dcount > 1 else "등록된 위치가 아닙니다")
-        return ask(f"'{dtext}'은(는) {detail} — 목적지를 다시 말해 주세요"
-                   f" (위치: {', '.join(loc['name'] for loc in facts['locations'])})")
-
-    # ── 출발지: 원문 근거가 있으면 '말한 출발지'(기록과 다르면 차단), 없으면 현재 위치(기록) ──
-    current = material["location"]
-    stext = interp.source_text
-    stated = None
-    if stext and _in_utterance(stext, utterance) and not _overlaps(stext, dtext):
-        stated, scount = _unique_location(facts, stext)
-        if stated is None:
-            return ask(f"'{stext}'이(가) 어느 위치인지 알 수 없습니다 — 출발지를 다시 말하거나 빼고 말해 주세요")
-    if current is None:
-        return ask(f"{material['name']}의 현재 위치를 확인할 수 없습니다 — 자재 상태를 정리한 뒤 다시 요청해 주세요")
-    if stated is not None and stated != current:
-        return block(f"말한 출발지({locations[stated]['name']})와 {material['name']}의 실제 위치"
-                     f"({locations[current]['name']}, 기록)가 다르다 — 실행하지 않는다")
-    source_ref = (ResolvedRef(current, Evidence(UTTERANCE, stext)) if stated is not None
-                  else ResolvedRef(current, Evidence(STATE, f"{material['name']}의 현재 위치(기록)")))
-
-    if dest_ref.resource_id == source_ref.resource_id:
-        return ask(f"{material['name']}은(는) 이미 {locations[source_ref.resource_id]['name']}에 있습니다"
-                   " — 어디로 옮길지 말해 주세요")
-    intent = TaskIntent(action=TRANSFER, material=material_ref, source=source_ref,
-                        destination=dest_ref, interpreter=str(interp.model_id or ""),
-                        confidence=interp.confidence, model_reason=interp.model_reason)
-    return IntentDecision("intent", intent=intent, interpretation=info)
 
 
 class IntentPlanProvider:

@@ -13,6 +13,7 @@
   "adapter_module": "robots.fr3_gazebo",
   "workcell_config": "fr3_2f85_workcell.json",
   "poses": "fr3_2f85_workcell_poses.json",
+  "motion": "fr3_2f85_workcell_motion.json",
   "resource_catalog": "fr3_2f85_workcell_resource_catalog.json",
   "capability_profile": "../profiles/fr3wms_2f85_workcell_capability.json",
   "is_simulated": true,

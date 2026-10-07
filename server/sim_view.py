@@ -74,13 +74,21 @@ def cell_boxes(workcell: Mapping[str, Any]) -> dict:
         return out
 
     fixed, materials = [], []
+    # 자재 이름·자원 id는 셀 설정의 resource_map에서(서버 자재 정보와 같은 출처).
+    named = {row.get("gazebo_model"): row for row in workcell.get("resource_map") or ()}
     for model, spec in (workcell.get("models") or {}).items():
         kind = spec.get("kind")
         if kind == "ground_plane":
             continue
         origin = resolve(spec["frame"])
         if kind == "material":
+            # shape: Gazebo world 생성기(scripts/build_workcell_world.py)와 같은 값 — 외곽 size_m 안의
+            # box | cylinder(지름 = 짧은 변) | triangle_prism(한 변 = 짧은 변, 꼭짓점 +x). 없으면 box.
+            row = named.get(model) or {}
             materials.append({"model": model, "size_m": list(spec["size_m"]),
+                              "shape": spec.get("shape", "box"),
+                              "resource_id": spec.get("resource_id") or row.get("resource_id"),
+                              "name": row.get("korean"),
                               "color_rgba": list(spec.get("color_rgba") or (0.7, 0.7, 0.7, 1)),
                               "home_xyz_m": origin})
             continue

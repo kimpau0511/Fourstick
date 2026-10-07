@@ -546,7 +546,8 @@
         0.1,
         1.0
       ],
-      "note": "질량·마찰은 **시뮬레이션 전용 값**이다. 실제 자재 규격이 아니다"
+      "note": "사각형 자재(형상 box, 외곽 size_m 안 — 2026-10-07 상자에서 변경). 질량·마찰은 시뮬레이션 전용 값",
+      "shape": "box"
     },
     "material_b": {
       "kind": "material",
@@ -566,7 +567,8 @@
         0.95,
         1.0
       ],
-      "note": "질량·마찰은 시뮬레이션 전용 값이다"
+      "note": "삼각형 자재(형상 triangle_prism, 외곽 size_m 안 — 2026-10-07 상자에서 변경). 질량·마찰은 시뮬레이션 전용 값",
+      "shape": "triangle_prism"
     },
     "material_c": {
       "kind": "material",
@@ -586,7 +588,8 @@
         0.4,
         1.0
       ],
-      "note": "질량·마찰은 시뮬레이션 전용 값이다"
+      "note": "원형 자재(형상 cylinder, 외곽 size_m 안 — 2026-10-07 상자에서 변경). 질량·마찰은 시뮬레이션 전용 값",
+      "shape": "cylinder"
     }
   },
   "resource_map": [
@@ -615,7 +618,7 @@
       "frame": "conveyor_frame"
     },
     {
-      "korean": "A자재",
+      "korean": "사각형 자재",
       "resource_id": "mat_a",
       "gazebo_model": "material_a",
       "frame": "material_a_frame",
@@ -624,10 +627,20 @@
         "주황색",
         "오렌지",
         "오렌지색"
+      ],
+      "korean_shapes": [
+        "사각형",
+        "사각",
+        "네모",
+        "네모난",
+        "정사각형"
+      ],
+      "korean_aliases": [
+        "A자재"
       ]
     },
     {
-      "korean": "B자재",
+      "korean": "삼각형 자재",
       "resource_id": "mat_b",
       "gazebo_model": "material_b",
       "frame": "material_b_frame",
@@ -639,10 +652,20 @@
         "하늘",
         "하늘색",
         "블루"
+      ],
+      "korean_shapes": [
+        "삼각형",
+        "삼각",
+        "세모",
+        "세모난",
+        "삼각기둥"
+      ],
+      "korean_aliases": [
+        "B자재"
       ]
     },
     {
-      "korean": "C자재",
+      "korean": "원형 자재",
       "resource_id": "mat_c",
       "gazebo_model": "material_c",
       "frame": "material_c_frame",
@@ -653,6 +676,16 @@
         "연두",
         "연두색",
         "그린"
+      ],
+      "korean_shapes": [
+        "원형",
+        "동그라미",
+        "동그란",
+        "원통",
+        "원기둥"
+      ],
+      "korean_aliases": [
+        "C자재"
       ]
     }
   ],

@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mockBackend, SAMPLES } from '../mock.js';
 test('[UI-RESP-05][DEV-07] 폭 820·1280·1440에서 어떤 화면도 카드 밖으로 넘치거나 가로 스크롤이 생기지 않는다', async ({ page }) => {
   test.setTimeout(90000);
-  await mockBackend(page, { command: SAMPLES.confirm(60) });
+  await mockBackend(page, { plan: SAMPLES.plan(60) });
   const out = [];
   for (const w of [820, 1280, 1440]) {
     await page.setViewportSize({ width: w, height: 900 });

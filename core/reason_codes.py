@@ -165,6 +165,7 @@ class ReasonCode(str, Enum):
     EXEC_CANCELED = "exec.canceled"
     EXEC_GOAL_NOT_REACHED = "exec.goal_not_reached"
     EXEC_TASK_FAILED = "exec.task_failed"
+    EXEC_SPEED_ZERO = "exec.speed_zero"
     EXEC_STOPPED = "exec.stopped"
     EXEC_STOP_UNCONFIRMED = "exec.stop_unconfirmed"
     EXEC_ENVIRONMENT_CHANGED = "exec.environment_changed"

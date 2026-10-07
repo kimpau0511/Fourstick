@@ -430,7 +430,26 @@ def report_detached(report: Mapping[str, Any]) -> bool | None:
     return None
 
 
-def execute_transfer(runtime, unit: TransferUnit, *, goal_id: str, interruption) -> Any:
+def transfer_progress(rows: Sequence[Mapping[str, Any]]) -> int:
+    """실행기 단계 줄(`parse_progress`) → transfer가 덮는 계획 스텝(이동·집기·이동·놓기) 중 **지난** 수(0~4).
+
+    화면 진행 표시용이다(2026-10-07: 이송 한 번이 끝날 때까지 계획 스텝 1~4가 한꺼번에 기록돼, 진행 표시가
+    멈춰 있다가 5로 건너뛰었다). 그리퍼 단계를 기준점으로 쓴다 — 이송·복귀 실행기 모두 같은 순서다:
+    출발지 접근 → 그리퍼 열기 → 접근 → **그리퍼 닫기** → 들기 → 목적지 접근 → **그리퍼 열기(해제)** → 물러나기.
+    성공 판정이 아니다. 성공은 실행이 끝난 뒤 보고서·기록·관측으로 따로 정한다.
+    """
+    labels = [str(r.get("label") or "") for r in rows if r.get("reached") is True]
+    close = next((i for i, x in enumerate(labels) if x.startswith("그리퍼 닫기")), None)
+    release = next((i for i, x in enumerate(labels) if "(해제)" in x), None)
+    if release is not None:
+        return 4 if len(labels) > release + 1 else 3
+    if close is not None:
+        return 2 if len(labels) > close + 1 else 1
+    return 1 if any(x.startswith("그리퍼 열기") for x in labels) else 0
+
+
+def execute_transfer(runtime, unit: TransferUnit, *, goal_id: str, interruption,
+                     speed_percent: int | None = None, on_progress=None) -> Any:
     """transfer 한 번을 이송 실행기로 돌리고 ExecutionResult를 돌려준다.
 
     - 실행 직전에 계약을 **다시** 본다(승인 뒤 상태가 바뀌었으면 시작하지 않는다).
@@ -458,17 +477,28 @@ def execute_transfer(runtime, unit: TransferUnit, *, goal_id: str, interruption)
     if why is not None:
         return rejected(why, {**evidence, "detail": "시작 전에 정지·취소가 들어와 시작하지 않았다"})
     try:
-        job = jobs.start_transfer(model, source, destination, goal_id=goal_id)
+        kwargs = {} if speed_percent is None else {"speed_percent": speed_percent}
+        job = jobs.start_transfer(model, source, destination, goal_id=goal_id, **kwargs)
     except Exception as exc:  # noqa: BLE001 — 시작 거부는 실행 거부다
         return rejected(ReasonCode.EXEC_GOAL_REJECTED,
                         {**evidence, "detail": f"이송 실행기가 시작을 거부했다: {exc}"[:300]})
     job_id = job["job_id"]
     evidence["job_id"] = job_id
     stop_sent = None
+    last_progress = None
     while True:
         current = jobs.job(job_id, console_lines=1)
         if current.get("status") != "running":
             break
+        if on_progress is not None:
+            rows = current.get("progress") or []
+            mark = (transfer_progress(rows), len(rows))
+            if mark != last_progress:
+                last_progress = mark
+                try:
+                    on_progress(mark[0], rows[-1] if rows else None)
+                except Exception:  # noqa: BLE001 — 진행 알림 실패가 실행을 멈추지 않는다
+                    pass
         why = interruption()
         if why is not None and stop_sent is None:
             # 실행기가 늦게 떠서 버리는 요청은 `SimDemoJobs.request_stop`이 다시 쓴다.

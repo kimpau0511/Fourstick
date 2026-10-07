@@ -8,7 +8,7 @@ import SimOverlay from './components/SimOverlay.jsx';
 import { NAV } from './nav.js';
 import { useServer } from './server.js';
 import { overlayOf } from './simOverlayState.js';
-import { useSimCommand } from './simCommand.js';
+import { useGeneralCommand } from './generalCommand.js';
 import Diagnostics from './pages/Diagnostics.jsx';
 import History from './pages/History.jsx';
 import Home from './pages/Home.jsx';
@@ -60,8 +60,9 @@ function PanelSeparator({ width, onChange }) {
 
 export default function App() {
   const [closedKey, setClosedKey] = useState(null); // 닫은 시뮬레이션 창의 상태 key — 같은 상태 동안은 다시 열지 않는다
+  const [viewOpen, setViewOpen] = useState(false);
   const server = useServer();
-  const cmd = useSimCommand();
+  const cmd = useGeneralCommand({ onSettled: server.refresh });
   const now = useNow();
   const page = usePage();
   const [panelW, setPanelW] = useState(PANEL.def);
@@ -69,11 +70,11 @@ export default function App() {
   const nav = NAV.find((item) => item.id === page);
 
   const overlay = overlayOf(cmd); // 시뮬레이션 창 상태 = 명령 흐름의 서버 값(null이면 창 없음)
+  const visibleOverlay = overlay && (viewOpen || overlay.key !== closedKey)
+    ? overlay : viewOpen ? { state: 'viewing', key: 'viewing' } : null;
 
-  // 헤더 즉시 정지는 오버레이 밖이라 언제든 누를 수 있다(피그마 메모). 실행 중인 시연 작업에
-  // 정지를 요청한다(/v1/sim-demo/stop). 결과(요청됨·실패·정지할 작업 없음)는 명령 패널에 서버 응답대로 뜬다.
-  // 오버레이의 '정지 확인' 화면은 서버 값과 이어지지 않은 목업이라, 실제 정지 버튼으로는 열지 않는다
-  // (응답 없이 "정지 확인"을 보이면 확인 안 된 정지를 확인된 것처럼 보인다 — 설계원칙 4).
+  // 헤더와 전체화면의 즉시 정지는 같은 일반 전체 정지(/v1/stop)를 사용한다.
+  // 정지 접수와 실행 종료 결과는 서버 응답으로만 표시한다.
   function globalStop() {
     cmd.stop();
   }
@@ -85,7 +86,7 @@ export default function App() {
       <EmergencyBanner alerts={server.alerts} />
       <div className="body">
         <div className="col-main">
-          {page === 'home' && <Home server={server} cmdJob={cmd.job} />}
+          {page === 'home' && <Home server={server} cmdJob={cmd.statusUnknown ? null : cmd.job} />}
           {page === 'robots' && <Robots server={server} />}
           {page === 'history' && <History server={server} log={cmd.log} />}
           {page === 'diagnostics' && <Diagnostics server={server} />}
@@ -93,11 +94,11 @@ export default function App() {
         </div>
         <PanelSeparator width={panelW} onChange={setPanelW} />
         <div className={drawerOpen ? 'col-side open' : 'col-side'} id="command-drawer">
-          <CommandPanel now={now} sim={cmd} server={server} />
+          <CommandPanel now={now} sim={cmd} server={server} onOpenSimulation={() => setViewOpen(true)} />
           {page === 'home' && <Alerts server={server} />}
         </div>
       </div>
     </div>
-    {overlay && overlay.key !== closedKey && <SimOverlay overlay={overlay} cmd={cmd} server={server} onClose={() => setClosedKey(overlay.key)} />}
+    {visibleOverlay && <SimOverlay overlay={visibleOverlay} cmd={cmd} server={server} onClose={() => { setViewOpen(false); if (overlay) setClosedKey(overlay.key); }} />}
   </div>;
 }

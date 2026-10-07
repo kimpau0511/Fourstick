@@ -70,6 +70,28 @@ class ModeTest(unittest.TestCase):
 
 
 class RecordTest(unittest.TestCase):
+    def test_detach_is_resent_until_confirmed_and_never_assumed(self):
+        """2026-10-07: 첫 detach가 Gazebo에 닿지 않았다(알림 없음, 놓기 높이에 매달림). 알림이 올 때까지 다시
+        보내고, 끝내 없으면 실패로 남긴다 — 알림 없이 떨어졌다고 치지 않는다."""
+        import tempfile
+        from unittest import mock
+
+        for answers, want in (([False, True], True), ([False, False, False], False), ([True], True)):
+            with self.subTest(answers=answers), tempfile.TemporaryDirectory() as tmp, \
+                    mock.patch.dict("os.environ", {"FORSTICK2_WORKCELL_LOG_DIR": tmp}):
+                fx = fixture("joint")
+                sent, replies = [], iter(answers)
+                fx._subscribe_joint_state = lambda model: None
+                fx.joint_system_loaded = lambda model: True
+                fx._publish_empty = lambda topic: sent.append(topic)
+                fx._wait_joint_state = lambda model, want_state, since, **kw: next(replies)
+                ok, _ = fx._joint_detach("material_b")
+                self.assertEqual(ok, want)
+                self.assertEqual(len(sent), len(answers))
+                self.assertTrue(all(t.endswith("/detach") for t in sent))
+                self.assertEqual(sim_fixture.read_joint_record()["material_b"]["state"],
+                                 "detached" if want else "unknown")
+
     def test_confirmed_state_is_persisted_across_processes(self):
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.dict(os.environ, {"FORSTICK2_WORKCELL_LOG_DIR": tmp}):

@@ -7,6 +7,7 @@ import {
 } from '../../html/static/js/sim-view-core.js';
 import SceneView from './SceneView.jsx';
 import Spinner from './components/Spinner.jsx';
+import { materialGeometry } from './materialGeometry.js';
 
 /** 서버가 스트림을 닫으면 이 간격으로 다시 붙는다(백엔드 화면 sim-view.js와 같은 값). */
 const RECONNECT_MS = 2000;
@@ -79,8 +80,9 @@ export default function SimView3D({ onView }) {
         root.add(mesh);
       }
       for (const item of model.cell.materials) {
-        const mesh = new THREE.Mesh(new THREE.BoxGeometry(...item.size_m),
+        const mesh = new THREE.Mesh(materialGeometry(item),
           new THREE.MeshStandardMaterial({ color: color(item.color_rgba) }));
+        mesh.name = item.name || item.model;
         mesh.position.set(...item.home_xyz_m);
         mesh.visible = false;            // 관측이 오기 전에는 그리지 않는다
         root.add(mesh);

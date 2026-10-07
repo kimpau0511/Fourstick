@@ -63,6 +63,10 @@ JOINT_PARENT_LINK = "wrist3_Link"
 JOINT_CHILD_LINK = "body"
 #: 붙임 상태 알림을 기다리는 시간(s).
 JOINT_STATE_TIMEOUT_SEC = 2.0
+#: 새 publisher가 구독자(Gazebo 붙임 시스템)를 발견할 때까지 기다리는 최대 시간(s).
+PUBLISH_CONNECT_SEC = 3.0
+#: detached 알림이 없을 때 detach를 보내는 최대 횟수.
+DETACH_ATTEMPTS = 3
 
 
 def joint_record_path():
@@ -449,8 +453,9 @@ class GazeboObjectFixture:
         if publisher is None:
             publisher = self._node.advertise(topic, Empty)
             self._publishers[topic] = publisher
-        # 구독자가 붙을 시간을 준다(새 publisher는 발견까지 수십 ms가 걸린다).
-        deadline = time.monotonic() + 1.0
+        # 구독자가 붙을 시간을 준다(새 publisher는 발견까지 수십 ms가 걸린다). 부하가 높으면 1초를 넘겨
+        # 첫 메시지를 잃었다(2026-10-07: 세모 자재 detach가 Gazebo에 닿지 않아 놓기 높이에 매달린 채 관측).
+        deadline = time.monotonic() + PUBLISH_CONNECT_SEC
         while not publisher.has_connections() and time.monotonic() < deadline:
             time.sleep(0.02)
         publisher.publish(Empty())
@@ -499,12 +504,16 @@ class GazeboObjectFixture:
         self._subscribe_joint_state(model)
         if not self.joint_system_loaded(model):
             return True, "붙임 시스템이 없다(붙어 있지 않다)"
-        started = time.time()
-        self._publish_empty(self.joint_topics(model)["detach"])
-        if self._wait_joint_state(model, "detached", started):
-            _write_joint_record(model, "detached", "detach 토픽 → detached 알림")
-            return True, "detach 토픽으로 뗐다"
-        _write_joint_record(model, "unknown", "detach 뒤 알림 없음")
+        # 알림이 없으면 같은 detach를 다시 보낸다(이미 떨어진 관절에 detach는 아무 일도 하지 않는다).
+        # 알림 없이 성공으로 치지 않는다 — 끝까지 없으면 실패다.
+        for attempt in range(1, DETACH_ATTEMPTS + 1):
+            started = time.time()
+            self._publish_empty(self.joint_topics(model)["detach"])
+            if self._wait_joint_state(model, "detached", started):
+                note = "detach 토픽 → detached 알림" + ("" if attempt == 1 else f" ({attempt}번째 전송)")
+                _write_joint_record(model, "detached", note)
+                return True, "detach 토픽으로 뗐다" + ("" if attempt == 1 else f"({attempt}번째 전송에 확인)")
+        _write_joint_record(model, "unknown", f"detach {DETACH_ATTEMPTS}회 전송 뒤 알림 없음")
         return False, "붙임 시스템이 detached를 알리지 않았다(이미 떨어져 있었을 수 있다)"
 
     def release_joint_if_any(self, model: str) -> None:

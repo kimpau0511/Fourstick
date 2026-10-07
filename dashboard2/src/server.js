@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // 서버 값 수집 훅. 화면은 이 값을 그대로 보여 준다(설계원칙 2) — 서버에 없는 값은 만들지 않는다.
 // 조회 주기는 화면 갱신 속도일 뿐 판단 기준이 아니다. 오래됨(stale) 기준은 서버 정책값만 쓴다.
@@ -71,6 +71,7 @@ function deriveRobotStatus(s, conn) {
   if (reasons.length) return { level: 'WARNING', label: LEVEL_LABELS.WARNING, reasons };
   const job = s.simDemo?.running_job;
   if (job) return { level: 'NOTICE', label: LEVEL_LABELS.NOTICE, reasons: [job.action_label || job.action || '작업 실행 중'] };
+  if (s.health?.running_execution_id) return { level: 'NOTICE', label: LEVEL_LABELS.NOTICE, reasons: ['일반 작업 실행 중'] };
   return { level: 'NORMAL', label: LEVEL_LABELS.NORMAL, reasons: [] };
 }
 
@@ -103,6 +104,7 @@ function derive(s) {
 
 export function useServer() {
   const [state, setState] = useState(INITIAL);
+  const fetchers = useRef({});
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +112,7 @@ export function useServer() {
     const update = (fn) => { if (!cancelled) setState((s) => derive(fn({ ...s, nowMs: Date.now() }))); };
 
     SOURCES.forEach(([key, path, every]) => {
-      const loop = async () => {
+      const fetchOnce = async () => {
         const startedAt = Date.now();
         try {
           const res = await fetch(path, { cache: 'no-store' });
@@ -128,14 +130,21 @@ export function useServer() {
           // 3D 관측은 서버가 못 줄 수도 있으므로(503) 값 없음으로 둔다.
           update((s) => ({ ...s, ...(key === 'health' ? { healthFailing: true } : {}), ...(key === 'robots' ? { robotsFailing: true } : {}), ...(key === 'simDemo' ? { simDemoFailing: true } : {}), ...(key === 'simState' ? { simState: null } : {}) }));
         }
+      };
+      fetchers.current[key] = fetchOnce;
+      const loop = async () => {
+        await fetchOnce();
         if (!cancelled) timers.push(setTimeout(loop, every));
       };
       loop();
     });
     const tick = setInterval(() => update((s) => s), TICK_MS);
-    return () => { cancelled = true; timers.forEach(clearTimeout); clearInterval(tick); };
+    return () => { cancelled = true; fetchers.current = {}; timers.forEach(clearTimeout); clearInterval(tick); };
   }, []);
 
+  // 작업이 끝나면(완료·실패·취소) 주기를 기다리지 않고 자재 상태를 다시 조회한다 — 버튼이 서버 기록을 따라가게.
+  const refresh = useCallback(() => Promise.all(['simDemo', 'simState'].map((key) => fetchers.current[key]?.())), []);
+
   const { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt } = state;
-  return { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt };
+  return { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, conn, alerts, robotStatus, refreshedAt, refresh };
 }

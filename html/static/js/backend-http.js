@@ -261,6 +261,16 @@ export class HttpBackend {
         this.emit({ kind: 'step-started', step: (payload.index || 0) + 1 });
         break;
 
+      case 'step_progress':
+        // 이송 실행 중 진행 표시(성공 기록이 아니다). 최종 결과는 'step'이 정한다.
+        this.emit({
+          kind: 'step-progress',
+          doneSteps: payload.done_steps || [],
+          currentStep: payload.current_step ?? null,
+          stage: payload.stage || null,
+        });
+        break;
+
       case 'execution_final':
         if (payload.interrupted) {
           this.emit({

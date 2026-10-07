@@ -102,7 +102,9 @@ class Fr3FreeSpotPlanner:
     def from_files(cls, capability, root: Path = ROOT, urdf: Path | None = None):
         base = root / "config/workcell"
         load = lambda p: json.loads(p.read_text(encoding="utf-8"))  # noqa: E731
-        return cls(workcell=load(base / "fr3_2f85_workcell.json"),
+        from core.workcell_paths import workcell_config
+
+        return cls(workcell=load(workcell_config() if root == ROOT else base / "fr3_2f85_workcell.json"),
                    poses=load(base / "fr3_2f85_workcell_poses.json"),
                    grasp=load(base / "fr3_2f85_workcell_grasp.json"),
                    mounting=load(root / "config/profiles/fr3wms_to_robotiq_2f85_mounting.json"),

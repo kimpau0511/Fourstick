@@ -9,6 +9,8 @@ id 목록)을 각자 해석했다: 모델은 역할(출발·목적지)을 짐작
   - `utterance`: 발화 원문의 일부(그 표현이 그 id를 가리킨다는 것을 서버가 확인했다)
   - `state`: 상태 기록(자재의 현재 위치, 컨베이어 빈 칸)
   - `registry`: 등록 정보(자재의 원래 팔레트)
+  - `context`: 같은 세션의 앞선 대화(직전에 옮긴 자재, 앞 질문에서 확인한 값). 원문에 가리키는
+    말('그거' 등)이 있거나 앞 질문의 답일 때만 쓴다.
 - 근거 없는 id는 의도에 들어가지 않는다. **모델이 만든 계획을 근거로 쓰지 않는다.**
 - 이 모듈은 값만 담는다. 해석(모델)·해소·검증은 `planning/intent_interpreter.py`,
   `server/plan_intent.py`가 한다.
@@ -20,8 +22,8 @@ from dataclasses import asdict, dataclass
 from typing import Any, Mapping
 
 #: 근거 종류.
-UTTERANCE, STATE, REGISTRY = "utterance", "state", "registry"
-EVIDENCE_KINDS = (UTTERANCE, STATE, REGISTRY)
+UTTERANCE, STATE, REGISTRY, CONTEXT = "utterance", "state", "registry", "context"
+EVIDENCE_KINDS = (UTTERANCE, STATE, REGISTRY, CONTEXT)
 #: 지원하는 의도. 지금은 자재 하나를 한 곳에서 다른 곳으로 옮기는 이송뿐이다.
 TRANSFER = "transfer"
 

@@ -357,6 +357,25 @@ class PlanBundle:
         }
 
 
+def _context_lines(context: dict, facts: dict) -> list[str]:
+    """해석기(Qwen)에 줄 같은 세션 맥락 — 서버가 확인한 사실만, 짧게."""
+    names = {m["id"]: m["name"] for m in facts["materials"]}
+    places = {loc["id"]: loc["name"] for loc in facts["locations"]}
+    lines = []
+    moved = context.get("moved")
+    if moved and moved.get("material") in names:
+        lines.append(f"직전에 옮긴 자재: {moved['material']} ({names[moved['material']]},"
+                     f" {places.get(moved['source'], moved['source'])} → "
+                     f"{places.get(moved['destination'], moved['destination'])})")
+    draft = context.get("draft") or {}
+    if draft.get("material"):
+        mid = draft["material"]["resource_id"]
+        lines.append(f"대기 중인 질문: {names.get(mid, mid)}({mid})를 어디로 옮길지 물었다")
+    elif draft.get("destination"):
+        lines.append(f"대기 중인 질문: '{draft['destination']['text']}' 목적지로 무엇을 옮길지 물었다")
+    return lines
+
+
 @dataclass
 class Api:
     """런타임 위에서 요청을 처리한다. HTTP를 모른다.
@@ -383,6 +402,10 @@ class Api:
     #: 탭 복제로 같은 session_id가 복사돼도 클라이언트로 분리하기 위한 것이며,
     #: **기록이 아니라 연결 상태**다(저장하지 않는다).
     _clients: dict = field(default_factory=dict)
+    #: 세션별 되묻기 대기 값(이송 의도의 확인된 일부). {session_id: draft}.
+    #: "A자재를 어디로 옮길까요?" 뒤 "컨베이어로"를 잇기 위한 **대화 상태**이며 기록이 아니다
+    #: (재시작하면 사라지고, 그러면 다시 묻는다). 직전에 옮긴 자재는 여기 두지 않고 저장소에서 읽는다.
+    _intent_drafts: dict = field(default_factory=dict)
     _flag_lock: Any = field(default_factory=threading.Lock)
 
     # ── 공통 ────────────────────────────────────────────────────────────
@@ -668,10 +691,12 @@ class Api:
 
         # 이송 요청이면 의도 하나로 해석·검증한다(server/plan_intent.py). 계획 생성과 요청↔계획
         # 일치 검증이 이 의도를 같이 쓴다. 이송이 아니면(위치 이동·홈) 기존 계획 생성 그대로다.
-        decision = self._interpret_intent(text)
+        decision = self._interpret_intent(text, session_id)
         intent = None
         provider = runtime.provider
-        if decision is not None and decision.kind in ("ask", "block"):
+        if decision is not None:
+            self._keep_draft(session_id, decision.draft)
+        if decision is not None and decision.kind in ("ask", "block", "noop"):
             return self._intent_failure(session_id, request_id, text, decision)
         if decision is not None and decision.kind == "intent":
             from server.plan_intent import IntentPlanProvider
@@ -849,7 +874,10 @@ class Api:
         # 않은 놓기 요청은 실행 가능(ALLOW)에서 ASK로 되돌린다. **계획을 고치거나
         # 기본 위치를 배정하지 않는다** — 무엇을 놓을지 물어볼 뿐이다. 이미 BLOCK/ASK인
         # 판정은 낮추지 않는다(더 강한 차단을 유지한다).
-        if decision is ValidationDecision.ALLOW:
+        # 검증된 작업 의도가 있으면 놓을 물체·놓을 곳은 그 의도(근거가 남은 자재·목적지)다 — 계획이
+        # 그 의도와 같은지는 위 요청–계획 일치 검증이 역할까지 대조했다. 발화 슬롯만 다시 보면 '원래 자리로
+        # 돌려놔'처럼 상징 목적지를 쓴 맞는 계획을 되묻는다(2026-10-07 복제 셀 실측, 복귀 버튼).
+        if decision is ValidationDecision.ALLOW and intent is None:
             place = evaluate_place_intent(
                 utterance=plan.utterance or "", slots=slots,
                 catalog=runtime.resource_catalog,
@@ -1387,9 +1415,20 @@ class Api:
                     " — 로봇은 하나이므로 동시에 실행하지 않는다",
                 )
         try:
+            jobs = getattr(runtime, "sim_demo_jobs", None)
+            motion = getattr(jobs, "motion", None)
+            if getattr(jobs, "motion_error", None):
+                raise ApiError(503, ReasonCode.CONFIG_INVALID, jobs.motion_error)
+            speed_percent = None
+            if motion is not None:
+                from core.policy import PolicyError
+                try:
+                    speed_percent = motion.snapshot()
+                except PolicyError as exc:
+                    raise ApiError(409, exc.reason, str(exc)) from exc
             return self._run_execution(
                 session_id=session_id, bundle=bundle, approval=approval,
-                transfer_goal=transfer_goal,
+                transfer_goal=transfer_goal, motion=motion, speed_percent=speed_percent,
             )
         finally:
             finished = self.running_execution_id
@@ -1451,13 +1490,18 @@ class Api:
 
     def _run_execution(
         self, *, session_id: str, bundle: PlanBundle, approval: ApprovalRecord,
-        transfer_goal: str | None = None,
+        transfer_goal: str | None = None, motion=None, speed_percent: int | None = None,
     ) -> dict:
         runtime = self.runtime
         plan = bundle.plan
         adapter = runtime.adapter()
         if adapter is None:
             raise ApiError(503, ReasonCode.ROBOT_NOT_REGISTERED, "어댑터가 없다")
+        if motion is not None:
+            configure = getattr(adapter, "configure_motion", None)
+            if configure is None:
+                raise ApiError(503, ReasonCode.CONFIG_INVALID, "어댑터가 이동 속도 설정을 지원하지 않습니다")
+            configure(motion.policy, speed_percent)
         connect = adapter.connect(ADAPTER_TIMEOUT_SEC)
         if not connect.request_accepted:
             raise ApiError(
@@ -1628,8 +1672,18 @@ class Api:
                 break
             if unit is not None and index in unit.steps:
                 if transfer_result is None:
+                    def progress(done: int, stage, unit=unit) -> None:
+                        # 진행 표시용(성공 기록 아님): 지난 계획 스텝과 실행기의 현재 단계.
+                        self.emit({"type": "step_progress", "payload": {
+                            "execution_id": execution_id,
+                            "done_steps": list(unit.steps[:done]),
+                            "current_step": unit.steps[done] if done < len(unit.steps) else None,
+                            "stage": stage}},
+                            session_id=session_id, execution_id=execution_id)
+
                     transfer_result = execute_transfer(
-                        runtime, unit, goal_id=transfer_goal, interruption=interruption)
+                        runtime, unit, goal_id=transfer_goal, interruption=interruption,
+                        speed_percent=speed_percent, on_progress=progress)
                 result = transfer_result
             else:
                 result = _run_step(adapter, step)
@@ -1790,7 +1844,7 @@ class Api:
         return {"ok": True, **_execution_dict(record, repository)}
 
     # ── 정지와 취소 (계약상 구분) ───────────────────────────────────────
-    def _interpret_intent(self, text: str):
+    def _interpret_intent(self, text: str, session_id: str | None = None):
         """이송 의도 해석·검증. 셀 정보(시연 작업 실행기)나 모델 client가 없으면 None(기존 경로)."""
         runtime = self.runtime
         jobs = getattr(runtime, "sim_demo_jobs", None)
@@ -1798,16 +1852,65 @@ class Api:
         if jobs is None or not getattr(jobs, "workcell", None) or client is None:
             return None
         from planning.intent_interpreter import IntentInterpreter
-        from server.plan_intent import cell_facts, decide_intent
-
-        from server.plan_intent import load_place_terms
+        from server.plan_intent import (
+            cell_facts,
+            decide_intent,
+            load_language_terms,
+            load_place_terms,
+        )
 
         facts = cell_facts(runtime.resource_catalog, jobs)
         facts["symbols"] = load_place_terms(runtime.config.workcell_manifest)
+        facts["terms"] = load_language_terms(runtime.config.workcell_manifest)
+        context = self._intent_context(session_id)
         interp = IntentInterpreter(client=client).interpret(
-            text, facts["materials"], facts["locations"])
-        return decide_intent(interp, text, facts,
+            text, facts["materials"], facts["locations"],
+            context=_context_lines(context, facts))
+        return decide_intent(interp, text, facts, context=context,
                              min_confidence=runtime.config.sim_demo_intent_min_confidence)
+
+    def _intent_context(self, session_id: str | None) -> dict:
+        """같은 세션의 서버 기록만: 직전에 **성공한** 이송의 자재(저장소)와 되묻기 대기 값(메모리)."""
+        from server.plan_intent import DRAFT_TTL_SEC
+
+        if not session_id:
+            return {}
+        out: dict = {}
+        with self._flag_lock:
+            draft = self._intent_drafts.get(session_id)
+            if draft is not None and self.now() - float(draft.get("at") or 0) > DRAFT_TTL_SEC:
+                self._intent_drafts.pop(session_id, None)
+                draft = None
+        if draft:
+            out["draft"] = draft
+        repo = self.runtime.repository
+        try:
+            executions = repo.executions_for_session(session_id)
+        except StorageError:
+            return out
+        for record in reversed(executions):
+            final = repo.final_result(record.execution_id)
+            if final is None or final.result.task_succeeded is not True:
+                continue
+            stored = repo.get_request_intent(record.request_id)
+            if not stored:
+                continue
+            out["moved"] = {"material": stored["material"]["resource_id"],
+                            "source": stored["source"]["resource_id"],
+                            "destination": stored["destination"]["resource_id"],
+                            "at": float(final.recorded_at)}
+            break
+        return out
+
+    def _keep_draft(self, session_id: str, draft) -> None:
+        """None이면 그대로 둔다. 빈 dict면 지운다(의도 확정·차단·안내). 값이 있으면 바꾼다."""
+        if draft is None:
+            return
+        with self._flag_lock:
+            if draft:
+                self._intent_drafts[session_id] = {**draft, "at": self.now()}
+            else:
+                self._intent_drafts.pop(session_id, None)
 
     def _intent_failure(self, session_id: str, request_id: str, text: str, decision) -> dict:
         """의도 해석·검증에서 끝난 요청(되묻기·차단). 계획을 만들지 않는다 — 실행할 것이 없다."""
@@ -1816,7 +1919,7 @@ class Api:
             "ok": False, "session_id": session_id, "request_id": request_id,
             "planning_attempt_id": None, "reason_code": reason.value,
             "detail": decision.detail, "clarification": decision.clarification,
-            "decision": "BLOCK" if decision.kind == "block" else "ASK",
+            "decision": {"block": "BLOCK", "noop": "NOOP"}.get(decision.kind, "ASK"),
             "recoverable": recoverable(reason),
             "slots": _slots_dict(extract_slots(
                 text, self.runtime.resource_catalog,
@@ -1824,12 +1927,15 @@ class Api:
             "draft_steps": [],
             "blocked": None, "plan_validation": None,
             "intent_interpretation": dict(decision.interpretation or {}),
+            # 여러 작업으로 읽었을 때 말한 순서(표시용). 실행하지 않는다.
+            "intent_tasks": list(decision.tasks or ()),
         }
         self.emit({"type": "plan_failed", "payload": payload}, session_id=session_id)
         return payload
 
     def _stop_from_utterance(self, session_id: str, text: str) -> dict:
         """정지 발화 → 전체 정지 요청. `/v1/stop` 라우트와 같은 범위(일반 실행 + 시연 작업)."""
+        self._keep_draft(session_id, {})               # 정지 뒤에는 앞 질문을 잇지 않는다
         stopped = self.stop(session_id=session_id)
         runtime = self.runtime
         sim_stop = None

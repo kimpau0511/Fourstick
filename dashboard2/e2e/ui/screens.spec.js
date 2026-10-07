@@ -97,7 +97,7 @@ test.describe('현황(홈)', () => {
 
   test('[UI-HOME-08][①] 이 화면에서 시작한 작업이면 서버 progress(reached/전체)로 진행 막대를 그린다', async ({ page }) => {
     const running = { job_id: 'qa-job', action: 'transfer', action_label: '컨베이어로 이송', status: 'running' };
-    await mockBackend(page, { command: SAMPLES.confirm(60), jobs: [SAMPLES.run.job], overrides: { simDemo: { running_job: running } } });
+    await mockBackend(page, { plan: SAMPLES.plan(60), execute: null, progress: [SAMPLES.step], overrides: { simDemo: { running_job: running } } });
     await page.goto('/');
     await sendCommand(page, 'A 자재를 컨베이어로 옮겨줘');
     await page.locator('section.command').getByRole('button', { name: '실행 승인' }).click();
@@ -114,7 +114,7 @@ test.describe('현황(홈)', () => {
 
 test.describe('비상 정지·용어', () => {
   test('[UI-ESTOP-01][SFR-009·DEV-06] 정지 버튼은 시뮬레이션 창이 열려 있어도 보이고 눌린다', async ({ page }) => {
-    await mockBackend(page, { command: SAMPLES.confirm(60), jobs: [SAMPLES.run.job] });
+    await mockBackend(page, { plan: SAMPLES.plan(60), execute: null, progress: [SAMPLES.step] });
     await page.goto('/');
     await startJob(page);
     await expect(page.locator('.sim-card')).toBeVisible();
@@ -155,15 +155,37 @@ test.describe('로봇 관리', () => {
     // 2026-10-02 사용자 결정: 상세 탭은 우측 창의 '상세' 버튼을 눌러야 펼친다.
     const more = page.getByRole('button', { name: '상세', exact: true });
     await expect(more).toHaveAttribute('aria-expanded', 'false');
-    await expect(page.getByRole('tab')).toHaveCount(0);
+    // 화면 탭(로봇 목록 / 구성 · 작업 셀)은 늘 보이므로 상세 패널 안의 탭만 센다(2026-10-06).
+    const detail = page.getByLabel('로봇 상세');
+    await expect(detail.getByRole('tab')).toHaveCount(0);
     await more.click();
-    for (const tab of ['개요', '도구 장착 이력', '프로파일 버전']) await expect(page.getByRole('tab', { name: tab })).toBeVisible();
+    for (const tab of ['개요', '도구 장착 이력', '프로파일 버전']) await expect(detail.getByRole('tab', { name: tab })).toBeVisible();
   });
   test('[UI-ROBOTS-04][2026-10-02 결정] 우측 창은 좌측 목록과 겹치는 항목(이름·셀·도구·운용 가능 여부)을 되풀이하지 않는다', async ({ page }) => {
     await page.goto('/#/robots');
     const detail = page.getByLabel('로봇 상세');
     await expect(detail).toContainText('현재 상태');
     for (const dup of ['현재 도구', '현재 셀', '운용 가능 여부']) await expect(detail).not.toContainText(dup);
+  });
+
+  test('[UI-ROBOTS-05][2026-10-06 결정] 구성 · 작업 셀 탭: 옛 웹의 로봇 구성·작업 셀 자원을 서버 값(/v1/config)으로 보여 주고 주소에 남는다', async ({ page }) => {
+    const config = fixture('config');
+    const workcell = config.robot.workcell;
+    await page.goto('/#/robots');
+    await expect(page.getByRole('table', { name: '로봇 목록' })).toBeVisible(); // 첫 탭은 기존 화면
+    await page.getByRole('tab', { name: '구성 · 작업 셀' }).click();
+    await expect(page).toHaveURL(/#\/robots\?tab=config$/);
+    const robot = page.getByLabel('로봇 구성');
+    await expect(robot).toContainText(config.robot.robot_id);
+    await expect(robot).toContainText(workcell.workcell_id);
+    await expect(robot).toContainText(workcell.world);
+    for (const skill of config.robot.supported_skills) await expect(robot.getByText(skill, { exact: true })).toBeVisible();
+    await expect(page.getByLabel('정책', { exact: true })).toContainText(config.policies.safety.policy_version);
+    await expect(page.getByRole('table', { name: '작업 셀 자원' }).locator('tbody tr')).toHaveCount(Object.keys(workcell.resources).length);
+    // 옛 웹 catalog.js에 적어 둔 값(페이로드 '미확보' 등)은 옮기지 않았다.
+    await expect(page.locator('.col-main')).not.toContainText('미확보');
+    await page.reload();
+    await expect(page.getByRole('tab', { name: '구성 · 작업 셀' })).toHaveAttribute('aria-selected', 'true');
   });
 });
 

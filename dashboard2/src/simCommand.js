@@ -10,6 +10,9 @@ const SESSION_ID = crypto.randomUUID();
 
 // 작업 결과 코드 → [톤, 표시]. html/static/js/sim-demo.js의 RESULT_LABELS와 같은 표다.
 export const RESULT_LABELS = {
+  general_completed: ['ok', '작업 완료'],
+  general_failed: ['danger', '작업 실패'],
+  general_interrupted: ['danger', '작업 중단'],
   simulation_transfer_completed: ['ok', '이송 완료'],
   simulation_transfer_resumed_completed: ['ok', '이어서 이송 완료'],
   returned_to_origin: ['ok', '원래 자리 복귀 완료'],

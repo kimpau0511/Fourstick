@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import SimView3D from '../SimView3D.jsx';
 import { commandLock } from '../server.js';
 import { simLabel } from '../simLabel.js';
@@ -21,6 +21,24 @@ function stepsOf(cmd) {
 export default function SimOverlay({ overlay, cmd, server, onClose }) {
   const [scene, setScene] = useState({ mode: '3d', status: 'connecting', fps: 0 });
   const onView = useCallback((view) => setScene(view), []);
+  // 시뮬레이션 화면 전체화면. 브라우저 전체화면 API를 쓰고, Esc로도 나온다. 화면 크기가 바뀌면
+  // SimView3D가 ResizeObserver로 다시 그린다. 전체화면에서는 헤더가 가려지므로 같은 정지(cmd.stop)를 안에 둔다.
+  const videoRef = useRef(null);
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const node = videoRef.current;
+    const sync = () => setFull(!!node && document.fullscreenElement === node);
+    document.addEventListener('fullscreenchange', sync);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      // 창이 닫히면(작업 끝·창 닫기) 전체화면도 함께 끝낸다.
+      if (node && document.fullscreenElement === node) document.exitFullscreen().catch(() => {});
+    };
+  }, []);
+  const toggleFull = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else videoRef.current?.requestFullscreen?.().catch(() => {});
+  }, []);
   const { state } = overlay;
   const steps = stepsOf(cmd);
   const lock = commandLock(server);
@@ -29,7 +47,12 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   const first = steps ? steps.findIndex((s) => !s.reached) : -1;
 
   let card;
-  if (state === 'danger') {
+  if (state === 'viewing') {
+    card = {
+      dot: dotSimRunning, title: '시뮬레이션 보기', titleTone: '', sub: simLabel(scene),
+      section: '작업 셀 관측', foot: HEADER_STOP,
+    };
+  } else if (state === 'danger') {
     card = {
       // 서버 BLOCK은 안전 판정 말고도(입력 오류·서비스 꺼짐 등) 나온다 — 안전 검사를 했다고 단정하지 않고 서버 사유만 보인다.
       dot: dotSimDanger, title: '실행 불가 — 서버가 차단했습니다', titleTone: 'danger', sub: cmd.result.reason || '실행 차단',
@@ -65,7 +88,16 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
         <div><strong className={card.titleTone}>{card.title}</strong><small>{card.sub}</small></div>
         <button type="button" className="sim-cancel" onClick={onClose}><b>창 닫기</b><small>창만 닫음 · 로봇 동작에는 영향 없음</small></button>
       </div>
-      <div className="sim-video"><SimView3D onView={onView} /></div>
+      <div className="sim-video" ref={videoRef}>
+        <SimView3D onView={onView} />
+        <button type="button" className="sim-fullscreen" onClick={toggleFull} aria-pressed={full}>
+          {full ? '전체화면 종료 (Esc)' : '⛶ 전체화면'}
+        </button>
+        {full && <div className="sim-fs-bar">
+          <span className={card.titleTone}>{card.title}{state !== 'viewing' && steps ? ` · ${done}/${steps.length} 단계` : ''}</span>
+          <button type="button" className="sim-fs-stop" onClick={cmd.stop}>■ 즉시 정지</button>
+        </div>}
+      </div>
       <hr />
       <p className="sim-section">{card.section}</p>
       {card.stages ? <div className="stages">
@@ -73,7 +105,7 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
           {i > 0 && <i className={`stage-line ${card.lines[i - 1]}`} />}
           <div className="stage"><span className={`stage-mark ${s.tone}`}>{s.mark}</span><small className={s.tone === 'wait' ? 'muted' : s.tone === 'danger' ? 'danger' : ''}>{s.label}</small></div>
         </div>)}
-      </div> : <p className="sim-foot">진행 단계 정보 없음</p>}
+      </div> : state !== 'viewing' && <p className="sim-foot">진행 단계 정보 없음</p>}
       <p className="sim-foot">{card.foot}</p>
       {/* 위험 판정에서는 판정을 덮어쓰는 승인 버튼을 두지 않는다(피그마 메모). 다시 보내면 서버가 다시 판정한다. */}
       {state === 'danger' && <div className="sim-actions"><button type="button" onClick={cmd.reset}>명령 수정</button><button type="button" disabled={cmd.busy || !!lock} title={lock || undefined} onClick={() => cmd.send(cmd.sent)}>다시 보내기</button></div>}

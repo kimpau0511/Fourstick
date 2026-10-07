@@ -696,7 +696,7 @@ export function renderCommandCard(state, backendKind) {
     backendKind === 'simulation'
       ? `<p class="hint"><span class="hint-mark">⬡</span>
            시뮬레이션 모드 예시 — PASS: "1번 팔레트로 이동한 뒤 안전 위치로 복귀해줘" ·
-           BLOCK: "1번 팔레트에서 A자재를 집어서 컨베이어에 올려줘" ·
+           BLOCK: "1번 팔레트에서 사각형 자재를 집어서 컨베이어에 올려줘" ·
            ASK: "그거 저기로 옮겨줘"</p>`
       : '';
   return `
@@ -711,7 +711,7 @@ export function renderCommandCard(state, backendKind) {
         이동은 <strong>확인 카드</strong>에서 승인한 뒤 실행하고, "멈춰"는 확인 없이 바로 전달합니다.
         확인 카드와 진행은 위 G1 카드에 표시됩니다. FR3 명령은 로봇 선택에서 FR3를 고르세요.</p>`
         : pendingConfirm ? '' : `<p class="hint"><span class="hint-mark">⬡</span>
-        예: "A 자재를 컨베이어로 옮겨줘" · "A 자재를 원래 자리로 돌려놔" ·
+        예: "원형 자재를 컨베이어로 옮겨줘" · "삼각형 자재를 원래 자리로 돌려놔" ·
         "돌려놔"(컨베이어에 하나만 있을 때) · "이어서 해줘" · "멈춰".
         모호한 자재 작업 발화는 해석 뒤 <strong>확인 카드</strong>가 먼저 뜹니다.
         그 밖의 명령은 기존 계획 생성으로 갑니다(집기·놓기 차단은 그대로입니다).</p>`}</div>

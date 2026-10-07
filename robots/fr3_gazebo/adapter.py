@@ -18,9 +18,11 @@ Fake Adapter를 대신해 **실제 Gazebo 작업 셀**에 명령을 보낸다.
 from __future__ import annotations
 
 import json
+import os
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping
 
 from core.capability_profile import CapabilityProfile
 from core.execution_result import ExecutionResult, rejected, success, unverifiable
@@ -101,12 +103,32 @@ class WorkcellResources:
         return self.resources.get(resource_id)
 
 
+def check_cell_isolation(workcell: Mapping[str, Any], environ: Mapping[str, str] | None = None) -> None:
+    """설정의 Gazebo 파티션·ROS 도메인과 프로세스 환경이 다르면 멈춘다.
+
+    2026-10-07 실측: 복제 셀(GZ_PARTITION·ROS_DOMAIN_ID를 바꿔 띄움)에서 팔은 환경의 도메인으로
+    복제 셀을 움직였지만, 고정 장치·관측은 설정의 파티션으로 **다른(라이브) 셀**에 붙고 그 셀의
+    자재를 읽었다. 둘이 어긋나면 어느 셀에 명령하는지 알 수 없으므로 시작하지 않는다.
+    환경에 값이 없으면(설정만 쓰는 도구) 검사하지 않는다.
+    """
+    env = os.environ if environ is None else environ
+    pairs = (("GZ_PARTITION", str(workcell.get("gz_partition") or "")),
+             ("ROS_DOMAIN_ID", str(workcell.get("ros_domain_id") or "")))
+    wrong = [f"{key}={env[key]!r} ↔ 설정 {want!r}" for key, want in pairs
+             if env.get(key) not in (None, "") and want and env[key] != want]
+    if wrong:
+        raise WorkcellConfigError(
+            ReasonCode.CONFIG_INVALID,
+            "작업 셀 설정과 프로세스 환경이 다른 셀을 가리킨다 — 시작하지 않는다: " + "; ".join(wrong))
+
+
 def load_workcell_resources(
     workcell_path: Path, poses_path: Path, *, state_max_age_sec: float,
     mounting_path: Path | None = None, grasp_path: Path | None = None,
 ) -> WorkcellResources:
     """설정과 유도 결과에서 대조표를 만든다. **값을 보충하지 않는다.**"""
     workcell = json.loads(Path(workcell_path).read_text(encoding="utf-8"))
+    check_cell_isolation(workcell)
     derived = json.loads(Path(poses_path).read_text(encoding="utf-8"))
 
     home = derived.get("safe_home", {})
@@ -312,7 +334,6 @@ class Fr3GazeboAdapter(RobotAdapter):
         transport: WorkcellTransport,
         resources: WorkcellResources,
         now: Callable[[], float],
-        move_seconds: float = 6.0,
         stop_velocity_rad_s: float = 0.01,
         stop_samples: int = 10,
         max_sample_gap_sec: float = 0.2,
@@ -321,7 +342,10 @@ class Fr3GazeboAdapter(RobotAdapter):
         self._transport = transport
         self._resources = resources
         self._now = now
-        self._move_seconds = move_seconds
+        from core.motion_speed import MotionSpeedPolicy
+        self._motion_policy = MotionSpeedPolicy.from_config(json.loads(
+            (Path(__file__).resolve().parents[2] / "config/workcell/fr3_2f85_workcell_motion.json").read_text()))
+        self._speed_percent = self._motion_policy.default_percent
         self._stop_velocity = stop_velocity_rad_s
         self._stop_samples = stop_samples
         self._max_sample_gap_sec = max_sample_gap_sec
@@ -335,6 +359,11 @@ class Fr3GazeboAdapter(RobotAdapter):
         self._last_snapshot: tuple[str, str] | None = None
 
     # ── 연결 ────────────────────────────────────────────────────────────
+    def configure_motion(self, policy, percent: int) -> None:
+        # 셀 임대를 잡은 일반 실행 시작 때만 호출한다. 저장 변경을 구독하지 않는다.
+        self._speed_percent = policy.execution_percent(percent)
+        self._motion_policy = policy
+
     def connect(self, timeout_sec: float) -> ExecutionResult:
         world = self._transport.connect(timeout_sec)
         self._world = world
@@ -568,10 +597,23 @@ class Fr3GazeboAdapter(RobotAdapter):
                             and self._last_snapshot != current)
         self._last_snapshot = current
 
-        outcome = self._transport.send_arm(joints, self._move_seconds, timeout_sec)
+        observation = self._transport.joint_observation(timeout_sec)
+        if not observation.valid:
+            return rejected(ReasonCode.ROBOT_STATE_UNAVAILABLE,
+                            {"detail": "이동 시간 계산용 관절 관측이 없습니다", **extra})
+        from core.policy import PolicyError
+        try:
+            seconds = self._motion_policy.arm_seconds(
+                observation.positions, joints,
+                {j.name: j.max_velocity for j in self.profile.joint_limits},
+                self._speed_percent)
+        except PolicyError as exc:
+            return rejected(exc.reason, {"detail": str(exc), **extra})
+        outcome = self._transport.send_arm(joints, seconds, timeout_sec)
         evidence = {
             "pose": pose_name,
             "target_joint_rad": {k: round(v, 6) for k, v in joints.items()},
+            "speed_percent": self._speed_percent, "motion_seconds": seconds,
             "snapshot_id": scene.snapshot_id,
             "snapshot_changed_since_last_execution": snapshot_changed,
             "accepted": outcome.accepted,
@@ -587,10 +629,15 @@ class Fr3GazeboAdapter(RobotAdapter):
         if not outcome.result_received:
             return unverifiable(ReasonCode.EXEC_RESULT_TIMEOUT, evidence)
 
+        if outcome.error_code != 0:
+            return ExecutionResult(state=ExecutionState.FAILED, request_accepted=True,
+                                   task_succeeded=False, verified=True,
+                                   reason=ReasonCode.EXEC_ABORTED, evidence=evidence)
         observation = self._transport.joint_observation(3.0)
-        if not observation.valid:
+        if (not observation.valid or any(name not in observation.positions
+                or not math.isfinite(observation.positions[name]) for name in joints)):
             return unverifiable(ReasonCode.ROBOT_STATE_UNAVAILABLE, evidence)
-        errors = {name: abs(observation.positions.get(name, 0.0) - joints[name])
+        errors = {name: abs(observation.positions[name] - joints[name])
                   for name in joints if name in ARM_JOINTS}
         worst = max(errors.values()) if errors else None
         evidence["observed_joint_rad"] = {

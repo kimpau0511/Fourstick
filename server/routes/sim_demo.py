@@ -18,6 +18,7 @@
 | `POST /v1/sim-demo/goals/<id>/stop` | 목표와 현재 복귀 작업 STOP |
 | `POST /v1/sim-demo/command` | `{mode:"simulation_demo", utterance, source}` 텍스트·STT final 발화 |
 | `POST /v1/sim-demo/confirm` | `{token, action:"confirm" 또는 "cancel"}` 확인 카드의 버튼 |
+| `GET/POST /v1/sim-demo/motion` | 이동 속도 설정(`{speed_percent}`). 다음 작업부터 적용 |
 
 `/v1/sim-demo/command`는 텍스트와 STT **final**이 함께 쓰는 하나의 입구다.
 LLM·계획 생성을 거치지 않는다(`server/sim_demo_commands.py`). partial은 받지
@@ -115,6 +116,23 @@ async def handle(
                 if not isinstance(exc, SimDemoGoalError):
                     raise
                 raise ApiError(exc.status, None, str(exc)) from exc
+
+    if path == "/v1/sim-demo/motion":
+        motion = getattr(_jobs(ctx), "motion", None)
+        if motion is None:
+            raise ApiError(503, None, "이동 속도 설정을 쓸 수 없습니다: "
+                           + str(getattr(ctx.runtime, "sim_demo_motion_disabled_reason", "")))
+        from core.policy import PolicyError
+        try:
+            if method == "GET":
+                return json_response(motion.current())
+            if method == "POST":
+                payload = await ctx.read_body(receive)
+                return json_response(motion.set_percent(payload.get("speed_percent")))
+        except PolicyError as exc:
+            raise ApiError(400 if method == "POST" else 503, exc.reason, str(exc)) from exc
+        except OSError as exc:
+            raise ApiError(503, None, "이동 속도를 저장하지 못했습니다") from exc
 
     if method == "POST" and path == "/v1/sim-demo/command":
         payload = await ctx.read_body(receive)

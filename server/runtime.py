@@ -43,6 +43,7 @@ from core.capability_profile import CapabilityProfile
 from core.constants import TASK_PLAN_SCHEMA_VERSION
 from core.policy import (
     FreshnessPolicy,
+    PolicyError,
     LlmProviderConfig,
     PlanningPolicy,
     SafetyPolicy,
@@ -841,6 +842,13 @@ def _attach_sim_demo_jobs(runtime, config, manifest, workcell_path) -> None:
         runtime.sim_demo_disabled_reason = (
             f"작업 셀 설정을 읽지 못했다: {type(exc).__name__}")
         return
+    from robots.fr3_gazebo.adapter import WorkcellConfigError, check_cell_isolation
+
+    try:
+        check_cell_isolation(workcell)
+    except WorkcellConfigError as exc:
+        runtime.sim_demo_disabled_reason = str(exc)[:300]
+        return
     if workcell.get("is_simulated") is not True:
         runtime.sim_demo_disabled_reason = "작업 셀 설정이 시뮬레이션이 아니다"
         return
@@ -882,6 +890,21 @@ def _attach_sim_demo_jobs(runtime, config, manifest, workcell_path) -> None:
                                         cell_execution=cell_execution,
                                         surfaces_config=surfaces_config,
                                         **kwargs)
+    # 이동 속도 정책. 매니페스트에 없거나 못 읽으면 속도 설정만 꺼진다(실행기 고정 시간).
+    runtime.sim_demo_motion_disabled_reason = None
+    try:
+        from core.motion_speed import MotionSpeedPolicy
+        from server.sim_demo_motion import MotionSettings
+
+        motion_policy = MotionSpeedPolicy.from_config(
+            json.loads(workcell_path("motion").read_text(encoding="utf-8")))
+        runtime.sim_demo_jobs.motion = MotionSettings(
+            motion_policy,
+            runtime.sim_demo_jobs.state.path.with_name("sim_demo_motion.json"))
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, PolicyError) as exc:
+        runtime.sim_demo_motion_disabled_reason = (
+            f"이동 속도 설정을 읽지 못했다: {type(exc).__name__}")
+    runtime.sim_demo_jobs.motion_error = runtime.sim_demo_motion_disabled_reason
     from server.sim_free_spot import FreeSpotService
 
     runtime.sim_free_spot = FreeSpotService(runtime) if surfaces_config else None

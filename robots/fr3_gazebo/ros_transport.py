@@ -212,6 +212,29 @@ class RosWorkcellTransport:
             time.sleep(0.005)
 
     # ── 명령 ────────────────────────────────────────────────────────────
+    def _trajectory_points(self, names, values, seconds, timeout_sec):
+        # 끝점 및 극값 지점의 위치·속도·가속도를 주면 JTC가 동일한 quintic 곡선을 보간한다.
+        # 계산에 쓴 T와 전송 T는 동일하다. 현재 위치가 없으면 궤적을 보내지 않는다.
+        import math
+        from builtin_interfaces.msg import Duration
+        from trajectory_msgs.msg import JointTrajectoryPoint
+        observation = self.joint_observation(timeout_sec)
+        if (not observation.valid or not math.isfinite(seconds) or seconds <= 0
+                or any(not math.isfinite(float(v)) for v in values)
+                or any(n not in observation.positions or not math.isfinite(observation.positions[n]) for n in names)):
+            return None
+        from core.motion_speed import quintic_samples
+        points = []
+        for sample in quintic_samples(observation.positions, dict(zip(names, values)), seconds):
+            point = JointTrajectoryPoint()
+            point.positions = [sample["positions"][n] for n in names]
+            point.velocities = [sample["velocities"][n] for n in names]
+            point.accelerations = [sample["accelerations"][n] for n in names]
+            at = sample["seconds"]
+            point.time_from_start = Duration(sec=int(at), nanosec=int((at % 1) * 1e9))
+            points.append(point)
+        return points
+
     def _send(self, client, names, values, seconds: float,
               timeout_sec: float, should_stop=None) -> GoalOutcome:
         """goal을 보내고 결과까지 기다린다.
@@ -221,20 +244,16 @@ class RosWorkcellTransport:
         않는다. 없으면 기존 동작과 같다.
         """
         self._ensure_node()
-        from builtin_interfaces.msg import Duration
         from control_msgs.action import FollowJointTrajectory
-        from trajectory_msgs.msg import JointTrajectoryPoint
 
         if not client.wait_for_server(timeout_sec=timeout_sec):
             return GoalOutcome(accepted=False, detail="액션 서버가 없다")
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = list(names)
-        point = JointTrajectoryPoint()
-        point.positions = [float(v) for v in values]
-        point.velocities = [0.0] * len(values)
-        point.time_from_start = Duration(
-            sec=int(seconds), nanosec=int((seconds % 1) * 1e9))
-        goal.trajectory.points = [point]
+        points = self._trajectory_points(names, values, seconds, timeout_sec)
+        if points is None:
+            return GoalOutcome(accepted=False, detail="궤적 시작 관절 관측 또는 이동 시간이 유효하지 않다")
+        goal.trajectory.points = points
         send_future = client.send_goal_async(goal)
         deadline = time.monotonic() + timeout_sec
         while not send_future.done() and time.monotonic() < deadline:
@@ -267,20 +286,16 @@ class RosWorkcellTransport:
         추적을 잃으면 무엇을 취소했는지 말할 수 없다.
         """
         self._ensure_node()
-        from builtin_interfaces.msg import Duration
         from control_msgs.action import FollowJointTrajectory
-        from trajectory_msgs.msg import JointTrajectoryPoint
 
         if not client.wait_for_server(timeout_sec=timeout_sec):
             return GoalOutcome(accepted=False, detail="액션 서버가 없다")
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = list(names)
-        point = JointTrajectoryPoint()
-        point.positions = [float(v) for v in values]
-        point.velocities = [0.0] * len(values)
-        point.time_from_start = Duration(
-            sec=int(seconds), nanosec=int((seconds % 1) * 1e9))
-        goal.trajectory.points = [point]
+        points = self._trajectory_points(names, values, seconds, timeout_sec)
+        if points is None:
+            return GoalOutcome(accepted=False, detail="궤적 시작 관절 관측 또는 이동 시간이 유효하지 않다")
+        goal.trajectory.points = points
         send_future = client.send_goal_async(goal)
         deadline = time.monotonic() + timeout_sec
         while not send_future.done() and time.monotonic() < deadline:

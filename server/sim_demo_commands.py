@@ -90,12 +90,20 @@ def material_aliases(workcell: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
         model = row.get("gazebo_model")
         if (workcell["models"].get(model) or {}).get("kind") != "material":
             continue
-        korean = _normalize(row.get("korean") or "")        # 예: "a자재"
+        # 표시 이름(예: "원형 자재")과 예전 이름(korean_aliases, 예: "C자재") 모두. 예전 이름의 글자 읽기
+        # ("씨자재")와 모양 낱말("원형자재", "동그라미자재")도 붙인다(2026-10-07 형상 변경).
+        korean = _normalize(row.get("korean") or "")        # 예: "원형자재"
         names = {korean}
-        match = re.fullmatch(r"([a-z])자재", korean)
-        if match:
-            for reading in _LETTER_READINGS.get(match.group(1), ()):
-                names.add(f"{reading}자재")
+        for alias in (korean, *(_normalize(a) for a in row.get("korean_aliases") or ())):
+            names.add(alias)
+            match = re.fullmatch(r"([a-z])자재", alias)
+            if match:
+                for reading in _LETTER_READINGS.get(match.group(1), ()):
+                    names.add(f"{reading}자재")
+        for shape in row.get("korean_shapes") or ():
+            shape = _normalize(shape)
+            if shape:
+                names.add(f"{shape}자재")
         for color in row.get("korean_colors") or ():
             color = _normalize(color)
             if color:

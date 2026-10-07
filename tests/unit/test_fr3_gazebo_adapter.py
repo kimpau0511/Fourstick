@@ -190,6 +190,37 @@ class TestMoveResolution(unittest.TestCase):
         self.assertTrue(result.task_succeeded)
         self.assertEqual(transport.sent[-1]["kind"], "arm")
 
+    def test_terminal_failure_does_not_become_success_at_target(self):
+        adapter, transport, _, _ = build()
+        adapter.connect(1.0)
+        transport.arm_outcome = GoalOutcome(accepted=True, result_received=True, error_code=-4)
+        self.assertIsNot(adapter.move("loc_pallet_1", 1.0).task_succeeded, True)
+
+    def test_partial_observation_after_movement_is_not_success(self):
+        adapter, transport, _, _ = build()
+        adapter.connect(1.0)
+        original = transport.send_arm
+        def send(*args):
+            result = original(*args)
+            del transport.positions["j2"]
+            return result
+        transport.send_arm = send
+        result = adapter.move("loc_pallet_1", 1.0)
+        self.assertIsNot(result.task_succeeded, True)
+        self.assertFalse(result.verified)
+
+    def test_configured_speed_changes_real_transport_duration(self):
+        slow, ts, _, _ = build()
+        fast, tf, _, _ = build()
+        from core.motion_speed import MotionSpeedPolicy
+        policy = MotionSpeedPolicy.from_config(json.loads(
+            (ROOT / "config/workcell/fr3_2f85_workcell_motion.json").read_text()))
+        slow.configure_motion(policy, 30)
+        fast.configure_motion(policy, 70)
+        slow.connect(1.0); fast.connect(1.0)
+        self.assertGreater(slow.move("loc_pallet_1", 1.0).evidence["motion_seconds"],
+                           fast.move("loc_pallet_1", 1.0).evidence["motion_seconds"])
+
     def test_collision_at_target_blocks_execution(self):
         adapter, transport, _, _ = build()
         adapter.connect(1.0)

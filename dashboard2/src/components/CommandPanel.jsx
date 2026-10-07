@@ -30,6 +30,36 @@ const STAGES = ['동작 준비', '안전 규칙 확인', '가상 동작 확인']
 const MARK = { done: '✓', active: '●', fail: '✕', idle: '○' };
 const STAGE_TEXT = { done: '완료', active: '진행 중', fail: '실패', idle: '대기' };
 
+// 자재 버튼은 서버 상태 기록(/v1/sim-demo)만 따른다. 문장은 입력창과 같은 일반 계획 요청(sim.send)으로 보낸다
+// — 승인 전에는 실행하지 않는다. 복귀 버튼은 자재가 원래 자리 밖에 있다고 기록됐을 때만 보이고,
+// 기록된 위치가 확정(컨베이어 칸·팔레트)이 아니면 잠그고 이유를 보인다.
+const PLACED = ['held_on_target', 'on_pallet'];
+function materialSkills(server) {
+  const sd = server && server.simDemo;
+  const materials = (sd && sd.materials) || [];
+  const stale = server && server.simDemoFailing ? '작업 상태 조회가 실패해 자재 버튼을 잠갔습니다 — 연결을 확인해 주세요' : null;
+  const cell = sd && sd.running_job ? '다른 작업이 실행 중이라 자재 버튼을 잠갔습니다'
+    : sd && sd.recovery_required ? '작업 셀 복구가 필요해 자재 버튼을 잠갔습니다' : null;
+  const pallet = (id) => (materials.find((m) => m.support_model === id) || {}).support_korean || id;
+  return materials.flatMap((m) => {
+    const r = m.record;
+    const home = m.support_korean || '원래 자리';
+    const out = [];
+    if (m.actions && m.actions.transfer) {
+      out.push({ key: `${m.model}-t`, label: `${m.korean} → 컨베이어`, sentence: `${m.korean}를 컨베이어로 옮겨줘`,
+        title: `현재: 원래 자리(${home}) → 컨베이어`, blocked: stale || cell });
+    }
+    if (r) {
+      const here = r.state === 'held_on_target' ? `컨베이어${m.slot_label ? ` ${m.slot_label}` : ''}`
+        : r.state === 'on_pallet' ? pallet(r.pallet) : null;
+      out.push({ key: `${m.model}-r`, label: `${m.korean} 원래 자리로`, sentence: `${m.korean}를 원래 자리로 돌려놔`,
+        title: `현재: ${here || '위치 확인 필요'} → 원래: ${home}`,
+        blocked: stale || cell || (PLACED.includes(r.state) ? null : `${m.korean}의 위치를 확인할 수 없어(${r.state}) 복귀 버튼을 잠갔습니다 — 복구 후 사용할 수 있습니다`) });
+    }
+    return out;
+  });
+}
+
 // 로봇 이름은 역할 우선(이송 가능하면 "이송 로봇"), 모델·id는 title로 보조.
 const robotName = (id, profile) => ((profile.supported_skills || []).some((k) => k === 'pick' || k === 'place') ? '이송 로봇' : id);
 
@@ -48,7 +78,7 @@ function MicButton({ voice, locked }) {
   </button>;
 }
 
-export default function CommandPanel({ now, sim, server }) {
+export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const [text, setText] = useState('');
   const [picked, setPicked] = useState(null);
   const robots = Object.entries((server && server.robots && server.robots.robots) || {})
@@ -58,12 +88,10 @@ export default function CommandPanel({ now, sim, server }) {
   // 연결·로봇 상태 잠금은 server.js의 commandLock(즉시 정지는 잠그지 않는다).
   const lockReason = commandLock(server)
     || (robots.length > 1 && !target ? '대상 로봇을 먼저 선택해 주세요' : null);
-  // 스킬 버튼: 서버가 지금 가능하다고 준 동작만. 서버가 받는 source는 text·stt_final뿐이라
-  // 버튼으로 보낸 명령도 기록에는 text와 구분되지 않는다.
-  const skills = ((server && server.simDemo && server.simDemo.materials) || []).flatMap((m) => [
-    m.actions && m.actions.transfer && { key: `${m.model}-t`, label: `${m.korean} → 컨베이어`, sentence: `${m.korean}를 컨베이어로 옮겨줘` },
-    m.actions && m.actions.return && { key: `${m.model}-r`, label: `${m.korean} 원래 자리로`, sentence: `${m.korean}를 원래 자리로 돌려놔` },
-  ]).filter(Boolean);
+  // 텍스트·음성·스킬 버튼 모두 같은 일반 계획 요청(sim.send)을 사용한다.
+  const skills = materialSkills(server);
+  const skillNotes = [...new Set([...skills.map((k) => k.blocked),
+    server && server.simDemoFailing && '작업 상태 조회가 실패해 자재 버튼을 잠갔습니다 — 연결을 확인해 주세요'].filter(Boolean))];
   // 음성 입력. final만 명령으로 보낸다(대상 로봇 선택 유지) — partial·clarify는 보내지 않는다.
   const voice = useVoice({
     config: server && server.config, health: server && server.health,
@@ -111,7 +139,7 @@ export default function CommandPanel({ now, sim, server }) {
   if (sim.error) interpretation = [sim.error];
   else if (pending) interpretation = [pending.summary, pending.evidence && pending.evidence.slot_label].filter(Boolean);
   else if (result && result.decision === 'PASS_THROUGH') interpretation = ['이 화면은 시연 명령(자재 이송·복귀·정지·이어서)만 처리합니다.'];
-  else if (result && result.decision === 'STOP') interpretation = [result.stop?.requested === true ? '시연 작업에 정지를 요청했습니다.' : result.stop?.detail || '정지할 시연 작업이 없습니다'];
+  else if (result && result.decision === 'STOP') interpretation = [result.stop?.requested === true ? '전체 정지를 요청했습니다.' : result.stop?.detail || '정지할 작업이 없습니다'];
   else if (result) interpretation = [result.summary || (job && `${job.action_label || job.action} · ${job.slot_label || ''}`), result.reason].filter(Boolean);
   const stages = phase === 'done' ? ['done', 'done', resultTone === 'ok' ? 'done' : 'fail']
     : phase === 'running' ? ['done', 'done', 'active']
@@ -122,7 +150,7 @@ export default function CommandPanel({ now, sim, server }) {
   const input = <form className="cmd-form" onSubmit={submit}>
     <div className="cmd-field">
       <textarea id="command-input" className="command-input" rows={phase === 'idle' ? 3 : 1} value={text}
-        aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: A 자재를 컨베이어로 옮겨줘'}
+        aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: 원형 자재를 컨베이어로 옮겨줘'}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
       <MicButton voice={voice} locked={!!lockReason} />
@@ -140,9 +168,10 @@ export default function CommandPanel({ now, sim, server }) {
       onClick={() => setPicked(r.id)}>{r.name}</button>)}
   </div>;
   const skillChips = (phase === 'idle' || phase === 'ask') && <div className="cmd-chips" role="group" aria-label="스킬 버튼">
-    {skills.map((k) => <button key={k.key} type="button" className="chip" disabled={sim.busy || !!lockReason}
+    {skills.map((k) => <button key={k.key} type="button" className="chip" title={k.title} disabled={sim.busy || !!lockReason || !!k.blocked}
       onClick={() => sim.send(k.sentence, target && target.id)}>{k.label}</button>)}
     <button type="button" className="chip chip-stop" onClick={sim.stop}>즉시 정지</button>
+    {skillNotes.map((note) => <small key={note} className="cmd-lock" role="status">{note}</small>)}
   </div>;
 
   const progress = job ? (job.progress || []).map((p) => ({ key: p.no, done: p.reached, text: `${p.no}/${p.of} ${p.label}` }))
@@ -169,11 +198,15 @@ export default function CommandPanel({ now, sim, server }) {
         {pending && pending.kind === 'goal' && <ul className="plan">
           {(pending.plan || []).map((p) => <li key={p.step}><Spinner size={14} decorative />{stepText(p)}</li>)}
         </ul>}
+        {pending && pending.kind === 'general' && <ol className="plan" aria-label="작업 계획">
+          {pending.plan.steps.map((p) => <li key={p.no}>{p.description}</li>)}
+        </ol>}
+        {pending?.kind === 'general' && pending.validation?.detail && <small className="cmd-reason">안전 검증: {pending.validation.detail}</small>}
         {progress.length > 0 && <ul className="plan">
           {progress.map((p) => <li key={p.key} className={p.done ? 'done' : ''}>{p.done ? <img src={checkSquare} alt="" width="14" height="14" /> : <Spinner size={14} decorative />}{p.text}</li>)}
         </ul>}
         {running && <div className="run-bar" role="progressbar" aria-label="작업 진행률" aria-valuenow={percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: `${percent}%` }} /></div>}
-        {running && <small className="info">Gazebo에서 실행 중…</small>}
+        {running && <small className="info">{job && job.stage ? `Gazebo에서 실행 중 · ${job.stage}` : 'Gazebo에서 실행 중…'}</small>}
         {phase === 'done' && job && <b className={resultTone}>{resultLabel || `종료 코드 ${job.exit_code}`}</b>}
         {phase === 'done' && goal && !job && <small>목표 상태: {goal.status}</small>}
         {phase === 'ask' && input}
@@ -184,6 +217,7 @@ export default function CommandPanel({ now, sim, server }) {
         {(phase === 'done' || phase === 'other' || (phase === 'confirm' && expired)) &&
           <button className="btn-secondary" onClick={sim.reset}>{phase === 'other' && result && result.decision === 'BLOCK' ? '명령 수정' : '새 명령 입력'}</button>}
       </div>}
+    <button type="button" className="btn-secondary" onClick={onOpenSimulation}>시뮬레이션 보기</button>
     <div className="decide">
       {phase === 'confirm' && !expired && <p className="muted">{remaining}초 안에 승인하지 않으면 취소됩니다</p>}
       {phase === 'confirm' && !!lockReason && <p className="cmd-lock" role="status">{lockReason}</p>}

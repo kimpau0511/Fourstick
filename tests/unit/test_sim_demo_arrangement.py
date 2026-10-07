@@ -128,7 +128,7 @@ class PlanArrangementTest(unittest.TestCase):
             ("transfer", "material_b", ORIGIN, "slot_2"),
         ])
         self.assertEqual(result["steps"][2]["depends_on"], [1, 2])
-        self.assertIn("B자재가 먼저 빠져야 한다", result["steps"][2]["reason"])
+        self.assertIn("삼각형 자재가 먼저 빠져야 한다", result["steps"][2]["reason"])
         self.assertEqual(result["expected"]["material_a"], "slot_1")
 
     def test_user_order_is_followed_when_no_dependency_blocks_it(self):
@@ -163,7 +163,7 @@ class PlanArrangementTest(unittest.TestCase):
         result = plan("C자재는 컨베이어 1번에 놓고 A자재는 컨베이어 3번에 놓아줘",
                       {"material_b": on("slot_1")})
         self.assertEqual(steps(result)[0], ("return", "material_b", "slot_1", ORIGIN))
-        self.assertIn("C자재가", result["steps"][0]["reason"])
+        self.assertIn("원형 자재가", result["steps"][0]["reason"])
 
     def test_observation_wins_over_user_assertion(self):
         result = plan("B자재는 지금 컨베이어 3번에 있어, B자재를 원래 자리로 돌려놔",

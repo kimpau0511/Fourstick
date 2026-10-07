@@ -14,6 +14,31 @@ import {
   ClockSkew, DISPLAY_DELAY_SEC, SampleBuffer, lerpJoints, lerpPoses, percentile, staleness,
 } from './sim-view-core.js';
 
+// 자재 형상 — 서버 셀 정보의 shape를 Gazebo world 생성기와 같은 규칙으로 그린다(ROS z-up, 중심 원점).
+// dashboard2/src/materialGeometry.js와 같은 규칙이다.
+function materialGeometry(item) {
+  const [sx, sy, sz] = item.size_m;
+  const side = Math.min(sx, sy);
+  if (item.shape === 'cylinder') {
+    const g = new THREE.CylinderGeometry(side / 2, side / 2, sz, 40);
+    g.rotateX(Math.PI / 2);
+    return g;
+  }
+  if (item.shape === 'triangle_prism') {
+    const r = side / Math.sqrt(3);
+    const shape = new THREE.Shape();
+    [0, 120, 240].forEach((deg, i) => {
+      const a = (deg * Math.PI) / 180;
+      if (i === 0) shape.moveTo(r * Math.cos(a), r * Math.sin(a)); else shape.lineTo(r * Math.cos(a), r * Math.sin(a));
+    });
+    shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, { depth: sz, bevelEnabled: false });
+    g.translate(0, 0, -sz / 2);
+    return g;
+  }
+  return new THREE.BoxGeometry(sx, sy, sz);
+}
+
 const VIEW_KEY = 'forstick2.simView';
 const TRACKED_LINKS = ['wrist3_Link', 'robotiq_85_left_finger_tip_link',
   'robotiq_85_right_finger_tip_link', 'robotiq_85_base_link'];
@@ -112,7 +137,7 @@ function buildScene(model) {
     root.add(mesh);
   }
   for (const item of model.cell.materials) {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(...item.size_m),
+    const mesh = new THREE.Mesh(materialGeometry(item),
       new THREE.MeshStandardMaterial({ color: color(item.color_rgba) }));
     mesh.position.set(...item.home_xyz_m);
     mesh.visible = false;            // 관측이 오기 전에는 그리지 않는다

@@ -295,7 +295,7 @@ class ConfirmFlowTest(ClockBase):
         self.assertEqual(self.job_count, 0, "확인 전에 작업이 만들어졌다")
         self.assertIsNone(payload["job"])
         pending = payload["confirmation"]
-        self.assertEqual(pending["summary"], "A자재를 컨베이어로 옮기겠습니다.")
+        self.assertEqual(pending["summary"], "사각형 자재를 컨베이어로 옮기겠습니다.")
         self.assertEqual(pending["action"], "transfer")
         self.assertEqual(pending["material"], "material_a")
         self.assertEqual(pending["ttl_sec"], 60.0)
@@ -727,7 +727,7 @@ class SlotAssignmentTest(ClockBase):
         self.assertFalse(conveyor["full"])
         rows = {r["slot"]: r for r in conveyor["slots"]}
         self.assertTrue(rows["slot_1"]["occupied"])
-        self.assertEqual(rows["slot_1"]["korean"], "A자재")
+        self.assertEqual(rows["slot_1"]["korean"], "사각형 자재")
         self.assertFalse(rows["slot_3"]["occupied"])
 
     def test_confirm_card_shows_the_server_chosen_slot(self):
@@ -739,7 +739,7 @@ class SlotAssignmentTest(ClockBase):
         self.assertEqual(self.job_count, 0)
         pending = payload["confirmation"]
         self.assertEqual(pending["summary"],
-                         "A자재를 컨베이어 1번 위치로 옮기겠습니다.")
+                         "사각형 자재를 컨베이어 1번 위치로 옮기겠습니다.")
         self.assertEqual(pending["evidence"]["slot"], "slot_1")
         self.assertEqual(pending["evidence"]["slot_label"], "컨베이어 1번 위치")
         # 모델은 슬롯을 내지 않았다 — 서버가 골랐다.
@@ -891,7 +891,7 @@ class ReadinessTest(SlotAssignmentTest):
         r = self.ready_for()
         self.assertEqual(r["action"], "transfer")
         self.assertEqual(r["material"], "material_a")
-        self.assertEqual(r["material_korean"], "A자재")
+        self.assertEqual(r["material_korean"], "사각형 자재")
         self.assertEqual(r["origin"], "원래 팔레트")
         self.assertEqual(r["target"], "컨베이어 1번 위치")
         self.assertEqual(r["slot"], "slot_1")

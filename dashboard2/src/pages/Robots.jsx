@@ -3,7 +3,12 @@ import { DetailRow, ExpandButton } from '../components/ExpandRow.jsx';
 import { useExpand } from '../components/useExpand.js';
 import Spinner from '../components/Spinner.jsx';
 import { LEVEL_LABELS } from '../server.js';
+import RobotConfig from './RobotConfig.jsx';
 import './robots.css';
+
+// 화면 탭. 고른 탭은 주소(#/robots?tab=config)에 둔다 — 새로고침해도 같은 탭에 머문다.
+const VIEWS = [['list', '로봇 목록'], ['config', '구성 · 작업 셀']];
+const viewFromHash = () => (new URLSearchParams(window.location.hash.split('?')[1] || '').get('tab') === 'config' ? 'config' : 'list');
 
 const TABS = ['개요', '도구 장착 이력', '프로파일 버전'];
 const NONE = '데이터 없음';
@@ -23,6 +28,24 @@ function operability(server) {
 }
 
 export default function Robots({ server }) {
+  const [view, setView] = useState(viewFromHash);
+  function pick(v) {
+    setView(v);
+    window.history.replaceState(null, '', v === 'config' ? '#/robots?tab=config' : '#/robots');
+  }
+  return <section>
+    <h2>로봇 관리</h2>
+    <div className="page-tabs" role="tablist" aria-label="로봇 관리 화면">
+      {VIEWS.map(([v, label]) => <button key={v} type="button" role="tab" id={`robots-tab-${v}`} aria-controls={`robots-view-${v}`}
+        aria-selected={view === v} onClick={() => pick(v)}>{label}</button>)}
+    </div>
+    <div role="tabpanel" id={`robots-view-${view}`} aria-labelledby={`robots-tab-${view}`}>
+      {view === 'config' ? <RobotConfig server={server} /> : <RobotList server={server} />}
+    </div>
+  </section>;
+}
+
+function RobotList({ server }) {
   const { health, config, robots, robotStatus } = server;
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState(TABS[0]);
@@ -36,8 +59,7 @@ export default function Robots({ server }) {
   const isServerRobot = !!id && health?.robot?.robot_id === id;
   const op = isServerRobot ? operability(server) : NONE;
 
-  return <section>
-    <h2>로봇 관리</h2>
+  return <>
     {!ids.length ? <p className="muted">{!robots && server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p> : <div className="robots-split">
       <div className="card table robots-list">
         <table className="data-table" aria-label="로봇 목록">
@@ -88,5 +110,5 @@ export default function Robots({ server }) {
         </div>}
       </div>
     </div>}
-  </section>;
+  </>;
 }

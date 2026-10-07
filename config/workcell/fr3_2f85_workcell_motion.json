@@ -1,0 +1,30 @@
+{
+  "schema": "forstick2.workcell_motion/1",
+  "note": [
+    "정지→정지 quintic 궤적, 관절 이동량에 속도·가속도 제한을 적용해 최소 시간을 정한다. 경로/충돌 검사는 유지.",
+    "100%와 가변 시간 실행은 Gazebo 미검증이며 실기 규격이 아니다.",
+    "0%는 다음 작업 차단이며 현재 작업을 정지하지 않는다."
+  ],
+  "speed_percent": {
+    "default": 100,
+    "min": 0,
+    "max": 100,
+    "step": 10
+  },
+  "max_fraction_of_joint_limit": 0.8,
+  "min_arm_seconds": 0.8,
+  "min_gripper_seconds": 1.0,
+  "interpolation_peak_factor": 1.875,
+  "gripper_velocity_rad_s": 0.5,
+  "provenance": {
+    "joint_limits": "관절 한계 속도는 Capability Profile(config/profiles/fr3wms_2f85_workcell_capability.json joint_limits.max_velocity, URDF 근거 3.15·3.2 rad/s)에서 읽는다 — 여기 두지 않는다",
+    "max_fraction_of_joint_limit": "기존 고정 6 s 실행의 가장 큰 단계(pallet_3_approach→conveyor_approach, 관절 한계 대비 이동량 1.62 rad/(rad/s))의 첨두 속도가 관절 한계의 0.405배였다 — 자재를 붙인 채 Gazebo 시연에서 반복 통과한 값. 0.8로 두어 50%가 그 값(0.40)과 같게 한다. 50% 초과(최대 0.8배)는 2026-10-06 현재 Gazebo 실측 전이다. 실기에 쓰지 않는다",
+    "min_arm_seconds": "200Hz 제어 주기160회(0.8s)를 소이동 정책 하한으로 유지한다. 짧은 궤적/실시간 비율 변동에 대한 설정 하한이며 목표 도달/추종 검증을 대체하지 않는다. 새 가변 궤적의 Gazebo 실측은 미완료.",
+    "min_gripper_seconds": "200Hz 제어 주기200회(1s)를 정책 하한으로 유지한다. 컨트롤러 goal_time 여유2s와 별개이며 1s면 닫힘/파지가 완료된다는 보장이 아니다. 완료는 실제 관절·파지 관측을 요구한다. Gazebo 실측 미완료.",
+    "interpolation_peak_factor": "정지→정지 quintic q=q0+Δq(10u³−15u⁴+6u⁵)의 최대 속도 계수15/8, 최대 가속도 계수10√3/3. 시작·끝 속도 및 가속도0.",
+    "gripper_velocity_rad_s": "URDF robotiq_85 knuckle 관절 velocity 한계 0.5 rad/s",
+    "speed_percent": "0은 다음 작업 실행 차단. 초기100%는 사용자 지정 기본값(2026-10-06); 가변 quintic 시간 전체는 Gazebo 미검증. 100% 팔 속도=URDF한계×0.8, 팔 가속도=URDF한계×0.5/s×0.8. 사용자 비율은 두 한계에 곱한다. 그리퍼100% 속도0.5rad/s, 가속도0.25rad/s². 작업 시작 시 고정.",
+    "acceleration_factor_per_sec": "config/moveit/joint_limits.yaml acceleration_limits.factor_per_sec=0.5를 재사용. 공식 가속도 규격 미확보; 시뮬레이션 전용 파생 한계(rad/s²)=URDF속도(rad/s)×0.5/s. Gazebo 동역학 미검증."
+  },
+  "acceleration_factor_per_sec": 0.5
+}
