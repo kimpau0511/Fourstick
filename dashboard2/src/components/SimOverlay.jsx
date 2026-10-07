@@ -110,18 +110,26 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
       foot: `${overlay.confirmed && stamp ? `정지 확인 · ${stamp}   ·   ` : ''}${HEADER_STOP}`,
     };
   }
-  return <div className="scrim">
+  // 창 바깥(어두운 덮개)을 눌러도 닫는다 — 창은 보기만 하는 곳이라 닫아도 로봇 동작에는 영향이 없다.
+  // 덮개는 헤더 아래부터라 헤더의 즉시 정지를 누르는 것은 여기로 오지 않는다.
+  return <div className="scrim" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <section className={`sim-card ${state}`} role="dialog" aria-label={card.title}>
       <div className="sim-head">
         <img src={card.dot} alt="" width="8" height="8" />
         <div><strong className={card.titleTone}>{card.title}</strong><small>{card.sub}</small></div>
-        <button type="button" className="sim-cancel" onClick={onClose}><b>창 닫기</b><small>창만 닫음 · 로봇 동작에는 영향 없음</small></button>
+        {/* 아이콘만 두고 이름은 마우스를 올리면 보인다(data-tip). 전체화면 중에는 이 줄이 안 보이므로 종료 버튼은 화면 안에 둔다. */}
+        <div className="sim-head-actions">
+          {!full && <button type="button" className="sim-icon-btn sim-fullscreen" onClick={toggleFull} aria-pressed={false} aria-label="전체화면" data-tip="전체화면">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" /></svg>
+          </button>}
+          <button type="button" className="sim-icon-btn sim-cancel" onClick={onClose} aria-label="창 닫기" data-tip="창 닫기">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+          </button>
+        </div>
       </div>
       <div className="sim-video" ref={videoRef}>
         <SimView3D onView={onView} />
-        <button type="button" className="sim-fullscreen" onClick={toggleFull} aria-pressed={full}>
-          {full ? '전체화면 종료 (Esc)' : '⛶ 전체화면'}
-        </button>
+        {full && <button type="button" className="sim-fullscreen sim-fullscreen-exit" onClick={toggleFull} aria-pressed>전체화면 종료 (Esc)</button>}
         {full && <div className="sim-fs-bar">
           <span className={card.titleTone}>{card.title}{state !== 'viewing' && steps ? ` · ${done}/${steps.length} 단계` : ''}</span>
           {controls && <button type="button" className="sim-fs-pause" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>}
@@ -129,7 +137,6 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
           <button type="button" className="sim-fs-stop" onClick={cmd.stop}>■ 즉시 정지</button>
         </div>}
       </div>
-      <hr />
       <p className="sim-section">{card.section}</p>
       {card.stages ? <div className="stages">
         {card.stages.map((s, i) => <div key={i} className="stage-wrap">
