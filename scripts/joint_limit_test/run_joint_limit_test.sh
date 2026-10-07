@@ -60,8 +60,13 @@ trap finish EXIT
 # 메시 경로 해석(run_gazebo_fr3.sh와 같다 — 자산을 복사하지 않고 링크만 둔다).
 export GZ_SIM_RESOURCE_PATH="${GZ_SIM_RESOURCE_PATH:-}:$FR3_REPO"
 export ROS_PACKAGE_PATH="${ROS_PACKAGE_PATH:-}:$FR3_REPO"
+# gz_ros2_control 플러그인은 /opt/ros/lyrical/lib에 있다. 돌고 있는 작업 셀 Gazebo도 이 경로를 준다.
+export GZ_SIM_SYSTEM_PLUGIN_PATH="/opt/ros/lyrical/lib${GZ_SIM_SYSTEM_PLUGIN_PATH:+:$GZ_SIM_SYSTEM_PLUGIN_PATH}"
+# 공식 URDF의 메시 경로는 "../meshes/..."(URDF 파일 기준)다. URDF를 한 단계 아래에 두어
+# $LOG/meshes로 풀리게 한다.
 ln -sfn "$FR3_REPO/fairino_description/meshes" "$LOG/meshes"
-URDF_OUT="$LOG/fr3wms_arm.urdf"
+mkdir -p "$LOG/urdf"
+URDF_OUT="$LOG/urdf/fr3wms_arm.urdf"
 ros2 run xacro xacro "$XACRO_FILE" "fr3_urdf:=$FR3_URDF" "controller_yaml:=$CONTROLLERS" > "$URDF_OUT"
 
 echo "[1/4] Gazebo 서버(화면 없음)"
