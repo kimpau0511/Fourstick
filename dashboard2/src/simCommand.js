@@ -59,12 +59,18 @@ function reasonOf(res) {
   return p.reason || p.detail || p.message || `백엔드 응답 ${res.status}`;
 }
 
+const IDLE = {
+  busy: false, sent: '', result: null, pending: null, deadline: null,
+  job: null, goal: null, error: null, stopNote: null, statusUnknown: false,
+  seq: null, updatedAt: null, // seq = 지금 명령의 기록 id(오버레이가 '새 명령인가'를 가린다), updatedAt = 작업·목표 응답을 마지막으로 받은 시각
+};
+
+// 로그인 화면 뒤에 그리는 대시보드용 — 명령을 보내지 않는 대기 상태(서버를 부르지 않는다).
+const noop = () => {};
+export const IDLE_COMMAND = { ...IDLE, log: [], send: noop, answer: noop, stop: noop, reset: noop };
+
 export function useSimCommand() {
-  const [state, setState] = useState({
-    busy: false, sent: '', result: null, pending: null, deadline: null,
-    job: null, goal: null, error: null, stopNote: null, statusUnknown: false,
-    seq: null, updatedAt: null, // seq = 지금 명령의 기록 id(오버레이가 '새 명령인가'를 가린다), updatedAt = 작업·목표 응답을 마지막으로 받은 시각
-  });
+  const [state, setState] = useState(IDLE);
   // 이 탭에서 보낸 명령 기록(최근 LOG_MAX개, 메모리). 서버 기록(recent_jobs)과 별개다.
   const [log, setLog] = useState([]);
   const alive = useRef(true);

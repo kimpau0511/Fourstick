@@ -2,8 +2,10 @@
    surface/glass-clear = 흰 18%, 배경 흐림 30(피그마) ≈ CSS blur 15px, action/retry-bg = 흰색. */
 :root { --glass-clear: rgba(255, 255, 255, .18); --btn-retry-bg: #ffffff; }
 
-.login-page { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg) url('../assets/login-bg.webp') center top / cover no-repeat; }
-.login-page.checking { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; background-image: none; color: var(--muted); font-size: 13px; font-weight: 500; }
+/* 로그인 카드는 뒤에 그린 실제 대시보드(.login-backdrop) 위에 뜬다. 배경은 그림이 아니라 원래 크기의 화면이다. */
+.login-backdrop { height: 100vh; overflow: hidden; }
+.login-page { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+.login-page.checking { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; background: var(--bg); color: var(--muted); font-size: 13px; font-weight: 500; }
 
 .login-card, .auth-dialog {
   display: flex; flex-direction: column; word-break: keep-all;
