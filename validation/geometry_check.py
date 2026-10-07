@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import threading
 import time
+import contextvars
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 from core.geometry import (
@@ -129,7 +130,8 @@ def check_geometry(
             started_at=started, finished_at=finish(), request=request,
         )
 
-    future: Future = _pool().submit(validator.check, request)
+    # 진단 맥락(요청 id 등 contextvars)을 검사 스레드에도 넘긴다 — 판정에는 영향 없음.
+    future: Future = _pool().submit(contextvars.copy_context().run, validator.check, request)
     try:
         verdict = future.result(timeout=request.timeout_sec)
     except FutureTimeout:

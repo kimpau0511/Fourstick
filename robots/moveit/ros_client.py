@@ -32,6 +32,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 
+from robots.moveit import scene_log
 from robots.moveit.scene import (
     AttachedObject,
     SceneSnapshot,
@@ -79,31 +80,61 @@ class RosPlanningSceneClient:
         self._timeout = service_timeout_sec
         self._scene = node.create_client(GetPlanningScene, "/get_planning_scene")
         self._validity = node.create_client(GetStateValidity, "/check_state_validity")
+        #: 클라이언트를 만든 시각(단조) — 첫 조회가 생성 직후인지 진단에 남긴다.
+        self._created = time.monotonic()
+        self._calls = 0
 
     def wait(self, timeout_sec: float = 30.0) -> bool:
-        deadline = time.monotonic() + timeout_sec
+        t0 = time.monotonic()
+        deadline = t0 + timeout_sec
+        spins = 0
         for client in (self._scene, self._validity):
             while not client.service_is_ready():
                 if time.monotonic() > deadline:
+                    scene_log.event("wait_timeout", level=30, service=client.srv_name,
+                                    elapsed_sec=round(time.monotonic() - t0, 3), spins=spins)
                     return False
                 rclpy.spin_once(self._node, timeout_sec=0.2)
+                spins += 1
+        scene_log.event("ready", elapsed_sec=round(time.monotonic() - t0, 3), spins=spins)
         return True
 
-    def _call(self, client, request):
+    def _call(self, client, request, *, timeout_sec: float | None = None):
+        # 진단: 준비 여부 → 전송 → 응답/타임아웃. 타임아웃 뒤 늦게 온 응답도 다음 spin에서 기록한다
+        # (응답이 아예 없었는지, 늦게 왔는지 가르기 위해). 동작(타임아웃 값·예외)은 바꾸지 않는다.
+        qid = scene_log.next_id()
+        self._calls += 1
+        call_no = self._calls
+        ready = client.service_is_ready()
+        t0 = time.monotonic()
         future = client.call_async(request)
-        deadline = time.monotonic() + self._timeout
+        scene_log.event("sent", qid=qid, service=client.srv_name, call_no=call_no, ready=ready,
+                        since_client_created_sec=round(t0 - self._created, 3))
+        deadline = t0 + (self._timeout if timeout_sec is None else timeout_sec)
+        spins = 0
         while not future.done():
             if time.monotonic() > deadline:
-                raise TimeoutError(f"{client.srv_name} 응답 없음")
+                elapsed = time.monotonic() - t0
+                cpu = time.process_time()
+                scene_log.event("timeout", level=30, qid=qid, service=client.srv_name, call_no=call_no,
+                                elapsed_sec=round(elapsed, 3), spins=spins, ready_at_send=ready,
+                                ready_now=client.service_is_ready(), process_cpu_sec=round(cpu, 2))
+                future.add_done_callback(lambda f, q=qid, s=t0, n=client.srv_name: scene_log.event(
+                    "late_response", level=30, qid=q, service=n,
+                    after_sec=round(time.monotonic() - s, 3)))
+                raise TimeoutError(f"{client.srv_name} 응답 없음({elapsed:.1f}s, {qid})")
             rclpy.spin_once(self._node, timeout_sec=0.1)
+            spins += 1
+        scene_log.event("response", qid=qid, service=client.srv_name, call_no=call_no,
+                        elapsed_sec=round(time.monotonic() - t0, 3), spins=spins)
         return future.result()
 
-    def snapshot(self) -> SceneSnapshot:
+    def snapshot(self, *, timeout_sec: float | None = None) -> SceneSnapshot:
         request = GetPlanningScene.Request()
         request.components.components = COMPONENTS
         # **관측 시각은 벽시계 UTC다.** 만료 판정을 앱과 같은 시계로 한다.
         captured_at = time.time()
-        response = self._call(self._scene, request)
+        response = self._call(self._scene, request, timeout_sec=timeout_sec)
         scene = response.scene
         objects = []
         for obj in scene.world.collision_objects:

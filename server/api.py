@@ -28,6 +28,7 @@ from __future__ import annotations
 import inspect
 import secrets
 import threading
+import sys
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -1150,7 +1151,15 @@ class Api:
             from core.task_intent import TaskIntent
 
             intent = TaskIntent.from_dict(stored)
-        gate = self.gate_for(plan, slots, intent)
+        # 장면 조회 진단 로그에 이 판정을 부른 요청을 남긴다(판정에는 영향 없음).
+        from robots.moveit.scene_log import SCENE_CONTEXT
+
+        token = SCENE_CONTEXT.set({"request_id": request_id, "plan_id": plan_id,
+                                   "purpose": sys._getframe(1).f_code.co_name})
+        try:
+            gate = self.gate_for(plan, slots, intent)
+        finally:
+            SCENE_CONTEXT.reset(token)
         attempt = repository.planning_attempt_for_plan(plan_id)
         return PlanBundle(
             session_id=session_id, request_id=request_id, plan=plan,

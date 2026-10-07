@@ -81,7 +81,7 @@ class PlanningSceneClient(Protocol):
     빈손 상태를 검사한다 — 구현체가 물체를 스스로 붙이지 않는다.
     """
 
-    def snapshot(self) -> SceneSnapshot: ...
+    def snapshot(self, *, timeout_sec: float | None = None) -> SceneSnapshot: ...
 
     def check_state(
         self, joints: Mapping[str, float], *,

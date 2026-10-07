@@ -81,6 +81,10 @@ from storage.sqlite.repository import SqliteRepository
 FAKE_ROBOT_ID = "fake_dev"
 
 
+#: 장면 조회 재질의 한도(초). 첫 조회는 클라이언트 기본 한도(10초)를 그대로 쓴다.
+SCENE_RETRY_TIMEOUT_SEC = 5.0
+
+
 class DevFakeAdapter(FakeRobotAdapter):
     """개발용 Fake Adapter. **실제 로봇이 아니다.**
 
@@ -389,10 +393,28 @@ class Runtime:
         # 작업 셀에서는 **MoveIt planning scene**이 환경의 출처다.
         client = self.planning_scene_client()
         if client is not None:
-            try:
-                return client.snapshot().to_environment()
-            except Exception:  # noqa: BLE001 — 관측 실패는 "환경 정보 없음"이다
-                return None
+            from robots.moveit import scene_log
+
+            # 읽기 전용 장면 조회만 **한 번** 다시 묻는다(응답 대기 시간 초과일 때만, 짧은 한도로).
+            # 2026-10-07 라이브에서 재시작 뒤 첫 조회가 10초 응답 없이 끝난 일이 한 번 있었고 원인은
+            # 재현되지 않았다(격리 셀 21회 0건). 다시 물어도 실패하면 그대로 "환경 없음"(기하 ASK)이다 —
+            # 예전 장면을 쓰거나 검사를 건너뛰지 않는다. 승인·실행 요청은 다시 보내지 않는다.
+            for attempt, timeout in ((1, None), (2, SCENE_RETRY_TIMEOUT_SEC)):
+                try:
+                    kwargs = {} if timeout is None else {"timeout_sec": timeout}
+                    environment = client.snapshot(**kwargs).to_environment()
+                    if attempt > 1:
+                        scene_log.event("snapshot_recovered", attempt=attempt)
+                    return environment
+                except TimeoutError as exc:
+                    # None으로 돌려도 원인은 남긴다(장면 조회 진단 로그).
+                    scene_log.event("snapshot_failed", level=30, attempt=attempt, error="TimeoutError",
+                                    detail=str(exc)[:300], will_retry=attempt == 1)
+                except Exception as exc:  # noqa: BLE001 — 관측 실패는 "환경 정보 없음"이다
+                    scene_log.event("snapshot_failed", level=30, attempt=attempt, error=type(exc).__name__,
+                                    detail=str(exc)[:300], will_retry=False)
+                    return None
+            return None
         cell = self.geometry_cell
         if cell is None:
             return None
@@ -477,11 +499,21 @@ class Runtime:
             return self.scene_client
         if self.scene_client_factory is None:
             return None
+        started = time.monotonic()
+        error = None
         try:
             client = self.scene_client_factory()
-        except Exception:  # noqa: BLE001 — 붙지 못하면 기하 검사는 ASK다
-            client = None
+        except Exception as exc:  # noqa: BLE001 — 붙지 못하면 기하 검사는 ASK다
+            client, error = None, f"{type(exc).__name__}: {exc}"[:300]
         self.scene_client = client if client is not None else False
+        try:
+            from robots.moveit import scene_log
+
+            scene_log.event("client_created" if client is not None else "client_failed",
+                            level=20 if client is not None else 30,
+                            elapsed_sec=round(time.monotonic() - started, 3), error=error)
+        except Exception:  # noqa: BLE001 — 진단 로그가 판정을 바꾸지 않는다
+            pass
         return client
 
     # ── pick/place 계획 검증 (8-10) ─────────────────────────────────────
