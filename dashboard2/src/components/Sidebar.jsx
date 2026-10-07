@@ -23,7 +23,7 @@ export default function Sidebar({ page, server, user, onLogout, logoutFailed, in
   const badge = runningBadge(server);
   const [menuOpen, setMenuOpen] = useState(false);
   const profileRef = useRef(null);
-  // 메뉴 밖을 누르거나 Esc를 누르면 닫는다. 페이지를 옮겨도 닫는다(아래 menuPage).
+  // 펼친 프로필은 바깥을 누르거나 Esc를 누르면 접는다. 페이지를 옮겨도 접는다(아래 menuPage).
   useEffect(() => {
     if (!menuOpen) return undefined;
     const onDown = (e) => { if (!profileRef.current?.contains(e.target)) setMenuOpen(false); };
@@ -51,18 +51,17 @@ export default function Sidebar({ page, server, user, onLogout, logoutFailed, in
     <div className="side-bottom">
       <StatusWidget server={server} />
       {/* 계정은 서버(/v1/auth/me)가 준 값만 — 이름·근무를 지어내지 않는다(D2). */}
-      {user && <div className="profile" ref={profileRef}>
-        {menuOpen && <div className="profile-menu" id="profile-menu" role="menu" onKeyDown={(e) => { if (e.key === 'Escape') setMenuOpen(false); }}>
-          <div className="who"><Avatar user={user} /><div><strong>{user.name || user.email}</strong><small>{user.email}</small></div></div>
-          <hr />
-          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}>로그아웃</button>
-        </div>}
+      {/* 프로필을 누르면 이 칸 안에서 펼쳐져 로그아웃이 나온다(떠 있는 창 없음, 2026-10-07 요청). */}
+      {user && <div className={menuOpen ? 'profile open' : 'profile'} ref={profileRef}>
         {logoutFailed && <small className="profile-error" role="alert">로그아웃을 서버에서 확인하지 못했습니다. 다시 시도하세요.</small>}
-        <button type="button" className="profile-btn" aria-haspopup="menu" aria-expanded={menuOpen} aria-controls="profile-menu"
-          aria-label={`${user.name || user.email} 계정 메뉴`} onClick={() => setMenuOpen((v) => !v)}>
+        <button type="button" className="profile-btn" aria-expanded={menuOpen} aria-controls="profile-actions"
+          aria-label={`${user.name || user.email} 계정`} onClick={() => setMenuOpen((v) => !v)}>
           <Avatar user={user} />
           <div className="rail-hide"><strong>{user.name || user.email}</strong><small>{user.email}</small></div>
         </button>
+        {menuOpen && <div className="profile-actions" id="profile-actions">
+          <button type="button" className="profile-logout" onClick={() => { setMenuOpen(false); onLogout(); }}>로그아웃</button>
+        </div>}
       </div>}
     </div>
   </aside>;
