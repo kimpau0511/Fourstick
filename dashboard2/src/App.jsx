@@ -83,12 +83,16 @@ function DashboardPreview() {
 
 function DashboardView({ auth, server, cmd, now, page, preview = false }) {
   const [closedKey, setClosedKey] = useState(null); // 닫은 시뮬레이션 창의 상태 key — 같은 상태 동안은 다시 열지 않는다
+  const [viewOpen, setViewOpen] = useState(false);
   const [panelW, setPanelW] = useState(PANEL.def);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [askLogout, setAskLogout] = useState(false);
   const nav = NAV.find((item) => item.id === page);
 
   const overlay = preview ? null : overlayOf(cmd); // 시뮬레이션 창 상태 = 명령 흐름의 서버 값(null이면 창 없음)
+  // 수동 관측은 명령을 보내지 않는다. 작업 상태가 있으면 해당 상태를 그대로 보여 준다.
+  const visibleOverlay = overlay && (viewOpen || overlay.key !== closedKey)
+    ? overlay : viewOpen ? { state: 'viewing', key: 'viewing' } : null;
   // 로그인·로그아웃 창이 열리면 헤더(즉시 정지)만 남기고 뒤쪽은 키보드로도 닿지 않게 한다.
   const modal = askLogout || auth.expired ? '' : undefined;
 
@@ -122,12 +126,15 @@ function DashboardView({ auth, server, cmd, now, page, preview = false }) {
         </div>
         <PanelSeparator width={panelW} onChange={setPanelW} />
         <div className={drawerOpen ? 'col-side open' : 'col-side'} id="command-drawer">
-          <CommandPanel now={now} sim={cmd} server={server} />
+          <CommandPanel now={now} sim={cmd} server={server} onOpenSimulation={() => setViewOpen(true)} />
           {page === 'home' && <Alerts server={server} />}
         </div>
       </div>
     </div>
-    {overlay && overlay.key !== closedKey && <SimOverlay overlay={overlay} cmd={cmd} server={server} onClose={() => setClosedKey(overlay.key)} />}
+    {visibleOverlay && <SimOverlay overlay={visibleOverlay} cmd={cmd} server={server} onClose={() => {
+      setViewOpen(false);
+      if (overlay) setClosedKey(overlay.key);
+    }} />}
     {askLogout && <LogoutConfirm onCancel={() => setAskLogout(false)} onConfirm={() => { setAskLogout(false); auth.logout(); }} />}
     {auth.expired && <SessionExpired auth={auth} />}
   </div>;
