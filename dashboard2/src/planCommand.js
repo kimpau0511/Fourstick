@@ -85,13 +85,16 @@ export function useGeneralCommand() {
     const id = nextId.current++;
     currentId.current = id;
     bundleRef.current = null;
-    setLog((entries) => [...entries, { id, sentAt: Date.now(), text: utterance, robot, via: stt ? '음성' : '텍스트', events: [] }].slice(-LOG_MAX));
+    setLog((entries) => [...entries, { id, sentAt: Date.now(), text: utterance, robot, via: stt ? (stt.edited ? '음성(수정)' : '음성') : '텍스트', events: [] }].slice(-LOG_MAX));
     patch({ busy: true, sent: utterance, result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false, seq: id, updatedAt: null });
     let res;
     try {
       const sessionId = await ensureSession();
-      // 음성 확정본도 같은 계획 입구로 간다(서버가 STT 기록과 잇는 id는 이 화면 음성 경로가 주지 않는다).
-      res = await call('POST', '/v1/plan', { session_id: sessionId, utterance });
+      // 음성 확정본도 같은 계획 입구로 간다. 사용자가 확인·수정한 문장이 utterance, STT 원래 결과는 stt로 함께 보낸다
+      // (서버가 사용자 수정 발생과 수정 없이 보낸 결과를 나눠 기록한다 — 오인식으로 확정하지 않고, 계획 판단에도 쓰지 않는다).
+      const sttMeta = stt && stt.text ? { stt: { stt_request_id: stt.requestId || null, stt_text: stt.text, stt_raw_text: stt.rawText || null,
+        stt_confidence: stt.confidence ?? null, edited: !!stt.edited } } : {};
+      res = await call('POST', '/v1/plan', { session_id: sessionId, utterance, ...sttMeta });
     } catch (error) {
       patch({ busy: false, error: `백엔드에 연결하지 못했습니다: ${error.message}` });
       addEvent('error', '연결 실패', error.message, id);
@@ -144,7 +147,7 @@ export function useGeneralCommand() {
     return seen;
   }, [patch, addEvent]);
 
-  const answer = useCallback(async (action) => {
+  const answerOnce = useCallback(async (action) => {
     const bundle = bundleRef.current;
     if (!state.pending || !bundle) return;
     const id = currentId.current;
@@ -216,6 +219,14 @@ export function useGeneralCommand() {
       updatedAt: Date.now(),
     });
   }, [state.pending, patch, addEvent, watchTransfer]);
+  // 승인·취소는 한 번만(2026-10-08 다시 넣음 — 음성과 무관한 일반 중복 실행 방지): 버튼이 다시 그려지기 전의
+  // 빠른 두 번 클릭이 두 번째 요청을 보내지 않게, 응답이 올 때까지 다음 요청을 막는다.
+  const answering = useRef(false);
+  const answer = useCallback(async (action) => {
+    if (answering.current) return false;
+    answering.current = true;
+    try { await answerOnce(action); return true; } finally { answering.current = false; }
+  }, [answerOnce]);
 
   /** 전체 정지(/v1/stop). 확인 없이 즉시. 서버가 접수·확인한 만큼만 말한다. */
   const stop = useCallback(async () => {

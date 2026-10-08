@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { RESULT_LABELS } from '../simCommand.js';
 import { commandLock } from '../server.js';
 import { useVoice } from '../voice.js';
+import { useRecognitionRate } from '../recognitionRate.js';
 import { simAlertOf } from '../simPanels.js';
 import RepeatPanel from './RepeatPanel.jsx';
 import SimAlert from './SimAlert.jsx';
@@ -66,6 +67,16 @@ function materialSkills(server) {
 // 로봇 이름은 역할 우선(이송 가능하면 "이송 로봇"), 모델·id는 title로 보조.
 const robotName = (id, profile) => ((profile.supported_skills || []).some((k) => k === 'pick' || k === 'place') ? '이송 로봇' : id);
 
+// 음성 인식률(글자 기준 평가 결과) — 입력칸 아래 왼쪽, 보내기 버튼 왼쪽. 현재 발화의 점수가 아니다.
+function RecognitionRate({ rate }) {
+  const measured = rate.status === 'measured';
+  const detail = [rate.note, !measured && rate.reason].filter(Boolean).join(' ');
+  return <span className={`cmd-rate${measured ? '' : ' unmeasured'}`} title={detail} aria-describedby="cmd-rate-note" data-testid="recognition-rate">
+    {rate.label}
+    <span id="cmd-rate-note" className="sr-only">{detail}</span>
+  </span>;
+}
+
 // 입력칸 안 마이크 버튼. 듣는 동안은 음성 파형(막대 3개), 연결·확정 중에는 스피너를 보인다.
 function MicButton({ voice, locked }) {
   const { status, unavailable } = voice;
@@ -83,6 +94,10 @@ function MicButton({ voice, locked }) {
 
 export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const [text, setText] = useState('');
+  // 음성 확정 결과(2026-10-08): 바로 보내지 않고 입력칸에 넣는다. 사용자가 확인·수정한 뒤 보내기를 누른다.
+  // { text: STT 확정 문장, rawText, confidence, requestId } — 보낼 때 고쳤는지(edited)를 함께 보낸다.
+  const [sttDraft, setSttDraft] = useState(null);
+  const recognition = useRecognitionRate();
   const [picked, setPicked] = useState(null);
   const robots = Object.entries((server && server.robots && server.robots.robots) || {})
     .map(([id, profile]) => ({ id, name: robotName(id, profile), title: profile.profile_id || id }));
@@ -98,11 +113,18 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const skills = materialSkills(server);
   const skillNotes = [...new Set([...skills.map((k) => k.blocked),
     server && server.simDemoFailing && '작업 상태 조회가 실패해 자재 버튼을 잠갔습니다 — 연결을 확인해 주세요'].filter(Boolean))];
-  // 음성 입력. final만 명령으로 보낸다(대상 로봇 선택 유지) — partial·clarify는 보내지 않는다.
+  // 음성 입력. final(확정 전사)만 입력칸에 넣는다 — partial·clarify는 넣지 않는다. 자동으로 보내지 않는다:
+  // 사용자가 문장을 확인·수정한 뒤 보내기를 눌러야 계획을 요청한다(잘못 알아들은 문장이 그대로 계획되지 않게).
   const voice = useVoice({
     config: server && server.config, health: server && server.health,
-    // 입력을 받는 단계(대기·되묻기)에서만 보낸다 — 녹음 중 다른 명령으로 확인 카드가 떴으면 그 카드를 덮어쓰지 않는다.
-    onFinal: (utterance, stt) => { if (!sim.busy && !lockReason && (phase === 'idle' || phase === 'ask')) sim.send(utterance, target && target.id, stt); },
+    // 입력을 받는 단계(대기·되묻기)에서만 넣는다 — 녹음 중 확인 카드가 떴으면 그 카드와 섞지 않는다.
+    onFinal: (utterance, stt) => {
+      if (phase !== 'idle' && phase !== 'ask') return;
+      setText(utterance);
+      setSttDraft({ text: utterance, rawText: stt && stt.rawText, confidence: stt && stt.confidence, requestId: stt && stt.requestId });
+      const box = document.getElementById('command-input');
+      if (box) box.focus();
+    },
   });
   const { result, pending, job, goal } = sim;
   const gripper = server && server.config && server.config.robot && server.config.robot.has_gripper;
@@ -137,7 +159,8 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     event.preventDefault();
     if (!sim.busy && !lockReason && text.trim()) {
       if (voice.status !== 'idle' && voice.status !== 'error') voice.cancel(); // 텍스트가 이긴다 — 듣던 음성은 버린다
-      sim.send(text, target && target.id); setText('');
+      const stt = sttDraft ? { ...sttDraft, edited: text.trim() !== (sttDraft.text || '').trim() } : null;
+      sim.send(text, target && target.id, stt); setText(''); setSttDraft(null);
     }
   }
 
@@ -163,11 +186,15 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     <div className="cmd-field">
       <textarea id="command-input" className="command-input" rows={phase === 'idle' ? 3 : 1} value={text}
         aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: A 자재를 컨베이어로 옮겨줘'}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => { setText(e.target.value); if (!e.target.value.trim()) setSttDraft(null); }}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
       <MicButton voice={voice} locked={!!lockReason} />
     </div>
-    {(phase === 'idle' || phase === 'ask') && <button type="submit" className="btn-primary send" disabled={sim.busy || !!lockReason || !text.trim()}>{sim.busy ? '보내는 중…' : phase === 'ask' ? '답변 보내기' : '보내기'}</button>}
+    {sttDraft && text.trim() && <small className="cmd-stt-hint" role="status">음성 인식 결과입니다 — 문장을 확인·수정한 뒤 {phase === 'ask' ? '답변 보내기' : '보내기'}를 누르세요</small>}
+    {(phase === 'idle' || phase === 'ask') && <div className="cmd-actions">
+      <RecognitionRate rate={recognition} />
+      <button type="submit" className="btn-primary send" disabled={sim.busy || !!lockReason || !text.trim()}>{sim.busy ? '보내는 중…' : phase === 'ask' ? '답변 보내기' : '보내기'}</button>
+    </div>}
     {voice.partial && <small className="cmd-partial" aria-live="polite">{voice.partial}</small>}
     {voice.clarify && <small className="cmd-lock" role="status">{voice.clarify}</small>}
     {(voice.error || voice.unavailable) && <small className="cmd-lock" role="status">{voice.error || voice.unavailable}</small>}

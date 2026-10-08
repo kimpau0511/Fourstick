@@ -333,7 +333,8 @@ class SecondPassTest(unittest.TestCase):
             task("mat_a", "A자재", "loc_pallet_1", "1번 팔레트에서", "loc_conveyor", "컨베이어로"),
             task("mat_a", "A자재", "loc_pallet_2", "2번 팔레트에서", "loc_conveyor", "컨베이어로"))))
         self.assertEqual(fix.kind, "ask")
-        self.assertIn("컨베이어, 2번 팔레트", fix.detail)
+        # 2026-10-08: 정정 앞뒤가 분명하면 뒤(2번 팔레트)를 고르지만, 모델이 컨베이어로 읽었으므로 엇갈림으로 되묻는다.
+        self.assertIn("2번 팔레트", fix.detail)
         # 정정 없이 목적지 표현이 둘이면(한 작업) 역시 되묻는다.
         both = decide("A자재 컨베이어로 2번 팔레트로", interp("mat_a", "A자재", dest="loc_conveyor", dtext="컨베이어로"))
         self.assertEqual(both.kind, "ask")
@@ -633,6 +634,66 @@ class ApiIntentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.case.provider.calls, 1)
         self.assertIsNone(self.case.app.runtime.repository.get_request_intent(body["request_id"]))
 
+
+
+class FreeSpeechTest(unittest.TestCase):
+    """2026-10-08 자유 발화: 정정·생략 목적지·단독 코드 글자·수량 말·STT 철자. 실행 의도는 원문 근거로만."""
+
+    def test_clear_destination_correction_uses_the_later_one_and_says_so(self):
+        d = decide("B자재를 원래 자리로, 아니 컨베이어로 옮겨줘", interp("mat_b", "B자재", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertEqual(d.kind, "intent", d.detail)
+        self.assertEqual(d.intent.destination.resource_id, "loc_conveyor")
+        self.assertIn("목적지 정정: 원래 자리 → 컨베이어", d.intent.destination.evidence.text)
+
+    def test_clear_material_correction(self):
+        d = decide("A자재 말고 B자재를 컨베이어로 옮겨줘", interp("mat_b", "B자재", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertEqual(d.kind, "intent", d.detail)
+        self.assertEqual(d.intent.material.resource_id, "mat_b")
+        self.assertIn("자재 정정: A자재 → B자재", d.intent.material.evidence.text)
+        # 모델이 정정 앞의 자재를 골랐으면 엇갈림 — 추측하지 않는다.
+        self.assertEqual(decide("A자재 말고 B자재를 컨베이어로 옮겨줘",
+                                interp("mat_a", "A자재", dest="loc_conveyor", dtext="컨베이어로")).kind, "ask")
+
+    def test_unclear_corrections_still_ask(self):
+        three = decide("컨베이어로 아니 원래 자리로 아니 2번 팔레트로 B자재", interp("mat_b", "B자재", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertEqual(three.kind, "ask")
+        neg = decide("A자재 컨베이어로 옮기라는 건 아니고", interp("mat_a", "A자재", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertNotEqual(neg.kind, "block")
+
+    def test_correction_with_unreadable_replacement_never_keeps_the_corrected_away_item(self):
+        # 합성 음성 실측(2026-10-08): 'B자재 아니 C자재를' → STT '비차트 아니 시차제를'(C를 못 읽음)
+        d = decide("B자재 아니 시차제를 컨베이어로", interp("mat_b", "B자재", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertEqual((d.kind, d.intent), ("ask", None))
+        neg = decide("A자재 컨베이어로 옮기라는 건 아니고 그냥 둬", interp("mat_a", "A자재", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertEqual((neg.kind, neg.intent), ("ask", None))
+        # '아니'가 맨 앞의 군말이면(뒤에 자재·목적지) 그대로 진행
+        ok = decide("아니 B자재를 컨베이어로 옮겨줘", interp("mat_b", "B자재", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertEqual(ok.kind, "intent", ok.detail)
+
+    def test_bare_trailing_place_is_destination_unless_it_is_where_the_material_is(self):
+        d = decide("파란색 벨트", interp("mat_b", "파란색", dest="loc_conveyor", dtext=None))
+        self.assertEqual((d.kind, d.intent.destination.resource_id if d.intent else None), ("intent", "loc_conveyor"), d.detail)
+        here = decide("A자재 1번 팔레트", interp("mat_a", "A자재", dest="loc_pallet_1", dtext=None))
+        self.assertEqual(here.kind, "ask")
+        self.assertIn("어디로", here.detail)
+
+    def test_lone_code_letter_names_the_material(self):
+        d = decide("A 컨베이어로", interp("mat_a", "A", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertEqual((d.kind, d.intent.material.resource_id if d.intent else None), ("intent", "mat_a"), d.detail)
+        self.assertNotEqual(decide("AB 컨베이어로", interp(None, "AB", dest="loc_conveyor", dtext="컨베이어로")).kind, "intent")
+
+    def test_quantity_words_are_not_an_unknown_material(self):
+        d = decide("자재 하나 컨베이어로 올려줘", interp(None, "자재 하나", dest="loc_conveyor", dtext="컨베이어로"))
+        self.assertEqual(d.kind, "ask")
+        self.assertEqual(decide("빨간 자재 컨베이어로", interp(None, "빨간 자재", dest="loc_conveyor", dtext="컨베이어로")).kind, "block")
+
+    def test_stt_spelling_only(self):
+        from stt.command_normalization import correct_stt_spelling
+        text, changes = correct_stt_spelling("에이 자제를 컴베이어로 옮겨줘")
+        self.assertEqual(text, "에이 자재를 컨베이어로 옮겨줘")
+        self.assertEqual(len(changes), 2)
+        self.assertEqual(correct_stt_spelling("자제력이 필요해")[0], "자제력이 필요해")   # 낱말 일부는 고치지 않는다
+        self.assertEqual(correct_stt_spelling("치워")[0], "치워")                     # 뜻을 바꾸는 치환 없음
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

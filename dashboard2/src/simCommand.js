@@ -143,8 +143,9 @@ export function useSimCommand() {
     let res;
     try {
       res = await call('POST', '/v1/sim-demo/command', {
-        mode: 'simulation_demo', utterance, source: stt ? 'stt_final' : 'text', session_id: SESSION_ID,
-        ...(stt ? { raw_transcript: stt.rawText, stt_confidence: stt.confidence } : {}),
+        mode: 'simulation_demo', utterance, source: stt && !stt.edited ? 'stt_final' : 'text', session_id: SESSION_ID,
+        // 사용자가 고친 문장은 STT 신뢰도가 더는 그 문장의 것이 아니다 — 텍스트로 보낸다.
+        ...(stt && !stt.edited ? { raw_transcript: stt.rawText, stt_confidence: stt.confidence } : {}),
       });
     } catch (error) {
       patch({ busy: false, error: `백엔드에 연결하지 못했습니다: ${error.message}` });
@@ -169,7 +170,7 @@ export function useSimCommand() {
   }, [patch, pollJob, addEvent]);
 
   /** 확인 카드의 버튼. confirm일 때만 작업(또는 고정 목표)이 시작된다. */
-  const answer = useCallback(async (action) => {
+  const answerOnce = useCallback(async (action) => {
     const pending = state.pending;
     if (!pending) return;
     const id = currentId.current;
@@ -207,6 +208,14 @@ export function useSimCommand() {
     patch({ result: res.payload });
     if (res.payload.job) pollJob(res.payload.job.job_id, id);
   }, [state.pending, patch, pollJob, pollGoal, addEvent]);
+  // 승인·취소는 한 번만(2026-10-08 다시 넣음 — 음성과 무관한 일반 중복 실행 방지): 버튼이 다시 그려지기 전의
+  // 빠른 두 번 클릭이 두 번째 요청을 보내지 않게, 응답이 올 때까지 다음 요청을 막는다.
+  const answering = useRef(false);
+  const answer = useCallback(async (action) => {
+    if (answering.current) return false;
+    answering.current = true;
+    try { await answerOnce(action); return true; } finally { answering.current = false; }
+  }, [answerOnce]);
 
   /** 작업 정지. 실행 중인 시연 작업(또는 목표)에 정지를 **요청**한다 — 확인 없이 즉시.
    *  프로세스를 죽이지 않는다. 시뮬레이터가 정지를 확인하면 체크포인트가 남는다. */

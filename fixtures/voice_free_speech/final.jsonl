@@ -1,0 +1,24 @@
+{"id": "final_01", "split": "final", "category": "구어체", "utterance": "주황색 거 컨베이어에 좀 놔 줄래요", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final_02", "split": "final", "category": "구어체", "utterance": "그 비 자재 있잖아요 그걸 벨트로 옮겨 주세요", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "final_03", "split": "final", "category": "구어체", "utterance": "씨 자재 컨베이어 위로 부탁해", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final_04", "split": "final", "category": "생략", "utterance": "B 벨트로", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "final_05", "split": "final", "category": "생략", "utterance": "초록 컨베이어", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final_06", "split": "final", "category": "동의어", "utterance": "오렌지 자재를 컨베이어로 실어", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final_07", "split": "final", "category": "동의어", "utterance": "블루 자재 컨베이어 벨트에 올려놔", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "final_08", "split": "final", "category": "동의어", "utterance": "연두색 자재 컨베이어로 이동", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final_09", "split": "final", "category": "긴문장", "utterance": "3번 팔레트 위에 놓여 있는 초록색 자재를 꺼내서 컨베이어 벨트 위로 옮겨 놓아 주시겠어요", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final_10", "split": "final", "category": "긴문장", "utterance": "오늘 첫 작업으로 A자재를 컨베이어에 올리고 그다음은 제가 다시 말씀드릴게요", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final_11", "split": "final", "category": "말고침", "utterance": "B자재 아니 C자재를 컨베이어로", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final_12", "split": "final", "category": "말고침", "utterance": "주황 자재를 원래 자리로 아니 컨베이어로 옮겨", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final_13", "split": "final", "category": "말고침", "utterance": "컨베이어로 옮기라는 건 아니고 그냥 두세요", "expect": {"decision": "ask"}}
+{"id": "final_14", "split": "final", "category": "복수", "utterance": "A자재 컨베이어로 옮긴 다음 C자재도 옮겨", "expect": {"decision": "ask"}}
+{"id": "final_15", "split": "final", "category": "복수", "utterance": "파란 자재랑 초록 자재 컨베이어로", "expect": {"decision": "ask"}}
+{"id": "final_16", "split": "final", "category": "모호", "utterance": "이거 저기로 옮겨", "expect": {"decision": "ask"}}
+{"id": "final_17", "split": "final", "category": "모호", "utterance": "물건 하나 벨트로", "expect": {"decision": "ask"}}
+{"id": "final_18", "split": "final", "category": "모호", "utterance": "C자재 옮겨", "expect": {"decision": "ask"}}
+{"id": "final_19", "split": "final", "category": "미등록", "utterance": "보라색 자재 컨베이어로 옮겨", "expect": {"decision": "block"}}
+{"id": "final_20", "split": "final", "category": "미등록", "utterance": "E자재를 벨트에 올려", "expect": {"decision": "block"}}
+{"id": "final_21", "split": "final", "category": "목적지점유", "utterance": "B자재를 3번 팔레트에 놔", "expect": {"decision": "block"}}
+{"id": "final_22", "split": "final", "category": "원위치", "utterance": "에이 자재 제자리에 둬", "expect": {"decision": "noop"}}
+{"id": "final_23", "split": "final", "category": "STT오류형", "utterance": "씨 자제 컨비어로 옮겨줘", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final_24", "split": "final", "category": "STT오류형", "utterance": "파란 자재 컴비이어에 올려", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}

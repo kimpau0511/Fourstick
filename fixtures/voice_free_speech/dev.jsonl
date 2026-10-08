@@ -1,0 +1,28 @@
+{"id": "dev_01", "split": "dev", "category": "구어체", "utterance": "에이 자재 좀 컨베이어에 올려줄래?", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "dev_02", "split": "dev", "category": "구어체", "utterance": "음 그러니까 파란 거 있잖아 그거 컨베이어로 좀", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "dev_03", "split": "dev", "category": "구어체", "utterance": "초록색 자재 벨트 위에 갖다 놔 줘요", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "dev_04", "split": "dev", "category": "구어체", "utterance": "혹시 비 자재를 컨베이어 쪽으로 옮겨 줄 수 있어?", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "dev_05", "split": "dev", "category": "생략", "utterance": "A 컨베이어로", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "dev_06", "split": "dev", "category": "생략", "utterance": "파란색 벨트", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "dev_07", "split": "dev", "category": "생략", "utterance": "씨자재 컨베이어", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "dev_08", "split": "dev", "category": "동의어", "utterance": "주황색 자재를 컨베이어 벨트로 이동시켜", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "dev_09", "split": "dev", "category": "동의어", "utterance": "하늘색 자재 컨베이어로 보내", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "dev_10", "split": "dev", "category": "동의어", "utterance": "녹색 자재를 벨트에 실어 줘", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "dev_11", "split": "dev", "category": "긴문장", "utterance": "지금 1번 팔레트에 있는 에이 자재를 집어서 컨베이어 위에 올려놓아 주세요", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "dev_12", "split": "dev", "category": "긴문장", "utterance": "작업 시작할게요 일단 파란색 자재부터 컨베이어로 옮겨 주시고요 나머지는 나중에 할게요", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "dev_13", "split": "dev", "category": "말고침", "utterance": "컨베이어로, 아니 그냥 원래 자리에 둬, A자재", "expect": {"decision": "noop"}}
+{"id": "dev_14", "split": "dev", "category": "말고침", "utterance": "A자재 말고 B자재를 컨베이어로 옮겨줘", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "dev_15", "split": "dev", "category": "말고침", "utterance": "파란 자재를 원래 자리로, 아니 컨베이어로 옮겨줘", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "dev_16", "split": "dev", "category": "말고침", "utterance": "초록 자재 대신 주황 자재를 컨베이어에 올려줘", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "dev_17", "split": "dev", "category": "복수", "utterance": "A자재는 컨베이어로 옮기고 B자재도 컨베이어로 옮겨", "expect": {"decision": "ask"}}
+{"id": "dev_18", "split": "dev", "category": "복수", "utterance": "초록이랑 주황 자재 둘 다 컨베이어로", "expect": {"decision": "ask"}}
+{"id": "dev_19", "split": "dev", "category": "모호", "utterance": "그거 컨베이어로 옮겨", "expect": {"decision": "ask"}}
+{"id": "dev_20", "split": "dev", "category": "모호", "utterance": "자재 하나 컨베이어로 올려줘", "expect": {"decision": "ask"}}
+{"id": "dev_21", "split": "dev", "category": "모호", "utterance": "A자재 옮겨줘", "expect": {"decision": "ask"}}
+{"id": "dev_22", "split": "dev", "category": "모호", "utterance": "저기 있는 거 저쪽으로", "expect": {"decision": "ask"}}
+{"id": "dev_23", "split": "dev", "category": "미등록", "utterance": "빨간 자재를 컨베이어로 옮겨", "expect": {"decision": "block"}}
+{"id": "dev_24", "split": "dev", "category": "미등록", "utterance": "D자재 컨베이어에 올려", "expect": {"decision": "block"}}
+{"id": "dev_25", "split": "dev", "category": "목적지점유", "utterance": "A자재를 2번 팔레트로 옮겨", "expect": {"decision": "block"}}
+{"id": "dev_26", "split": "dev", "category": "원위치", "utterance": "초록 자재 원래 자리로 돌려놔", "expect": {"decision": "noop"}}
+{"id": "dev_27", "split": "dev", "category": "STT오류형", "utterance": "에이 자제를 컴베이어로 옮겨줘", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "dev_28", "split": "dev", "category": "STT오류형", "utterance": "비 자재 컨베어에 올려", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}

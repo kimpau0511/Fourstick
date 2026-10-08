@@ -188,7 +188,7 @@ class TestForeignPathsReturnNone(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             set(names),
             {"session", "planning", "execution", "robot", "scene", "repeat", "sim_demo", "sim_view",
-             "humanoid", "history", "settings"})
+             "humanoid", "history", "settings", "stt_eval"})
 
 
 if __name__ == "__main__":

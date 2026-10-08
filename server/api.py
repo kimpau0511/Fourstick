@@ -1888,15 +1888,23 @@ class Api:
             load_place_terms,
         )
 
+        from stt.command_normalization import SPELLING_VERSION, correct_stt_spelling
+
         facts = cell_facts(runtime.resource_catalog, jobs)
         facts["symbols"] = load_place_terms(runtime.config.workcell_manifest)
         facts["terms"] = load_language_terms(runtime.config.workcell_manifest)
         context = self._intent_context(session_id)
+        # STT 표기 보정(2026-10-08): 철자만('컴베이어'→'컨베이어', '자제'→'자재'). 요청 기록의 원문은 그대로 둔다.
+        read_text, spelling = correct_stt_spelling(text)
         interp = IntentInterpreter(client=client).interpret(
-            text, facts["materials"], facts["locations"],
+            read_text, facts["materials"], facts["locations"],
             context=_context_lines(context, facts))
-        return decide_intent(interp, text, facts, context=context,
-                             min_confidence=runtime.config.sim_demo_intent_min_confidence)
+        decision = decide_intent(interp, read_text, facts, context=context,
+                                 min_confidence=runtime.config.sim_demo_intent_min_confidence)
+        if spelling and decision is not None and isinstance(decision.interpretation, dict):
+            decision.interpretation["spelling"] = {"version": SPELLING_VERSION, "changes": spelling,
+                                                   "original": text, "read_as": read_text}
+        return decision
 
     def _intent_context(self, session_id: str | None) -> dict:
         """같은 세션의 서버 기록만: 직전에 **성공한** 이송의 자재(저장소)와 되묻기 대기 값(메모리)."""

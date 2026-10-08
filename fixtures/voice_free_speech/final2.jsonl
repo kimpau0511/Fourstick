@@ -1,0 +1,28 @@
+{"id": "final2_01", "split": "final2", "category": "구어체", "utterance": "저기요 주황색 자재 컨베이어에 좀 올려 주실래요", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final2_02", "split": "final2", "category": "구어체", "utterance": "어 그 파란색 자재 벨트로 보내 줘", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "final2_03", "split": "final2", "category": "구어체", "utterance": "초록 자재를 이제 컨베이어로 옮겨 볼까", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final2_04", "split": "final2", "category": "생략", "utterance": "C 벨트", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final2_05", "split": "final2", "category": "생략", "utterance": "주황 자재 컨베이어", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final2_06", "split": "final2", "category": "동의어", "utterance": "녹색 자재를 컨베이어 벨트 쪽으로 옮겨", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final2_07", "split": "final2", "category": "동의어", "utterance": "오렌지색 자재 벨트에 놓아", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final2_08", "split": "final2", "category": "긴문장", "utterance": "1번 팔레트에 있는 주황색 자재를 조심해서 집은 다음에 컨베이어로 옮겨 주세요", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final2_09", "split": "final2", "category": "긴문장", "utterance": "다른 건 건드리지 말고 파란색 자재 하나만 컨베이어에 올려 주세요", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "final2_10", "split": "final2", "category": "말고침", "utterance": "C자재 말고 A자재를 벨트로", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final2_11", "split": "final2", "category": "말고침", "utterance": "파란 자재를 컨베이어로, 아니 그냥 원래 자리에", "expect": {"decision": "noop"}}
+{"id": "final2_12", "split": "final2", "category": "말고침", "utterance": "초록 자재 대신 파란 자재 컨베이어로", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}}
+{"id": "final2_13", "split": "final2", "category": "말고침", "utterance": "A자재를 컨베이어로 아니 아니 잠깐만", "expect": {"decision": "ask"}}
+{"id": "final2_14", "split": "final2", "category": "복수", "utterance": "파란 자재 옮기고 나서 주황 자재도 컨베이어로", "expect": {"decision": "ask"}}
+{"id": "final2_15", "split": "final2", "category": "복수", "utterance": "A랑 B 둘 다 벨트로", "expect": {"decision": "ask"}}
+{"id": "final2_16", "split": "final2", "category": "모호", "utterance": "그것 좀 컨베이어로", "expect": {"decision": "ask"}}
+{"id": "final2_17", "split": "final2", "category": "모호", "utterance": "하나 골라서 벨트에 올려", "expect": {"decision": "ask"}}
+{"id": "final2_18", "split": "final2", "category": "모호", "utterance": "B자재 어떻게 좀 해 줘", "expect": {"decision": "ask"}}
+{"id": "final2_19", "split": "final2", "category": "미등록", "utterance": "노란 자재 컨베이어로", "expect": {"decision": "block"}}
+{"id": "final2_20", "split": "final2", "category": "미등록", "utterance": "F자재 벨트로 옮겨", "expect": {"decision": "block"}}
+{"id": "final2_21", "split": "final2", "category": "목적지점유", "utterance": "C자재를 1번 팔레트로 옮겨", "expect": {"decision": "block"}}
+{"id": "final2_22", "split": "final2", "category": "원위치", "utterance": "파란 자재 원위치", "expect": {"decision": "noop"}}
+{"id": "final2_23", "split": "final2", "category": "STT오류형", "utterance": "주황 자제 컴베이어로 옮겨", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final2_24", "split": "final2", "category": "STT오류형", "utterance": "A차트 컨베이어로 옮겨줘", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}}
+{"id": "final2_25", "split": "final2", "category": "범위밖", "utterance": "에이 컨베이어로", "expect": {"decision": "ask"}}
+{"id": "final2_26", "split": "final2", "category": "색만", "utterance": "초록 거 컨베이어로", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}}
+{"id": "final2_27", "split": "final2", "category": "범위밖", "utterance": "모형 하나 벨트로", "expect": {"decision": "ask"}}
+{"id": "final2_28", "split": "final2", "category": "범위밖", "utterance": "빨간 물체 컨베이어로", "expect": {"decision": "block"}}

@@ -1,0 +1,18 @@
+{
+  "schema": "forstick2.active_workcell/1",
+  "note": [
+    "음성 평가 격리 환경 전용(2026-10-08): 파티션 f2voiceeval_none·도메인 88인 설정 사본을 가리킨다. 라이브는 active.json을 쓴다."
+  ],
+  "enabled": true,
+  "adapter_module": "robots.fr3_gazebo",
+  "workcell_config": "fr3_2f85_workcell_voiceeval.json",
+  "poses": "fr3_2f85_workcell_poses.json",
+  "motion": "fr3_2f85_workcell_motion.json",
+  "resource_catalog": "fr3_2f85_workcell_resource_catalog.json",
+  "capability_profile": "../profiles/fr3wms_2f85_workcell_capability.json",
+  "is_simulated": true,
+  "real_hardware_verified": false,
+  "simulation_profile": "../profiles/simulation/fr3wms_2f85_gazebo_sim.json",
+  "surfaces": "fr3_2f85_workcell_surfaces.json",
+  "place_terms": "fr3_2f85_workcell_place_terms.json"
+}

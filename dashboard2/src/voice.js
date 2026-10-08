@@ -103,7 +103,7 @@ export function useVoice({ config, health, onFinal }) {
           release(); setPartial(''); setStatus('idle');
           // 정규화된 문장(text)을 명령으로, 원문·신뢰도는 기록용으로 함께 넘긴다.
           const text = ev.text || ev.raw_text || '';
-          if (text) finalRef.current?.(text, { rawText: ev.raw_text || text, confidence: ev.confidence ?? null });
+          if (text) finalRef.current?.(text, { rawText: ev.raw_text || text, confidence: ev.confidence ?? null, requestId: ev.request_id || null });
         } else if (ev.kind === 'clarify') {
           release(); setPartial(''); setStatus('idle');
           setClarify(ev.detail || '잘 알아듣지 못했습니다. 다시 말해 주세요');

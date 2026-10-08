@@ -1,3 +1,6 @@
+import { appendFileSync } from 'node:fs';
+// 가짜 응답이 없어 끊은 요청 기록(비어 있어야 정상).
+export const LEAK_LOG = 'e2e-results/unmocked-requests.jsonl';
 import { readFileSync } from 'node:fs';
 // 화면 테스트용 가짜 서버 응답. 실제 서버(/v1/sim-demo · /v1/sim-view · /v1/scene)에 닿지 않게 막는다.
 // 응답 모양은 dashboard2/src/simCommand.js가 읽는 필드에 맞춘다(서버 값을 화면이 그대로 보이는지 보려는 것).
@@ -41,6 +44,13 @@ export const SAMPLES = {
 export const QA_USER = { email: 'operator@example.com', name: '김민우', picture: null };
 
 export async function mockBackend(page, { command, confirm, jobs = [], overrides = {} } = {}) {
+  // 가짜 응답이 없는 API 요청은 브라우저에서 끊고 기록한다(2026-10-08) — 운영 서버로 나가지 않게.
+  // 먼저 등록하므로 아래·시험이 나중에 등록한 가짜 응답이 우선한다(Playwright는 나중 경로가 이긴다).
+  await page.route((url) => url.pathname.startsWith('/v1/') || url.pathname === '/health', (route) => {
+    const req = route.request();
+    appendFileSync(LEAK_LOG, `${JSON.stringify({ at: new Date().toISOString(), method: req.method(), url: req.url() })}\n`);
+    return route.abort('blockedbyclient');
+  });
   const calls = [];
   // page.route는 나중에 등록한 것이 먼저 처리된다 — 겹치는 경로는 pathname으로 직접 가른다.
   const pathOf = (url) => new URL(url).pathname;
@@ -51,6 +61,10 @@ export async function mockBackend(page, { command, confirm, jobs = [], overrides
   await page.route('**/health', (route) => (pathOf(route.request().url()) === '/health'
     ? route.fulfill({ json: fixture('health', overrides.health) }) : route.fallback()));
   await page.route('**/v1/config', (route) => route.fulfill({ json: fixture('config', overrides.config) }));
+  // 음성 인식률 표시값(2026-10-08). 기본은 미측정 — 숫자 표시는 시험마다 모의 값을 넣는다(운영 성적으로 저장하지 않는다).
+  await page.route('**/v1/stt/recognition-rate', (route) => route.fulfill({ json: overrides.recognition
+    ?? { status: 'unmeasured', label: '음성 인식률 미측정', rate_percent: null, note: '글자 기준 평가 결과이며 현재 발화의 정확도를 뜻하지 않습니다.',
+      reason: '현재 모델·설정의 실제 녹음·사람 확인 정답 평가 결과가 없습니다' } }));
   await page.route('**/v1/robots', (route) => route.fulfill({ json: fixture('robots', overrides.robots) }));
   // 서버 이력(/v1/history) — 기본은 빈 목록. overrides.history로 바꾼다.
   await page.route('**/v1/history**', (route) => route.fulfill({ json: { is_simulated: true, commands: [], sim_jobs: [], ...(overrides.history || {}) } }));

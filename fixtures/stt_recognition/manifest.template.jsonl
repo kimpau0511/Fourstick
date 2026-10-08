@@ -1,0 +1,1 @@
+{"id": "r001", "audio": "r001.wav", "reference": null, "reference_source": null, "reference_verified_by": null, "source_type": "real", "split": "final", "tags": ["예시"], "note": "녹음 후 사람이 들은 내용을 reference에 적고 reference_source=human, reference_verified_by를 채운다"}
