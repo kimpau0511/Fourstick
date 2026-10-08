@@ -6,6 +6,11 @@
   3) 0 자세로 되돌린다
 를 위·아래 양쪽으로 반복하고 표로 찍는다. 한계 값은 공식 URDF에서 읽는다.
 
+진단(원인 확인용): 명령마다 [진단] 줄을 바로 찍는다 — 시작 위치, 컨트롤러 목표(reference,
+/arm_trajectory_controller/controller_state), 실제 위치(/joint_states), 액션 상태·오류 문자열.
+목표는 움직였는데 팔이 그대로면 컨트롤러 뒤(한계 처리·Gazebo)에서 막힌 것이고,
+목표 자체가 안 움직였으면 컨트롤러 쪽이다. 시험 전에 한계 안쪽 이동(j1 → 0.5)으로 기본 동작을 먼저 본다.
+
 사용: python3 joint_limit_probe.py <FR3WMS.urdf 경로>
 """
 import sys
@@ -15,6 +20,7 @@ import xml.etree.ElementTree as ET
 import rclpy
 from builtin_interfaces.msg import Duration
 from control_msgs.action import FollowJointTrajectory
+from control_msgs.msg import JointTrajectoryControllerState
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
@@ -22,6 +28,8 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 
 JOINTS = ['j1', 'j2', 'j3', 'j4', 'j5', 'j6']
 ACTION = '/arm_trajectory_controller/follow_joint_trajectory'
+CTRL_STATE = '/arm_trajectory_controller/controller_state'
+STATUS = {4: '성공', 5: '취소', 6: '중단'}  # action_msgs/GoalStatus
 OVER = 0.5          # 한계 밖으로 더 보내는 양(rad)
 SPEED_X = 4.0       # 속도 한계의 몇 배로 명령할지
 POS_TOL = 0.01      # 이만큼 넘으면 '넘음'(rad)
@@ -47,16 +55,27 @@ def read_limits(urdf):
 class Probe(Node):
     def __init__(self):
         super().__init__('forstick_joint_limit_probe')
-        self.pos, self.vel, self.stamp, self.still = {}, {}, None, 0
+        self.pos, self.vel, self.eff, self.stamp, self.still = {}, {}, {}, None, 0
+        self.ref = {}  # 컨트롤러가 내보내는 목표(reference)
         self.create_subscription(JointState, '/joint_states', self.on_state, 100)
+        self.create_subscription(JointTrajectoryControllerState, CTRL_STATE, self.on_ctrl, 100)
         self.client = ActionClient(self, FollowJointTrajectory, ACTION)
 
     def on_state(self, msg):
         for n, p, v in zip(msg.name, msg.position, msg.velocity or [0.0] * len(msg.name)):
             self.pos[n], self.vel[n] = p, v
+        for n, e in zip(msg.name, msg.effort or []):
+            self.eff[n] = e
         self.stamp = time.monotonic()
         moving = any(abs(self.vel.get(n, 0.0)) >= STILL_VEL for n in JOINTS)
         self.still = 0 if moving else self.still + 1
+
+    def on_ctrl(self, msg):
+        # 최신 control_msgs는 reference, 옛 버전은 desired
+        point = getattr(msg, 'reference', None) or getattr(msg, 'desired', None)
+        if point is not None:
+            for n, p in zip(msg.joint_names, point.positions):
+                self.ref[n] = p
 
     def spin_for(self, sec, watch=None, peak=None):
         end = time.monotonic() + sec
@@ -66,7 +85,7 @@ class Probe(Node):
                 peak[0] = max(peak[0], abs(self.vel[watch]))
 
     def send(self, targets, seconds, watch=None):
-        """목표를 보내고 결과까지 기다린다. (accepted, error_code, peak_vel)"""
+        """목표를 보내고 결과까지 기다린다. (accepted, error_code, peak_vel, settled, diag)"""
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = JOINTS
         pt = JointTrajectoryPoint()
@@ -75,21 +94,31 @@ class Probe(Node):
         pt.time_from_start = Duration(sec=int(seconds), nanosec=int((seconds % 1) * 1e9))
         goal.trajectory.points = [pt]
         peak = [0.0]
+        diag = {'start': dict(self.pos), 'targets': dict(targets), 'ref_seen': {}}
         fut = self.client.send_goal_async(goal)
         while not fut.done():
             self.spin_for(0.01, watch, peak)
         handle = fut.result()
         if not handle.accepted:
-            return False, None, peak[0], None
+            diag.update(status='거부', error_string='', fb=dict(self.pos), ref=dict(self.ref))
+            return False, None, peak[0], None, diag
         res = handle.get_result_async()
         deadline = time.monotonic() + seconds + 20
         while not res.done() and time.monotonic() < deadline:
             self.spin_for(0.01, watch, peak)
-        code = res.result().result.error_code if res.done() else 'timeout'
+        if res.done():
+            out = res.result()
+            code = out.result.error_code
+            diag['status'] = STATUS.get(out.status, str(out.status))
+            diag['error_string'] = getattr(out.result, 'error_string', '')
+        else:
+            code = 'timeout'
+            diag['status'], diag['error_string'] = '결과 없음', ''
         # 컨트롤러 '완료'는 궤적 시간이 끝났다는 뜻일 뿐 도달이 아니다(목표 허용오차 미설정).
         # 속도 제한으로 팔은 아직 가는 중일 수 있다 — 실제로 멈출 때까지 본다.
         settled = self.settle(watch, peak)
-        return True, code, peak[0], settled
+        diag.update(fb=dict(self.pos), ref=dict(self.ref), eff=dict(self.eff))
+        return True, code, peak[0], settled, diag
 
     def settle(self, watch=None, peak=None, timeout=30.0):
         """모든 관절 속도가 STILL_VEL 미만인 /joint_states가 STILL_MSGS번 연속 올 때까지 기다린다.
@@ -107,6 +136,35 @@ class Probe(Node):
         return False
 
 
+def classify(start, target, ref, fb):
+    """한 관절에 대해 컨트롤러 목표와 실제 위치를 비교한 판정."""
+    if ref is None:
+        return '컨트롤러 상태 수신 없음'
+    if abs(fb - ref) <= POS_TOL:
+        return '팔이 목표를 따라감'
+    if abs(target - start) > POS_TOL and abs(ref - start) <= POS_TOL:
+        return '컨트롤러 목표가 안 움직임(컨트롤러 쪽)'
+    if abs(fb - start) <= POS_TOL:
+        return '목표는 움직였는데 팔이 그대로(컨트롤러 뒤)'
+    return '목표와 팔 사이 차이 남음'
+
+
+def report(label, joint, settled, diag):
+    """[진단] 한 줄. joint가 None이면 목표와 가장 많이 어긋난 관절을 고른다."""
+    fb, ref = diag['fb'], diag['ref']
+    if joint is None:
+        joint = max(JOINTS, key=lambda j: abs(fb.get(j, 0.0) - diag['targets'][j]))
+    start, target = diag['start'].get(joint, float('nan')), diag['targets'][joint]
+    r = ref.get(joint)
+    ref_txt = '없음' if r is None else f'{r:8.4f}'
+    eff = diag.get('eff', {}).get(joint)
+    eff_txt = '-' if eff is None else f'{eff:.1f}'
+    print(f'[진단] {label:10} {joint} 시작 {start:8.4f} 명령 {target:8.4f} 컨트롤러목표 {ref_txt} '
+          f'실제 {fb.get(joint, float("nan")):8.4f} 힘 {eff_txt} 상태 {diag["status"]} '
+          f'오류 "{diag["error_string"]}" 멈춤 {"예" if settled else "아니오"} '
+          f'→ {classify(start, target, r, fb.get(joint, float("nan")))}', flush=True)
+
+
 def main():
     limits = read_limits(sys.argv[1])
     rclpy.init()
@@ -118,10 +176,17 @@ def main():
         sys.exit('/joint_states를 받지 못했다')
     zero = {n: 0.0 for n in JOINTS}
 
-    def go_home():
+    def go_home(label='0 자세'):
         """0 자세로 돌아가 멈춘 뒤, 정말 0 근처인지 돌려준다."""
-        node.send(zero, 5.0)
+        _, _, _, settled, diag = node.send(zero, 5.0)
+        report(label, None, settled, diag)
         return all(abs(node.pos.get(j, 1e9)) < HOME_TOL for j in JOINTS)
+
+    # 기본 동작 확인: 한계 안쪽으로 천천히(5초) 움직이고 돌아온다
+    print('[진단] 사전 확인 — 한계 안쪽 이동 j1 → 0.5', flush=True)
+    go_home('사전 0자세')
+    _, _, _, settled, diag = node.send({**zero, 'j1': 0.5}, 5.0, watch='j1')
+    report('사전 j1+0.5', 'j1', settled, diag)
 
     rows, fails = [], 0
     for n in JOINTS:
@@ -130,7 +195,8 @@ def main():
             target = limit + OVER if side == '위' else limit - OVER
             home_ok = go_home()
             seconds = max(abs(target) / (vmax * SPEED_X), 0.2)
-            ok, code, peak, settled = node.send({**zero, n: target}, seconds, watch=n)
+            ok, code, peak, settled, diag = node.send({**zero, n: target}, seconds, watch=n)
+            report(f'{n} {side}', n, settled, diag)
             reached = node.pos.get(n, float('nan'))
             excess = (reached - hi) if side == '위' else (lo - reached)
             if not home_ok:

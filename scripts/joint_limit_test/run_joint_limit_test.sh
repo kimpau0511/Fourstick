@@ -52,6 +52,14 @@ finish() {
   for pid in "${PIDS[@]}"; do kill -TERM -- "-$pid" 2>/dev/null || true; done
   sleep 3
   for pid in "${PIDS[@]}"; do kill -KILL -- "-$pid" 2>/dev/null || true; done
+  # 진단: 컨트롤러 매니저는 Gazebo 프로세스 안에서 돈다 — 한계·경고 메시지를 종류별로 센다
+  # (시각·숫자를 지워 같은 메시지를 묶는다). 로그를 지우기 전에 화면에 남긴다.
+  if [[ -f "$LOG/gz_sim.log" ]]; then
+    echo "[진단] gz_sim 로그의 한계·경고·오류 메시지(종류별 횟수, 상위 30)"
+    grep -iE 'limit|saturat|clamp|reject|abort|error|warn' "$LOG/gz_sim.log" \
+      | sed -E 's/\[[0-9]+\.[0-9]+\]//g; s/-?[0-9]+\.[0-9]+/N/g' \
+      | sort | uniq -c | sort -rn | head -30 || true
+  fi
   if [[ $rc -eq 0 ]]; then rm -rf "$LOG"; echo "[정리] 시험 로그 삭제함 — 위 표를 복사해 보내주세요"
   else echo "[정리] 실패(종료 코드 $rc) — 로그를 남겨 둠: $LOG"; fi
   exit $rc
@@ -71,7 +79,7 @@ URDF_OUT="$LOG/urdf/fr3wms_arm.urdf"
 ros2 run xacro xacro "$XACRO_FILE" "fr3_urdf:=$FR3_URDF" "controller_yaml:=$CONTROLLERS" > "$URDF_OUT"
 
 echo "[1/4] Gazebo 서버(화면 없음)"
-start gz_sim gz sim -s -r -v 2 "$WORLD"
+start gz_sim gz sim -s -r -v 3 "$WORLD"
 for _ in $(seq 60); do
   gz service -l 2>/dev/null | grep -q "/world/$WORLD_NAME/create" && break
   sleep 1
