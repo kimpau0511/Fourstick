@@ -104,6 +104,9 @@ class SimDemoGoals:
         self._lock = threading.RLock()
         self._goals: dict[str, dict] = {}
         self._current: str | None = None
+        #: 단계 시작 전 기록·관측 확인(2026-10-08 리뷰 11번). (자재, 출발, 도착) → check_material_start 결과.
+        #: 운영 런타임이 붙인다. None이면 확인하지 않는다(단위 시험의 가짜 실행기).
+        self.material_check: Callable[[str, str, str], Mapping[str, Any]] | None = None
 
     def _authoritative_plan(self) -> tuple[list[dict], dict]:
         state = self.jobs.state.status()
@@ -258,6 +261,11 @@ class SimDemoGoals:
         action = step.get("action", "return")
         source = origin if step["from"] == ORIGIN or action == "transfer" else step["from"]
         destination = origin if step["to"] == ORIGIN or action == "return" else step["to"]
+        if self.material_check is not None:
+            check = self.material_check(material, source, destination)
+            if check.get("kind") != "ok":
+                # 목표 단계는 기록으로 세운 계획이다 — 관측이 다르거나 부착이 불명이면 시작하지 않는다.
+                raise SimDemoGoalError(409, f"{check.get('detail')} — {check.get('guidance') or '할 일 없음'}")
         env = self.environment()
         return self.jobs.start_transfer(
             material, source, destination, goal_id=goal_id,
@@ -292,6 +300,15 @@ class SimDemoGoals:
     def _signature(plan: list[dict]) -> list[tuple]:
         return [(row.get("action", "return"), row["material"], row["from"],
                  row.get("to")) for row in plan]
+
+    def bind_session(self, goal_id: str, session_id: str) -> None:
+        """목표를 만든 세션에 묶는다(2026-10-08 리뷰 2번). 묶이면 같은 세션만 확인·취소한다."""
+        if not session_id:
+            return
+        with self._lock:
+            goal = self._goals.get(goal_id)
+            if goal is not None and not goal.get("session_id"):
+                goal["session_id"] = session_id
 
     def create(self, goal_type: str, spec: Mapping[str, Any] | None = None) -> dict:
         if goal_type not in (GOAL_RETURN_ALL, GOAL_ARRANGE):
@@ -340,11 +357,14 @@ class SimDemoGoals:
             self._current = goal_id
             return self._copy(goal)
 
-    def confirm(self, goal_id: str, action: str) -> dict:
+    def confirm(self, goal_id: str, action: str, session_id: str | None = None) -> dict:
         if action not in ("confirm", "cancel"):
             raise SimDemoGoalError(400, f"알 수 없는 확인 동작이다: {action}")
         with self._lock:
             goal = self._require(goal_id)
+            # session_id=None은 서버 안의 호출(명령 경로의 '취소' 등). HTTP 경로는 언제나 문자열(없으면 "")을 넘긴다.
+            if session_id is not None and goal.get("session_id") and session_id != goal["session_id"]:
+                raise SimDemoGoalError(409, "이 목표를 만든 세션이 아니다 — 확인·취소할 수 없다")
             if goal["status"] != "planned":
                 raise SimDemoGoalError(409, "확인할 수 있는 계획 상태가 아니다")
             if action == "cancel":

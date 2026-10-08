@@ -79,7 +79,8 @@ class ClockBase(JobsBase):
             sim_demo_confirm=self.store,
             sim_demo_intent=None,
             sim_demo_intent_disabled_reason="분류기를 붙이지 않았다",
-            simulation_demo_status=lambda: self.jobs.state.status())
+            simulation_demo_status=lambda: self.jobs.state.status(),
+            sim_view=self.view)
 
     def with_classifier(self, content=None, error=None):
         client = FakeClient(content=content, error=error)

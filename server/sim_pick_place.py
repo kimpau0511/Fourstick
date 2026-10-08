@@ -339,6 +339,27 @@ def gate_transfer(runtime, plan) -> dict | None:
     result["unit"] = unit.to_dict()
     model = result.get("material_model")
     if result["decision"] == "ALLOW" and model is not None:
+        # 2026-10-08 리뷰 11번: 서버 기록과 실제 관측(위치·부착)을 함께 본다(계획 때와 실행 직전 재검증 모두).
+        from server.material_check import (MISMATCH, NOOP, OBSERVATION_MISSING, OK, RECORD_NOT_READY,
+                                           ATTACH_UNKNOWN, check_material_start)
+
+        check = check_material_start(jobs, getattr(runtime, "sim_view", None), model,
+                                     result.get("source"), result.get("destination"),
+                                     log_dir=getattr(runtime, "workcell_log_dir", None))
+        result["material_check"] = {k: check.get(k) for k in ("kind", "detail", "guidance", "gap_m",
+                                                              "observed_m", "record_location")}
+        if check["kind"] == NOOP:
+            result.update(decision="BLOCK", reason=ReasonCode.PLAN_RESOURCE_MISMATCH, noop=True,
+                          detail=f"할 일 없음: {check['detail']}")
+        elif check["kind"] in (RECORD_NOT_READY, MISMATCH, ATTACH_UNKNOWN):
+            result.update(decision="BLOCK", reason=ReasonCode.EXEC_UNVERIFIABLE,
+                          detail=f"{check['detail']} — {check['guidance']}")
+        elif check["kind"] == OBSERVATION_MISSING:
+            result.update(decision="ASK", reason=ReasonCode.EXEC_UNVERIFIABLE,
+                          detail=f"{check['detail']} — {check['guidance']}")
+        elif check["kind"] != OK:
+            result.update(decision="ASK", reason=ReasonCode.EXEC_UNVERIFIABLE, detail=check["detail"])
+    if result["decision"] == "ALLOW" and model is not None:
         mass = (jobs.workcell.get("models") or {}).get(model, {}).get("mass_kg")
         ok, why = opened.sim.payload_allows(model, None if mass is None else float(mass))
         result["payload"] = why

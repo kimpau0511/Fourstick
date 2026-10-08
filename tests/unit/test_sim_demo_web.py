@@ -87,6 +87,27 @@ class WaitableProc(FakeProc):
         return self.code
 
 
+class RecordView:
+    """기록과 같은 자리를 관측하는 Gazebo 보기(2026-10-08 리뷰 11번 확인이 붙은 뒤 정상 경로 시험용).
+    기록↔관측이 다른 경우는 tests/unit/test_material_check.py·test_review_fixes.py가 따로 본다."""
+
+    def __init__(self, jobs):
+        self._jobs = jobs if callable(jobs) else (lambda: jobs)   # 시험이 실행기를 바꿔 끼워도 따라간다
+
+    def sample(self):
+        from server.material_check import _center, _where
+
+        jobs = self._jobs()
+        objects = (jobs.status().get("state") or {}).get("objects") or {}
+        poses = {}
+        for model in jobs.materials:
+            here, _ = _where(jobs, model, objects.get(model))
+            center = _center(jobs, here, objects.get(model), here)
+            if center is not None:
+                poses[model] = list(center) + [0.0, 0.0, 0.0, 1.0]
+        return {"materials": poses, "pose_time": time.time(), "pose_age_sec": 0.0, "stale": False}
+
+
 class JobsBase(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -98,6 +119,11 @@ class JobsBase(unittest.TestCase):
                                 jobs_dir=self.tmp / "jobs",
                                 stop_request=self.tmp / "stop.json",
                                 popen=self.popen, environ={"PATH": "/usr/bin"})
+        self.view = RecordView(lambda: self.jobs)
+        # 부착 기록은 시험 폴더에서만 읽는다(운영 /tmp/forstick2_workcell을 보지 않는다).
+        env = patch.dict(os.environ, {"FORSTICK2_WORKCELL_LOG_DIR": str(self.tmp)})
+        env.start()
+        self.addCleanup(env.stop)
 
 
 class CellExecutionManagerTest(unittest.TestCase):
@@ -405,6 +431,7 @@ class RoutesTest(JobsBase):
         self.runtime = build_runtime(config)
         self.addCleanup(self.runtime.repository.close)
         self.runtime.simulation_demo_state_path = self.state_path
+        self.runtime.sim_view = self.view
 
     def call(self, method, path, payload=None, module=None):
         from server.routes import sim_demo
@@ -427,12 +454,24 @@ class RoutesTest(JobsBase):
         self.assertEqual(caught.exception.status, 403)
         self.assertEqual(self.popen.calls, [])
 
+    def start_via_confirmation(self, action, material, **extra):
+        """2026-10-08 리뷰 2번: 직접 API는 확인 카드만 만든다 → 같은 세션의 확인으로 작업을 시작한다."""
+        status, _, raw = self.call("POST", "/v1/sim-demo/jobs",
+                                   {"action": action, "material": material, "session_id": "s1", **extra})
+        self.assertEqual(status, 200)
+        offer = json.loads(raw)
+        self.assertEqual(offer["decision"], "CONFIRM")
+        self.assertEqual(self.popen.calls, [])                 # 확인 전에는 작업 0건
+        status, _, raw = self.call("POST", "/v1/sim-demo/confirm",
+                                   {"token": offer["confirmation"]["token"], "action": "confirm",
+                                    "session_id": "s1"})
+        return status, json.loads(raw)
+
     def test_enabled_flow_start_detail_stop(self):
         self.runtime.sim_demo_jobs = self.jobs
-        status, _, raw = self.call("POST", "/v1/sim-demo/jobs",
-                                   {"action": "transfer", "material": "material_c"})
+        status, started = self.start_via_confirmation("transfer", "material_c")
         self.assertEqual(status, 202)
-        job = json.loads(raw)
+        job = started["job"]
         _, _, raw = self.call("GET", f"/v1/sim-demo/jobs/{job['job_id']}")
         self.assertEqual(json.loads(raw)["status"], "running")
         _, _, raw = self.call("POST", "/v1/sim-demo/stop")
@@ -444,7 +483,7 @@ class RoutesTest(JobsBase):
         self.assertEqual(status_payload["running_job"]["job_id"], job["job_id"])
         with self.assertRaises(ApiError) as caught:
             self.call("POST", "/v1/sim-demo/jobs",
-                      {"action": "transfer", "material": "material_a"})
+                      {"action": "transfer", "material": "material_a", "session_id": "s1"})
         self.assertEqual(caught.exception.status, 409)
 
     def test_direct_card_cannot_choose_a_transfer_slot(self):
@@ -453,10 +492,8 @@ class RoutesTest(JobsBase):
             jobs_dir=self.tmp / "direct-card-jobs",
             stop_request=self.tmp / "stop.json", popen=self.popen,
             environ={"PATH": "/usr/bin"})
-        status, _, raw = self.call(
-            "POST", "/v1/sim-demo/jobs",
-            {"action": "transfer", "material": "material_a", "slot": "slot_3"})
-        job = json.loads(raw)
+        status, started = self.start_via_confirmation("transfer", "material_a", slot="slot_3")
+        job = started["job"]
         self.assertEqual(status, 202)
         self.assertEqual(job["slot"], "slot_1")
         argv = self.popen.calls[-1]["argv"]
@@ -465,9 +502,13 @@ class RoutesTest(JobsBase):
     def test_global_stop_also_requests_sim_demo_stop(self):
         from server.routes import execution
 
+        from server.api import Api
+
         self.runtime.sim_demo_jobs = self.jobs
         self.jobs.start("transfer", "material_a")
-        _, _, raw = self.call("POST", "/v1/stop", {}, module=execution)
+        # 2026-10-08 리뷰 4번: 작업 정지 전달은 api.stop이 맨 먼저 한다 — 실제 Api로 본다.
+        ctx = types.SimpleNamespace(runtime=self.runtime, read_body=body({}), api=Api(runtime=self.runtime))
+        _, _, raw = asyncio.run(execution.handle(ctx, "POST", "/v1/stop", None, {}))
         payload = json.loads(raw)
         self.assertTrue(payload["ok"])
         self.assertTrue(payload["simulation_demo_stop"]["requested"])

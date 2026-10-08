@@ -48,13 +48,16 @@ async def handle(ctx: RouteContext, method: str, path: str, receive, query: dict
             parts = path[len(PREFIX) + 1:].split("/")
             if len(parts) == 2:
                 run_id, action = parts
+                # 2026-10-08 리뷰 2번: 반복을 시작한 세션만 제어한다(세션 필수).
+                payload = await ctx.read_body(receive)
+                session_id = body_field(payload, "session_id")
                 if action == "verify":
                     # 관측(컨트롤러 status·관절 1초)을 기다린다 — 이벤트 루프 밖에서.
-                    return json_response({"run": await asyncio.to_thread(runs.verify, run_id)})
+                    return json_response({"run": await asyncio.to_thread(runs.verify, run_id, session_id)})
                 act = {"finish-after-round": runs.finish_after_round, "pause": runs.pause,
                        "resume": runs.resume, "cancel": runs.cancel}.get(action)
                 if act is not None:
-                    return json_response({"run": act(run_id)})
+                    return json_response({"run": act(run_id, session_id)})
     except RepeatRunError as exc:
         reason = ReasonCode.PLAN_ARG_UNKNOWN if exc.status == 400 else ReasonCode.EXEC_PERMIT_DENIED
         raise ApiError(exc.status, reason, exc.detail) from exc

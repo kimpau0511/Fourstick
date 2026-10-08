@@ -90,6 +90,9 @@ def preview(runtime, payload: dict) -> tuple[int, dict]:
             sim_demo_intent=getattr(runtime, "sim_demo_intent", None),
             sim_demo_intent_disabled_reason=getattr(runtime, "sim_demo_intent_disabled_reason", None),
             sim_demo_contexts=_preview_contexts(runtime),
+            # 기록·관측 확인(리뷰 11번)은 운영 관측을 **읽기만** 한다 — 없으면 미리보기도 막힌다고 보여 준다.
+            sim_view=getattr(runtime, "sim_view", None),
+            workcell_log_dir=getattr(runtime, "workcell_log_dir", None),
         )
         ctx = types.SimpleNamespace(runtime=sandbox)
         body = {**payload, "mode": "simulation_demo"}

@@ -174,7 +174,8 @@ class ContextRouteTest(GoalsBase):
         self.runtime = types.SimpleNamespace(
             sim_demo_jobs=self.jobs, sim_demo_goals=self.goals, sim_demo_disabled_reason=None,
             sim_demo_confirm=ConfirmStore(ttl_sec=60),
-            sim_demo_contexts=DialogueContexts(clock=lambda: self.now[0]))
+            sim_demo_contexts=DialogueContexts(clock=lambda: self.now[0]),
+            sim_view=self.view)
         self.ended: set[str] = set()
 
     def send(self, text, source="text", confidence=None, session="s1"):

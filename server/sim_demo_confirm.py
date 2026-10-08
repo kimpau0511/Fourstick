@@ -99,6 +99,8 @@ class Pending:
     evidence: dict = field(default_factory=dict)
     utterance: str = ""
     source: str = ""
+    #: 이 카드를 만든 세션(2026-10-08 리뷰 2번). 있으면 같은 세션만 확인할 수 있다.
+    session_id: str = ""
 
     def remaining(self, now: float) -> float:
         return max(0.0, self.expires_at - now)
@@ -141,7 +143,7 @@ class ConfirmStore:
     # ── 만들기 ──────────────────────────────────────────────────────────
     def create(self, *, job_spec: Mapping[str, Any], status: Mapping[str, Any],
                summary: str, evidence: Mapping[str, Any] | None = None,
-               utterance: str = "", source: str = "") -> Pending:
+               utterance: str = "", source: str = "", session_id: str = "") -> Pending:
         now = self._clock()
         pending = Pending(
             token=f"simconfirm_{uuid.uuid4().hex[:12]}",
@@ -153,6 +155,7 @@ class ConfirmStore:
             evidence=dict(evidence or {}),
             utterance=utterance,
             source=source,
+            session_id=session_id or "",
         )
         with self._lock:
             self._sweep(now)
@@ -181,7 +184,18 @@ class ConfirmStore:
         with self._lock:
             return self._pending.pop(token, None) is not None
 
-    def take(self, token: str, status: Mapping[str, Any]) -> Pending | ConfirmRejection:
+    def bind_session(self, token: str, session_id: str) -> None:
+        """이미 만든 카드를 세션에 묶는다(명령 경로가 카드를 만든 뒤 요청 세션을 붙인다)."""
+        from dataclasses import replace
+
+        if not session_id:
+            return
+        with self._lock:
+            row = self._pending.get(token)
+            if row is not None and not row.session_id:
+                self._pending[token] = replace(row, session_id=session_id)
+
+    def take(self, token: str, status: Mapping[str, Any], session_id: str | None = None) -> Pending | ConfirmRejection:
         """확인. 통과하면 대기를 **소비하고** job_spec을 돌려준다.
 
         여기서 작업을 만들지 않는다 — 호출한 라우트가 기존 시연 작업 실행기에
@@ -190,6 +204,11 @@ class ConfirmStore:
         now = self._clock()
         with self._lock:
             self._sweep(now)
+            row = self._pending.get(token)
+            # session_id=None은 서버 안의 호출. HTTP 확인은 언제나 문자열(없으면 "")을 넘긴다.
+            if row is not None and row.session_id and session_id is not None and session_id != row.session_id:
+                # 다른 세션은 확인할 수 없고, 그 시도가 주인의 카드를 지우지도 않는다(2026-10-08 리뷰 2번).
+                return ConfirmRejection("session", "이 확인 카드를 만든 세션이 아닙니다 — 확인할 수 없습니다")
             pending = self._pending.pop(token, None)
         if pending is None:
             return ConfirmRejection(

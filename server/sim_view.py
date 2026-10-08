@@ -188,6 +188,15 @@ class SimViewState:
         self.detail = "관절·자재 pose 구독 중"
         return True
 
+    def attached_models(self) -> tuple[set[str] | None, str]:
+        """지금 그리퍼에 붙어 있는 자재(월드 상태의 붙임 관절, 읽기 전용). 모르면 (None, 이유)."""
+        from robots.fr3_gazebo.joint_observation import observe_attached_isolated
+
+        if self._gz_node is None:
+            return None, "Gazebo 구독이 없다"
+        # 이 프로세스는 pose를 구독 중이라 여기서 서비스 요청을 하면 응답을 받지 못한다 — 새 프로세스에서 조회한다.
+        return observe_attached_isolated(self.world, self.partition)
+
     def close(self) -> None:
         """구독을 끊는다. 서버 종료 때 부른다(인터프리터 정리 중 gz 콜백 방지)."""
         if self._gz_node is not None:

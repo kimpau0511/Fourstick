@@ -91,11 +91,16 @@ def build(tmp: Path, case: dict, intent):
     if env:
         goals.set_environment({"blocked_slots": env.get("blocked_slots") or [],
                                "unavailable_materials": env.get("unavailable_materials") or []})
+    from tests.unit.test_sim_demo_web import RecordView
+
+    # 해석 평가다 — 관측은 기록과 같은 자리로 두고, 부착 기록은 임시 폴더(비어 있음)에서 읽는다
+    # (운영 /tmp/forstick2_workcell을 보지 않는다).
     runtime = types.SimpleNamespace(sim_demo_jobs=jobs, sim_demo_goals=goals,
                                     sim_demo_disabled_reason=None,
                                     sim_demo_confirm=ConfirmStore(ttl_sec=60),
                                     sim_demo_intent=intent,
-                                    sim_demo_contexts=DialogueContexts())
+                                    sim_demo_contexts=DialogueContexts(),
+                                    sim_view=RecordView(jobs), workcell_log_dir=tmp)
     return runtime, popen
 
 

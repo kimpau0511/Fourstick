@@ -65,6 +65,12 @@ export function simAlertOf({ cmd, server }) {
       if (g && g.tone === 'danger' && !USER_ENDED.test(g.code || '') && g.state !== 'stopped') {
         return make('job', 'danger', g.label || '작업 실패', g.detail, g.code, g.detail);
       }
+      // 실행기가 시작 전에 거절했다(로봇은 움직이지 않음) — 원인(실행기 사유)과, 실행기가 남긴 다음 조치가 있으면 그대로 보인다.
+      if (job.report && job.report.status === 'simulation_transfer_not_started') {
+        const r = job.report;
+        const a = make('job', 'warn', '이송 시작 안 함 — 로봇은 움직이지 않았습니다', r.detail, r.not_started_reason || (g && g.code), r.detail);
+        return r.next_action ? { ...a, action: r.next_action } : a;
+      }
       if (!g && job.report && /failed|incomplete|unstable/.test(job.report.status || '')) {
         return make('job', 'danger', '작업 실패', job.report.detail || job.report.status, job.report.reason_code || null, job.report.status);
       }

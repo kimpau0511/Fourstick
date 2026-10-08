@@ -22,7 +22,7 @@ async def handle(
     runtime = ctx.runtime
     return json_response({
         # 정지 래치·추적 goal 진단(읽기 전용). **어댑터를 만들거나 연결하지 않는다.**
-        "stop_diagnostics": _stop_diagnostics(runtime),
+        "stop_diagnostics": _with_server_latch(_stop_diagnostics(runtime), ctx),
         "configured": runtime.robot_configured,
         "robots": runtime.registry.catalog(),
         # 선언됐지만 아직 실행 대상이 아닌 구성도 보여준다(8-02).
@@ -49,6 +49,23 @@ async def handle(
             for record in ctx.repository.sim_verifications(limit=12)
         ],
     })
+
+
+def _with_server_latch(diag: dict, ctx) -> dict:
+    """화면의 '정지 해제' 버튼 근거에 서버 실행 정지 상태도 넣는다(2026-10-08 리뷰 5번).
+
+    새 계획이 정지를 더는 풀지 않으므로, 어댑터 래치가 없더라도(어댑터 정지 실패·미생성) 서버가 실행을 막고 있으면
+    해제할 수 있게 보여야 한다 — 안 그러면 실행이 막혔는데 풀 버튼이 없다.
+    """
+    api = getattr(ctx, "api", None)
+    check = getattr(type(api), "stop_latched", None)
+    if not callable(check):
+        return diag
+    server_latched = bool(check(api))
+    out = {**diag, "server_stop_latched": server_latched}
+    if server_latched:
+        out["stop_latch_active"] = True
+    return out
 
 
 def _stop_diagnostics(runtime) -> dict:

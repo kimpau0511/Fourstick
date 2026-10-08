@@ -92,6 +92,16 @@ from validation.safety_validator import (
 
 #: 어댑터 호출 제한시간(초). 정책으로 옮기기 전까지 한 곳에 둔다.
 ADAPTER_TIMEOUT_SEC = 10.0
+#: 명령 문장 상한(글자). 기존 입력 자료(fixtures — 평가셋·음성 자유 발화·명령 해석 1,448문장)의 최장 문장이 50자이고,
+#: STT 한 발화 상한(30초)을 한국어 발화 속도(초당 5~6자)로 옮기면 150~180자다 — 그 위로 여유를 두어 200자.
+#: 넘으면 모델(Qwen)을 부르기 전에 거절한다(2026-10-08 리뷰 8번).
+MAX_UTTERANCE_CHARS = 200
+
+
+def check_utterance_length(text: str) -> None:
+    if len(text) > MAX_UTTERANCE_CHARS:
+        raise ApiError(413, ReasonCode.PLAN_INPUT_TOO_LONG,
+                       f"명령이 너무 깁니다({len(text)}자, 상한 {MAX_UTTERANCE_CHARS}자) — 짧게 나눠 말해 주세요")
 #: 클라이언트 유예의 기본값. 실제 값은 `ServerConfig.client_grace_sec`이며
 #: 이 상수는 설정을 읽을 수 없는 호출자를 위한 마지막 기본값이다.
 DEFAULT_CLIENT_GRACE_SEC = 5.0
@@ -261,8 +271,37 @@ def _transfer_rule(transfer: dict) -> dict:
         "recoverable": transfer["decision"] == "ASK",
         "transfer": {k: v for k, v in transfer.items()
                      if k in ("unit", "material_model", "source", "destination", "route",
-                              "payload", "findings")},
+                              "payload", "findings", "material_check", "noop")},
     }
+
+
+def _confirm_noop_by_observation(runtime, jobs, decision):
+    """'이미 목적지'(기록)를 관측으로 확인한다(2026-10-08 리뷰 11번). 관측도 그 자리면 할 일 없음,
+    다르면 차단·정합(복구) 안내, 관측이 없으면 확인 요청 — 기록만으로 '할 일 없음'을 확정하지 않는다."""
+    import dataclasses
+
+    from server.material_check import NOOP, OBSERVATION_MISSING, check_material_start
+
+    info = dict(decision.interpretation or {})
+    at = info.get("noop_at") or {}
+    model, location = at.get("model"), at.get("location")
+    if not model or not location:
+        return decision
+    destination = "conveyor" if location == "loc_conveyor" else location
+    check = check_material_start(jobs, getattr(runtime, "sim_view", None), model, None, destination,
+                                 log_dir=getattr(runtime, "workcell_log_dir", None))
+    info["material_check"] = {k: check.get(k) for k in ("kind", "detail", "guidance", "gap_m", "observed_m",
+                                                        "record_location")}
+    if check["kind"] == NOOP:
+        return dataclasses.replace(decision, interpretation=info)
+    guidance = check.get("guidance") or ""
+    text = f"기록상 이미 목적지지만 관측으로 확인되지 않았습니다: {check['detail']} — {guidance}"
+    if check["kind"] == OBSERVATION_MISSING:
+        return dataclasses.replace(decision, kind="ask", reason_code=ReasonCode.EXEC_UNVERIFIABLE, detail=text,
+                                   clarification=text, interpretation=info)
+    # 불일치(MISMATCH)·기록이 목적지가 아님·부착 불명은 모두 차단이다 — 실행할 계획을 만들지 않는다.
+    return dataclasses.replace(decision, kind="block", reason_code=ReasonCode.EXEC_UNVERIFIABLE, detail=text,
+                               clarification=text, interpretation=info)
 
 
 def _aggregate_gate(
@@ -659,12 +698,15 @@ class Api:
         text = (utterance or "").strip()
         if not text:
             raise ApiError(400, ReasonCode.PLAN_SLOT_INCOMPLETE, "발화가 비어 있다")
-        if extract_slots(text, runtime.resource_catalog,
-                         stop_keywords=runtime.stt_policy.stop_keywords).stop_keyword_hit:
+        stop_slots = extract_slots(text, runtime.resource_catalog,
+                                   stop_keywords=runtime.stt_policy.stop_keywords)
+        if stop_slots.stop_keyword_hit:
             # 정지 발화는 계획을 만들지 않는다 — 모델(Qwen)·계획 검증을 기다리지 않고 바로
             # 전체 정지(`/v1/stop`과 같은 범위)를 요청한다. 정지 계획은 안전 정책의 종료 스킬
             # 요구(home)와 충돌해 어차피 차단된다(실측).
             return self._stop_from_utterance(session_id, text)
+        # 정지 판정(값싼 규칙) 뒤, 모델·저장 전에 길이를 본다 — 긴 문장 속 정지도 놓치지 않는다.
+        check_utterance_length(text)
         if keep_stop_latch:
             with self._flag_lock:
                 latched = self._stop_requested
@@ -697,6 +739,18 @@ class Api:
             raise ApiError(409, exc.reason, str(exc)) from None
         except StorageError as exc:
             raise ApiError(500, exc.reason, str(exc)) from None
+
+        if stop_slots.stop_ambiguous:
+            # 정지 낱말이 있으나 명령인지 애매하다(2026-10-08 리뷰 10번) — 모델을 부르지 않고 이동 계획도 만들지 않는다.
+            from planning.stop_intent import AMBIGUOUS_STOP_MESSAGE, classify_stop
+            from server.plan_intent import IntentDecision
+
+            why = classify_stop(text, runtime.stt_policy.stop_keywords)
+            return self._intent_failure(session_id, request_id, text, IntentDecision(
+                "ask", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED, detail=AMBIGUOUS_STOP_MESSAGE,
+                clarification=AMBIGUOUS_STOP_MESSAGE,
+                interpretation={"stop_intent": {"kind": why.kind, "matched": list(why.matched),
+                                                "reasons": list(why.reasons)}}))
 
         # 이송 요청이면 의도 하나로 해석·검증한다(server/plan_intent.py). 계획 생성과 요청↔계획
         # 일치 검증이 이 의도를 같이 쓴다. 이송이 아니면(위치 이동·홈) 기존 계획 생성 그대로다.
@@ -780,25 +834,27 @@ class Api:
 
         plan = run.outcome.plan
         runtime.repository.save_plan(request_id, plan, created_at)
-        # 새 계획 수락 = 정지 래치 해제 지점(`core/stop_contract.reset_for_new_plan`).
-        # 진행 중인 실행이 있으면 풀지 않는다 — 이전 동작이 살아 있는데 새 계획을
-        # 시작하지 않는다.
-        latch_cleared, latch_detail = (False, "진행 중인 실행이 있어 풀지 않았다")
+        # 2026-10-08 리뷰 5번: 새 계획은 전체 정지를 풀지 않는다(다른 세션의 계획도). 정지 해제는 명시적인 해제 요청
+        # (`release_stop` — 진행 중 실행·시뮬레이션 작업 확인 뒤 계약 `reset_for_new_plan`)으로만 한다. 여기서는 상태만 알린다.
         with self._flag_lock:
-            idle = not self._active_executions
-        if keep_stop_latch:
-            # 반복 작업의 다음 단계 계획이 사용자의 즉시 정지를 풀지 않는다.
-            idle = False
-            latch_detail = "반복 작업 단계 계획은 정지 래치를 풀지 않는다"
-        if idle:
-            latch_cleared, latch_detail = runtime.reset_stop_latch()
-            if latch_cleared:
-                with self._flag_lock:
-                    self._stop_requested = False
+            latched = self._stop_requested
+        latch_cleared = not latched
+        latch_detail = ("전체 정지가 걸려 있습니다 — 화면의 정지 해제로 풀어야 실행할 수 있습니다" if latched
+                        else "전체 정지가 걸려 있지 않다")
         self._store_validation(plan, run.outcome.slots, intent)
         bundle = self.bundle_for(
             session_id=session_id, request_id=request_id, plan_id=plan.plan_id
         )
+        # 2026-10-08 리뷰 11번: 기록·관측 모두 이미 목적지면 '할 일 없음'으로 끝낸다(실행할 계획이 아니다).
+        noop_rule = next((r for r in (bundle.gate.capability_rules if bundle.gate is not None else ())
+                          if (r.get("transfer") or {}).get("noop")), None)
+        if noop_rule is not None:
+            from server.plan_intent import IntentDecision
+
+            detail = noop_rule["message"]
+            return self._intent_failure(session_id, request_id, text, IntentDecision(
+                "noop", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED, detail=detail, clarification=detail,
+                interpretation={"material_check": (noop_rule.get("transfer") or {}).get("material_check")}))
         # 계획 시점의 관문 판정을 append-only로 남긴다.
         validation_run_id = None
         if bundle.gate is not None:
@@ -941,6 +997,8 @@ class Api:
             "snapshot_id": None if snapshot is None else snapshot.snapshot_id,
             "snapshot_version": None if snapshot is None else snapshot.snapshot_version,
             "snapshot_hash": None if snapshot is None else snapshot.content_hash,
+            # 이 장면의 관측 시각 — 실행 허가의 환경 신선도 근거(2026-10-08 리뷰 9번). 승인 묶기 비교 대상은 아니다.
+            "snapshot_captured_at": None if snapshot is None else snapshot.captured_at,
             "frame_id": runtime.frame_id,
         }
         return GateOutcome(
@@ -1252,6 +1310,10 @@ class Api:
             gate, session_id=session_id, request_id=request_id, plan=bundle.plan
         )
         bindings = gate.bindings
+        try:
+            environment_session = environment_session_of(runtime.robot_id, runtime.adapter())
+        except Exception:  # noqa: BLE001 — 어댑터를 못 만들면 환경 세션을 모른다(실행 때 허가하지 않는다)
+            environment_session = None
         record = ApprovalRecord(
             approval_id=self._uid("apv"), plan_id=plan_id, plan_hash=stored_hash,
             request_id=request_id,
@@ -1273,6 +1335,7 @@ class Api:
             snapshot_version=bindings["snapshot_version"],
             snapshot_hash=bindings["snapshot_hash"],
             validation_run_id=validation_run_id,
+            environment_session=environment_session,
             note=note[:500],
         )
         runtime.repository.append_approval(record)
@@ -1327,6 +1390,9 @@ class Api:
                 "이 세션의 승인 기록이 없다"
                 + (f" (다른 세션의 결정 {others}건은 쓸 수 없다)" if others else ""),
             )
+        # 2026-10-08 리뷰 3번: 쓸 수 있는 승인은 이 세션의 **마지막 결정**뿐이다. 그 뒤에 거부·재승인이 있으면
+        # 옛 승인 id로 실행할 수 없다(취소한 계획을 옛 승인으로 실행하던 우회 차단).
+        latest = mine[-1]
         if approval_id is not None:
             selected = [a for a in mine if a.approval_id == approval_id]
             if not selected:
@@ -1334,9 +1400,13 @@ class Api:
                     404, ReasonCode.SAFETY_APPROVAL_REQUIRED,
                     f"이 세션의 승인이 아니다: {approval_id}",
                 )
-            approval = selected[-1]
-        else:
-            approval = mine[-1]
+            if selected[-1].approval_id != latest.approval_id:
+                raise ApiError(
+                    409, ReasonCode.SAFETY_APPROVAL_REQUIRED,
+                    f"승인 {approval_id} 뒤에 이 계획에 대한 다른 결정({latest.decision.value})이 있다 —"
+                    " 이 승인으로 실행하지 않는다",
+                )
+        approval = latest
         if approval.decision is not ApprovalDecision.APPROVED:
             raise ApiError(
                 409, ReasonCode.SAFETY_APPROVAL_REQUIRED,
@@ -1352,6 +1422,11 @@ class Api:
                 409, ReasonCode.PLAN_HASH_MISMATCH,
                 f"승인 당시 plan_hash({approval.plan_hash[:12]})와 현재"
                 f" 계획의 hash({plan_hash[:12]})가 다르다 — 다시 승인해야 한다",
+            )
+        if repository.approval_used(approval.approval_id):
+            raise ApiError(
+                409, ReasonCode.SAFETY_APPROVAL_REQUIRED,
+                f"승인 {approval.approval_id}은(는) 이미 실행에 썼다 — 승인은 한 번만 쓴다. 다시 승인해 주세요",
             )
         return approval
 
@@ -1372,6 +1447,14 @@ class Api:
         )
         plan = bundle.plan
         plan_hash = plan.plan_hash()
+        # 전체 정지 래치가 먼저다 — 명시적인 정지 해제(`release_stop`) 전에는 어떤 승인으로도 실행하지 않는다(리뷰 5번).
+        with self._flag_lock:
+            latched = self._stop_requested
+        if latched:
+            raise ApiError(
+                409, ReasonCode.EXEC_STOPPED,
+                "전체 정지가 걸려 있다 — 정지 해제를 한 뒤 다시 승인해야 한다(새 계획만으로는 풀리지 않는다)",
+            )
         approval = self._usable_approval(
             session_id=session_id, request_id=request_id, plan_id=plan_id,
             plan_hash=plan_hash, approval_id=approval_id,
@@ -1399,15 +1482,6 @@ class Api:
             )
         if runtime.robot_id is None:
             raise ApiError(503, ReasonCode.ROBOT_NOT_REGISTERED, "등록된 로봇이 없다")
-
-        # 전체 정지 래치. 새 계획을 수락할 때까지 실행을 받지 않는다.
-        with self._flag_lock:
-            latched = self._stop_requested
-        if latched:
-            raise ApiError(
-                409, ReasonCode.EXEC_STOPPED,
-                "전체 정지가 걸려 있다 — 새 계획을 요청하면 정지 래치가 풀린다",
-            )
 
         # pick/place가 있는 계획은 이송 실행기(별도 프로세스)가 transfer를 맡는다. 셀 임대는
         # 그 실행기의 **부모 예약**으로 잡아, 이송 작업이 같은 임대 아래에서 돈다(시연
@@ -1455,6 +1529,12 @@ class Api:
                     speed_percent = motion.snapshot()
                 except PolicyError as exc:
                     raise ApiError(409, exc.reason, str(exc)) from exc
+            # 2026-10-08 리뷰 3번: 실행을 시작하기로 한 순간 승인을 한 번 쓴 것으로 표시한다(원자적).
+            # 동시 요청 중 하나만 지나가고, 이 뒤에 실행이 실패·응답 유실로 끝나도 같은 승인을 다시 쓰지 않는다.
+            if not runtime.repository.claim_approval(approval.approval_id, claimed_at=self.now(),
+                                                     session_id=session_id):
+                raise ApiError(409, ReasonCode.SAFETY_APPROVAL_REQUIRED,
+                               f"승인 {approval.approval_id}은(는) 이미 실행에 썼다 — 다시 승인해 주세요")
             return self._run_execution(
                 session_id=session_id, bundle=bundle, approval=approval,
                 transfer_goal=transfer_goal, motion=motion, speed_percent=speed_percent,
@@ -1542,16 +1622,19 @@ class Api:
         gate_bindings = {} if bundle.gate is None else dict(bundle.gate.bindings)
         state = adapter.state()
         now = self.now()
-        environment_marker = f"{runtime.robot_id}:{record_session_id(adapter)}"
+        environment_marker = environment_session_of(runtime.robot_id, adapter)
         permit = check_execution_permit(
             plan, rule_results,
             PermitContext(
                 now=now, robot_ready=state.valid,
                 robot_state_observed_at=state.observed_at,
                 robot_state_valid=state.valid,
-                environment_observed_at=state.observed_at,
-                recorded_environment_version=1, current_environment_version=1,
-                recorded_environment_session=environment_marker,
+                # 2026-10-08 리뷰 9번: 환경 신선도는 이 장면(기하 snapshot)의 관측 시각, 환경 버전·세션은 승인 때 기록한
+                # 값과 지금 값을 비교한다(전에는 같은 값끼리 비교해 늘 통과했다). 값이 없으면 허가하지 않는다.
+                environment_observed_at=gate_bindings.get("snapshot_captured_at"),
+                recorded_environment_version=approval.snapshot_version,
+                current_environment_version=gate_bindings.get("snapshot_version"),
+                recorded_environment_session=approval.environment_session,
                 current_environment_session=environment_marker,
                 recorded_plan_hash=plan.plan_hash(),
                 profile_id=plan.profile_id, profile_version=plan.profile_version,
@@ -1622,6 +1705,7 @@ class Api:
             environment_confirmed_at=confirmed_at,
         )
         self.running_execution_id = execution_id
+        runtime.repository.link_approval_execution(approval.approval_id, execution_id)
         with self._flag_lock:
             # 전체 정지가 적용될 대상 목록. 소유 세션을 함께 둬, 정지 결과를
             # 해당 세션에만 상세히 전달한다.
@@ -1901,6 +1985,8 @@ class Api:
             context=_context_lines(context, facts))
         decision = decide_intent(interp, read_text, facts, context=context,
                                  min_confidence=runtime.config.sim_demo_intent_min_confidence)
+        if decision is not None and decision.kind == "noop":
+            decision = _confirm_noop_by_observation(runtime, jobs, decision)
         if spelling and decision is not None and isinstance(decision.interpretation, dict):
             decision.interpretation["spelling"] = {"version": SPELLING_VERSION, "changes": spelling,
                                                    "original": text, "read_as": read_text}
@@ -1970,26 +2056,47 @@ class Api:
         self.emit({"type": "plan_failed", "payload": payload}, session_id=session_id)
         return payload
 
+    def stop_latched(self) -> bool:
+        """전체 정지 래치가 걸려 있는가(읽기만). 명시적인 정지 해제 전까지 움직이는 작업을 만들거나 시작하지 않는다."""
+        with self._flag_lock:
+            return bool(self._stop_requested)
+
     def _stop_from_utterance(self, session_id: str, text: str) -> dict:
-        """정지 발화 → 전체 정지 요청. `/v1/stop` 라우트와 같은 범위(일반 실행 + 시연 작업)."""
+        """정지 발화 → 전체 정지 요청. `/v1/stop`과 같은 범위(일반 실행 + 시연·재개·복구·반복 작업).
+        작업 정지 전달은 `stop`이 맨 먼저 한다(2026-10-08 리뷰 4번)."""
         self._keep_draft(session_id, {})               # 정지 뒤에는 앞 질문을 잇지 않는다
-        stopped = self.stop(session_id=session_id)
-        runtime = self.runtime
-        sim_stop = None
-        jobs = getattr(runtime, "sim_demo_jobs", None)
-        if jobs is not None:
-            goals = getattr(runtime, "sim_demo_goals", None)
-            goal_stop = goals.request_stop() if goals is not None else None
-            sim_stop = (goal_stop if goal_stop and goal_stop.get("requested")
-                        else jobs.request_stop(reason="plan_utterance_stop"))
+        stopped = self.stop(session_id=session_id, reason="plan_utterance_stop")
         return {"ok": False, "stopped": True, "decision": "STOP",
                 "session_id": session_id, "utterance": text,
                 "reason_code": None, "recoverable": False,
                 "detail": "정지 발화 — 계획을 만들지 않고 전체 정지를 요청했다(모델 호출 없음)",
                 "clarification": None, "stop": stopped,
-                "simulation_demo_stop": sim_stop}
+                "simulation_demo_stop": stopped.get("simulation_demo_stop")}
 
-    def stop(self, *, session_id: str | None = None) -> dict:
+    def _deliver_simulation_stop(self, reason: str) -> tuple[dict | None, bool, dict | None]:
+        """시연·재개·복구·반복 재개 작업(별도 실행기 프로세스)에 정지 요청을 **바로** 쓴다(파일 한 장 — 기다리지 않는다).
+        돌려주는 값: (요청 결과, 작업이 돌고 있었는가, 전달 기록)."""
+        runtime = self.runtime
+        jobs = getattr(runtime, "sim_demo_jobs", None)
+        if jobs is None:
+            return None, False, None
+        try:
+            running = jobs.running() is not None
+        except Exception:  # noqa: BLE001 — 상태를 못 읽어도 정지 요청은 쓴다
+            running = True
+        goals = getattr(runtime, "sim_demo_goals", None)
+        try:
+            goal_stop = goals.request_stop() if goals is not None else None
+            sim_stop = (goal_stop if goal_stop and goal_stop.get("requested")
+                        else jobs.request_stop(reason=reason))
+        except Exception as exc:  # noqa: BLE001 — 전달 실패를 숨기지 않는다
+            sim_stop = {"requested": False, "detail": f"정지 요청을 쓰지 못했다: {exc}"[:200]}
+        delivery = {"target": "simulation_job", "at": self.now(), "was_running": running,
+                    "requested": bool(sim_stop and sim_stop.get("requested")),
+                    "job_id": (sim_stop or {}).get("job_id"), "goal_id": (sim_stop or {}).get("goal_id")}
+        return sim_stop, running, delivery
+
+    def stop(self, *, session_id: str | None = None, reason: str = "global_stop") -> dict:
         """**전체 정지.** 로봇 전체를 멈춘다.
 
         - 세션 격리로 막지 않는다 — 세션이 없거나 만료됐어도 동작한다.
@@ -2003,6 +2110,16 @@ class Api:
         with self._flag_lock:
             self._stop_requested = True
             affected = dict(self._active_executions)   # {execution_id: session_id}
+        # 2026-10-08 리뷰 4번: 정지 **전달**이 먼저다. 일반 실행은 위 플래그를 실행 루프가 0.5초마다 보고 이송 실행기에
+        # 넘기고, 시연·재개·복구·반복 재개 작업(일반 실행에 안 잡힌 별도 프로세스)은 여기서 바로 요청 파일을 쓴다.
+        # 어댑터 연결 확인·정지 확인(수 초 걸릴 수 있다)은 그 뒤다. 전달과 확인은 응답에 따로 남긴다.
+        delivery: list[dict] = []
+        if affected:
+            delivery.append({"target": "general_execution", "at": self.now(), "count": len(affected),
+                             "requested": True, "how": "정지 플래그(실행 루프가 0.5초마다 확인해 이송 실행기로 전달)"})
+        sim_stop, sim_running, sim_delivery = self._deliver_simulation_stop(reason)
+        if sim_delivery is not None:
+            delivery.append(sim_delivery)
         # 반복 작업: 전체 정지는 남은 반복을 취소한다(진행 중 단계는 실행 결과로 멈추고, 일시정지·단계 사이면 여기서).
         repeat = getattr(runtime, "repeat_runs", None)
         if repeat is not None:
@@ -2016,6 +2133,7 @@ class Api:
 
         def finish(payload: dict) -> dict:
             """전체 범위 이벤트 + 세션별 이벤트. 상세는 소유 세션에만 간다."""
+            payload = {**payload, "delivery": delivery, "simulation_demo_stop": sim_stop}
             self.emit({"type": "stop", "payload": payload}, scope="global")
             for owner, ids in by_session.items():
                 self.emit(
@@ -2046,7 +2164,8 @@ class Api:
             # (`_run_execution`은 connect가 수락된 뒤에만 실행을 등록한다).
             # 연결 재확인(world·컨트롤러·모델 조회)을 취소보다 앞에 두지 않는다 —
             # 그 사이 로봇이 계속 움직인다. 실행이 없을 때만 먼저 연결을 확인한다.
-            if not affected:
+            # 일반 실행이 없어도 시연·재개·복구 작업이 돌고 있으면 팔이 움직이는 중이다 — 연결 재확인보다 취소가 먼저다.
+            if not affected and not sim_running:
                 adapter.connect(ADAPTER_TIMEOUT_SEC)
             # 정지 래치에 멈춘 실행을 남긴다. 대상이 정확히 하나일 때만 그 id를
             # 넘기고, 없거나 여럿이면 None이다 — 임의로 하나를 고르지 않는다.
@@ -2279,6 +2398,13 @@ def _accepts_execution_id(method) -> bool:
         return "execution_id" in inspect.signature(method).parameters
     except (TypeError, ValueError):
         return False
+
+
+def environment_session_of(robot_id, adapter) -> str | None:
+    """승인·실행이 대조하는 환경 세션 표식(로봇 id + 어댑터 연결 세션). 어댑터가 없으면 None — 허가하지 않는다."""
+    if robot_id is None or adapter is None:
+        return None
+    return f"{robot_id}:{record_session_id(adapter)}"
 
 
 def record_session_id(adapter) -> str:

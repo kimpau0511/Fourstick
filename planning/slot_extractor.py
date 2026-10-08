@@ -41,8 +41,10 @@ class SlotExtraction:
 
     utterance: str
     matches: tuple[SlotMatch, ...]
-    #: 정지 키워드가 발화에 있는가. 계획 생성을 건너뛸지는 호출자가 정한다.
+    #: 정지 명령인가(planning/stop_intent — 낱말 경계·부정·인용을 본다). 계획 생성을 건너뛸지는 호출자가 정한다.
     stop_keyword_hit: bool = False
+    #: 정지 낱말이 있으나 명령인지 확정할 수 없다(2026-10-08 리뷰 10번) — 호출자는 이동 계획을 만들지 않고 묻는다.
+    stop_ambiguous: bool = False
 
     @property
     def locations(self) -> tuple[str, ...]:
@@ -101,10 +103,14 @@ def extract_slots(
             start = text.find(alias, start + 1)
 
     matches.sort(key=lambda m: m.start)
+    from planning.stop_intent import AMBIGUOUS, classify_stop
+
+    stop = classify_stop(utterance, stop_keywords) if stop_keywords else None
     return SlotExtraction(
         utterance=utterance,
         matches=tuple(matches),
-        stop_keyword_hit=any(normalize(k) in text for k in stop_keywords),
+        stop_keyword_hit=bool(stop and stop.is_stop),
+        stop_ambiguous=bool(stop and stop.kind == AMBIGUOUS),
     )
 
 

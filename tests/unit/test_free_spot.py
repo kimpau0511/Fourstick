@@ -330,7 +330,7 @@ class RouteTest(JobsBase):
         _, card = self.command("A자재를 작업대의 빈 곳에 놔")
         self.service.recheck_ok = False
         status, payload = self.call("/v1/sim-demo/confirm",
-                                    {"token": card["confirmation"]["token"], "action": "confirm"})
+                                    {"token": card["confirmation"]["token"], "action": "confirm", "session_id": "s1"})
         self.assertEqual((status, payload["decision"]), (409, "BLOCK"))
         self.assertEqual(payload["confirm_rejection"], "recheck_failed")
         self.assertEqual(self.popen.calls, [])
@@ -338,7 +338,7 @@ class RouteTest(JobsBase):
     def test_confirm_starts_the_spot_job_after_recheck(self):
         _, card = self.command("A자재를 작업대의 빈 곳에 놔")
         status, payload = self.call("/v1/sim-demo/confirm",
-                                    {"token": card["confirmation"]["token"], "action": "confirm"})
+                                    {"token": card["confirmation"]["token"], "action": "confirm", "session_id": "s1"})
         self.assertEqual((status, payload["decision"]), (202, "RUN"))
         self.assertIn("--route-to-spot", self.popen.calls[-1]["argv"])
 

@@ -46,7 +46,8 @@ PASS_THROUGH = "PASS_THROUGH"
 #: 작업을 만들 수 있는 입력 출처. **partial은 없다** — 표시만 한다.
 SOURCES = ("text", "stt_final")
 
-_STOP_WORDS = ("멈춰", "멈춤", "정지", "스톱", "stop")
+# 시연 명령 경로의 정지 낱말 — 일반 경로 설정(stt_policy.stop_keywords)과 같은 목록(2026-10-08).
+_STOP_WORDS = ("정지", "멈춰", "스톱", "스탑", "중지", "멈추", "stop", "그만")
 _RESUME_WORDS = ("이어서", "이어가", "재개", "계속해")
 _RETURN_WORDS = ("원래자리", "원래위치", "원위치", "제자리", "복귀", "되돌", "돌려놔",
                  "돌려놓")
@@ -162,10 +163,17 @@ def spoken_places(text: str, workcell: Mapping[str, Any],
             "conveyor": mentions_conveyor(text, workcell)}
 
 
+def stop_intent(text: str):
+    """정지 판정(planning/stop_intent, 2026-10-08 리뷰 10번). **띄어쓰기를 지우기 전 원문**을 본다."""
+    from planning.stop_intent import classify_stop
+
+    return classify_stop(text, _STOP_WORDS)
+
+
 def is_stop_command(text: str) -> bool:
-    """정지 낱말("멈춰"·"정지"·"스톱")이 있는가. 다른 해석보다 먼저 본다 — LLM을 거치지 않는다."""
-    normalized = _normalize(text)
-    return bool(normalized) and any(word in normalized for word in _STOP_WORDS)
+    """분명한 정지 명령인가. 다른 해석보다 먼저 본다 — LLM을 거치지 않는다.
+    '스톱워치'(다른 낱말의 일부)·'정지하지 마'(부정)·'정지'라는 말(인용)은 정지가 아니다."""
+    return stop_intent(text).is_stop
 
 
 def parse_command(text: str, workcell: Mapping[str, Any],
@@ -175,9 +183,14 @@ def parse_command(text: str, workcell: Mapping[str, Any],
     if not normalized:
         return {"intent": None, "decision": PASS_THROUGH, "material": None,
                 "reason": "발화가 비어 있다"}
-    if is_stop_command(normalized):
+    stop = stop_intent(text)
+    if stop.is_stop:
         # 정지는 다른 해석보다 먼저다. 계획·LLM을 거치지 않는다.
         return {"intent": "stop", "decision": STOP, "material": None}
+    if stop.kind == "ambiguous":
+        from planning.stop_intent import AMBIGUOUS_STOP_MESSAGE
+
+        return {"intent": None, "decision": ASK, "material": None, "reason": AMBIGUOUS_STOP_MESSAGE}
     aliases = material_aliases(workcell)
     mentioned = sorted(model for model, names in aliases.items()
                        if any(name in normalized for name in names))

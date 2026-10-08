@@ -178,8 +178,9 @@ export function useSimCommand() {
     let res;
     try {
       res = pending.kind === 'goal'
-        ? await call('POST', `/v1/sim-demo/goals/${encodeURIComponent(pending.goal_id)}/confirm`, { action })
-        : await call('POST', '/v1/sim-demo/confirm', { token: pending.token, action });
+        // 확인 카드·목표는 만든 세션만 확인한다(2026-10-08) — 명령을 보낸 같은 세션 id.
+        ? await call('POST', `/v1/sim-demo/goals/${encodeURIComponent(pending.goal_id)}/confirm`, { action, session_id: SESSION_ID })
+        : await call('POST', '/v1/sim-demo/confirm', { token: pending.token, action, session_id: SESSION_ID });
     } catch (error) {
       patch({ busy: false, pending: null, deadline: null, error: `확인 요청 실패: ${error.message}` });
       addEvent('error', '확인 요청 실패', error.message, id);

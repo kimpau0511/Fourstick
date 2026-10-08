@@ -144,8 +144,9 @@ export const COMMANDS = {
       ...(source === 'stt_final' ? { raw_transcript: stt.rawText, stt_confidence: stt.confidence } : {}),
     }),
     confirm: (sid, pending, action) => (pending.kind === 'goal'
-      ? post(`/v1/sim-demo/goals/${encodeURIComponent(pending.goal_id)}/confirm`, { action })
-      : post('/v1/sim-demo/confirm', { token: pending.token, action })),
+      // 확인 카드·목표는 만든 세션만 확인한다(2026-10-08) — 같은 세션 id를 보낸다.
+      ? post(`/v1/sim-demo/goals/${encodeURIComponent(pending.goal_id)}/confirm`, { action, session_id: sid })
+      : post('/v1/sim-demo/confirm', { token: pending.token, action, session_id: sid })),
     stop: () => post('/v1/sim-demo/stop', {}),
   },
   g1: {

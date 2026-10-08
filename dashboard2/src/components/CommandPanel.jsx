@@ -255,7 +255,9 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   else if (pending) interpretation = [pending.summary, pending.evidence && pending.evidence.slot_label].filter(Boolean);
   else if (result && result.decision === 'PASS_THROUGH') interpretation = ['이 화면은 시연 명령(자재 이송·복귀·정지·이어서)만 처리합니다.'];
   else if (result && result.decision === 'STOP') interpretation = [result.stop?.requested === true ? '전체 정지를 요청했습니다.' : result.stop?.detail || '정지할 작업이 없습니다'];
-  else if (result) interpretation = [result.summary || (job && `${job.action_label || job.action} · ${job.slot_label || ''}`), result.reason].filter(Boolean);
+  // 이송이 아닌 계획(홈 이동 등)은 작업 이름이 없다 — 'undefined'를 보이지 않는다.
+  else if (result) interpretation = [result.summary || (job && (job.action_label || job.action)
+    ? `${job.action_label || job.action}${job.slot_label ? ` · ${job.slot_label}` : ''}` : (job ? '계획 실행' : null)), result.reason].filter(Boolean);
   const stages = phase === 'done' ? ['done', 'done', resultTone === 'ok' ? 'done' : 'fail']
     : phase === 'running' ? ['done', 'done', 'active']
     : phase === 'confirm' ? ['done', 'done', 'idle']

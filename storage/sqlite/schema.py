@@ -810,6 +810,19 @@ CREATE INDEX idx_command_actors_request ON command_actors(request_id);
 CREATE INDEX idx_command_actors_job ON command_actors(job_id);
 """
 
+MIGRATION_0020 = """
+-- 2026-10-08 리뷰 3·9번. 승인은 실행 한 번에만 쓴다: 실행을 시작하기로 한 순간 이 표에 한 줄을 넣고(PRIMARY KEY로
+-- 동시 요청 중 하나만 성공), 실행이 실패·응답 유실로 끝나도 그 승인을 다시 쓰지 않는다. append-only.
+CREATE TABLE approval_uses (
+    approval_id   TEXT PRIMARY KEY REFERENCES plan_approvals(approval_id),
+    claimed_at    REAL NOT NULL,
+    session_id    TEXT,
+    execution_id  TEXT
+);
+-- 승인할 때의 환경 세션(로봇 id + 어댑터 연결 세션). 실행 직전 지금 값과 대조한다.
+ALTER TABLE plan_approvals ADD COLUMN environment_session TEXT;
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "요청·계획·검증·허가·실행·이력 초기 스키마", MIGRATION_0001),
     (2, "확정 요청의 STT 메타데이터 컬럼 추가", MIGRATION_0002),
@@ -830,7 +843,9 @@ MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (17, "일반 경로 검증된 작업 의도 기록 추가", MIGRATION_0017),
     (18, "로그인 계정·로그인 세션 추가", MIGRATION_0018),
     (19, "명령을 보낸 사람 기록 추가", MIGRATION_0019),
+    (20, "승인 1회 사용 기록과 승인 시점 환경 세션 추가", MIGRATION_0020),
 )
+
 
 CREATE_MIGRATIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS schema_migrations (

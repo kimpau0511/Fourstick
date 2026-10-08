@@ -513,8 +513,16 @@ class GazeboObjectFixture:
                 note = "detach 토픽 → detached 알림" + ("" if attempt == 1 else f" ({attempt}번째 전송)")
                 _write_joint_record(model, "detached", note)
                 return True, "detach 토픽으로 뗐다" + ("" if attempt == 1 else f"({attempt}번째 전송에 확인)")
-        _write_joint_record(model, "unknown", f"detach {DETACH_ATTEMPTS}회 전송 뒤 알림 없음")
-        return False, "붙임 시스템이 detached를 알리지 않았다(이미 떨어져 있었을 수 있다)"
+        # 알림은 바뀔 때만 온다 — 이미 떨어진 관절이면 끝까지 없다. 월드 상태의 붙임 관절로 확인한다(읽기 전용).
+        # 이 실행기는 pose를 구독 중이라 같은 프로세스의 서비스 요청이 응답을 받지 못한다 — 새 프로세스에서 조회한다.
+        from robots.fr3_gazebo.joint_observation import observe_attached_isolated
+
+        attached, seen = observe_attached_isolated(self.world, self.partition)
+        if attached is not None and model not in attached:
+            _write_joint_record(model, "detached", f"detach 알림 없음 · 관측: {seen}")
+            return True, f"detach 알림은 없었지만 붙임 관절이 없다(관측: {seen})"
+        _write_joint_record(model, "unknown", f"detach {DETACH_ATTEMPTS}회 전송 뒤 알림 없음 · 관측: {seen}")
+        return False, f"붙임 시스템이 detached를 알리지 않았다(관측: {seen})"
 
     def release_joint_if_any(self, model: str) -> None:
         """복원·배치 전에 관절이 남아 있으면 뗀다(지운 모델을 가리키는 관절을 남기지 않는다)."""

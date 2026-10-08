@@ -135,6 +135,16 @@ def plan_from_utterance(
         )
         return PlanningOutcome(slots=slots, plan=plan, bypassed_model=True)
 
+    # 2-1. 정지 낱말이 있으나 명령인지 애매하다(2026-10-08 리뷰 10번) — 모델을 부르지 않고, 이동 계획도 만들지 않고 묻는다.
+    if slots.stop_ambiguous:
+        from planning.stop_intent import AMBIGUOUS_STOP_MESSAGE
+
+        return PlanningOutcome(
+            slots=slots, bypassed_model=True,
+            failure=PlanningFailure(ReasonCode.PLAN_CLARIFICATION_REQUIRED, AMBIGUOUS_STOP_MESSAGE),
+            clarification=AMBIGUOUS_STOP_MESSAGE,
+        )
+
     # 3. 모델 호출은 이 한 곳이다.
     try:
         context = PlanningContext(

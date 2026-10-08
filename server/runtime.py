@@ -949,6 +949,14 @@ def _attach_sim_demo_jobs(runtime, config, manifest, workcell_path) -> None:
     from server.sim_demo_goals import SimDemoGoals
 
     runtime.sim_demo_goals = SimDemoGoals(runtime.sim_demo_jobs)
+
+    def _goal_material_check(model, source, destination):
+        from server.material_check import check_material_start
+
+        return check_material_start(runtime.sim_demo_jobs, getattr(runtime, "sim_view", None), model, source,
+                                    destination, log_dir=getattr(runtime, "workcell_log_dir", None))
+
+    runtime.sim_demo_goals.material_check = _goal_material_check
     # 색 지정의 관측: 실행 중인 Gazebo 장면의 자재 표시 색(읽기 전용, 30초 캐시).
     from server.material_colors import observe_gazebo_colors
 

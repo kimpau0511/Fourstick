@@ -46,7 +46,7 @@ function gateReason(bundle) {
 export function useGeneralCommand() {
   const [state, setState] = useState({
     busy: false, sent: '', result: null, pending: null, deadline: null,
-    job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, seq: null, updatedAt: null, comm: null, stageAt: null,
+    job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, seq: null, updatedAt: null, comm: null, stageAt: null, recovery: null,
   });
   const [log, setLog] = useState([]);
   const alive = useRef(true);
@@ -236,7 +236,10 @@ export function useGeneralCommand() {
     const paused = pauseAsked.current && !!e.interrupted && material ? { material } : null;
     patch({
       job: { ...run, job_id: transferId, execution_id: e.execution_id, status: 'finished', report, paused,
-        general: { state: final.state, tone, label: paused ? '일시정지됨' : report && RESULT_LABELS[report.status] ? `${label} · ${RESULT_LABELS[report.status][1]}` : label,
+        // 실행기가 시작 전에 거절했으면 로봇은 움직이지 않았다 — '결과 확인 안 됨'이 아니라 '이송 시작 안 함'으로만 보인다.
+        general: { state: final.state, tone, label: paused ? '일시정지됨'
+          : report && report.status === 'simulation_transfer_not_started' ? '이송 시작 안 함 · 로봇 이동 없음'
+            : report && RESULT_LABELS[report.status] ? `${label} · ${RESULT_LABELS[report.status][1]}` : label,
           // 오류 안내(시뮬레이션 보기)용 서버 근거 — 표시만 한다.
           code: e.interrupted || final.reason_code || null,
           detail: (final.evidence && final.evidence.detail) || (report && report.status) || null } },
@@ -270,7 +273,7 @@ export function useGeneralCommand() {
       return;
     }
     addEvent('stop', p.confirmed ? '정지 확인됨' : '정지 요청', p.detail || '');
-    patch({ stopNote: { tone: 'ok', text: p.confirmed ? '정지를 확인했습니다 — 새 계획을 요청하면 정지 래치가 풀립니다' : '정지를 요청했습니다 — 정지 확인 전입니다' } });
+    patch({ stopNote: { tone: 'ok', text: p.confirmed ? '정지를 확인했습니다 — 다시 실행하려면 헤더의 정지 해제를 누르세요(새 명령만으로는 풀리지 않습니다)' : '정지를 요청했습니다 — 정지 확인 전입니다' } });
   }, [patch, addEvent, ensureSession]);
 
   /** 일시정지 — 이 세션의 실행 중인 작업만(전체 정지 아님). 실행기가 정지 지점(체크포인트)을 남기고 멈춘다. */
@@ -291,32 +294,10 @@ export function useGeneralCommand() {
     patch({ pauseNote: { tone: 'ok', text: res.payload.detail || '일시정지를 요청했습니다' } });
   }, [patch, addEvent, ensureSession]);
 
-  /** 재개 — 일시정지한 자재를 정지 지점에서 이어서 옮긴다. 서버가 재개 가능하다고 할 때만, 실행기가 직전에 다시 검증한다. */
-  const resume = useCallback(async (target = null) => {
-    // 대상 자재: 창이 서버 상태에서 고른 멈춘 자재(전체 정지 뒤 포함), 없으면 이 화면이 일시정지한 자재.
-    const material = target || (state.job && state.job.paused && state.job.paused.material);
-    if (!material) return;
-    patch({ busy: true, pauseNote: null });
-    const st = await call('GET', '/v1/sim-demo').catch(() => null);
-    const row = st && st.ok ? (st.payload.materials || []).find((m) => m.model === material) : null;
-    const checkpoint = st && st.ok ? (st.payload.state || {}).checkpoint : null;
-    if (!row || !row.actions || !row.actions.resume || !checkpoint || checkpoint.model !== material) {
-      patch({ busy: false, pauseNote: { tone: 'warn', text: '이 지점에서는 이어서 할 수 없습니다 — 서버가 재개 가능 상태로 보지 않습니다(복구가 필요할 수 있습니다)' } });
-      return;
-    }
-    const res = await call('POST', '/v1/sim-demo/jobs', { action: 'resume', material, checkpoint_id: checkpoint.checkpoint_id })
-      .catch((e) => ({ ok: false, status: 0, payload: { detail: e.message } }));
-    if (!res.ok || !res.payload.job_id) {
-      patch({ busy: false, pauseNote: { tone: 'danger', text: `재개가 거부되었습니다 — ${reasonOf(res)}` } });
-      return;
-    }
-    const jobId = res.payload.job_id;
+  // 재개·복구 진행 따라가기(승인 뒤 시작된 작업). 결과는 실행기 보고서·서버 자재 기록으로 정한다.
+  const followResume = useCallback(async (jobId, prev) => {
     addEvent('resume', '재개', jobId);
-    // 진행 표시: 같은 자재를 멈춘 앞 실행의 **확인된** 단계(이 화면이 본 값)가 있으면 그 뒤에 재개 단계를 잇는다.
-    const prev = state.job && state.job.material === material && Array.isArray(state.job.progress) && state.job.progress.length
-      ? { stage_plan: state.job.stage_plan || null, progress: state.job.progress, material, action_label: state.job.action_label || null } : null;
     patch({ busy: false, job: { job_id: jobId, status: 'running', progress: [], resumed: true, resumedFrom: prev }, updatedAt: Date.now(), stageAt: Date.now(), comm: null });
-    // 재개 작업이 끝날 때까지 진행만 읽는다. 결과는 실행기 보고서(RESULT_LABELS)로 정한다.
     for (;;) {
       await sleep(POLL_MS);
       if (!alive.current) return;
@@ -331,21 +312,9 @@ export function useGeneralCommand() {
         general: { state: ok ? 'completed' : 'failed', tone: hit ? hit[0] : 'warn', label: `재개 · ${hit ? hit[1] : '결과 확인 안 됨'}` } }, updatedAt: Date.now() });
       return;
     }
-  }, [state.job, patch, addEvent, noteComm]);
+  }, [patch, addEvent, noteComm]);
 
-  /** 복구 — 재개할 수 없는 지점에서 멈춘 자재를 원래 자리로 되돌린다(서버 restore 작업). 끝나면 서버 기록으로 판정한다. */
-  const restore = useCallback(async (target = null) => {
-    // 대상 자재: 창이 서버 상태에서 고른 멈춘 자재(전체 정지 뒤 포함), 없으면 이 화면이 일시정지한 자재.
-    const material = target || (state.job && state.job.paused && state.job.paused.material);
-    if (!material) return;
-    patch({ busy: true, pauseNote: null });
-    const res = await call('POST', '/v1/sim-demo/jobs', { action: 'restore', material })
-      .catch((e) => ({ ok: false, status: 0, payload: { detail: e.message } }));
-    if (!res.ok || !res.payload.job_id) {
-      patch({ busy: false, pauseNote: { tone: 'danger', text: `복구가 거부되었습니다 — ${reasonOf(res)}` } });
-      return;
-    }
-    const jobId = res.payload.job_id;
+  const followRestore = useCallback(async (jobId, material) => {
     addEvent('restore', '복구', jobId);
     patch({ busy: false, job: { job_id: jobId, status: 'running', progress: [], resumed: true, restoring: true }, updatedAt: Date.now(), stageAt: Date.now(), comm: null });
     for (;;) {
@@ -363,12 +332,88 @@ export function useGeneralCommand() {
         general: { state: ok ? 'completed' : 'failed', tone: ok ? 'ok' : 'warn', label: ok ? '복구 완료 · 원래 자리' : '복구 결과 확인 안 됨 — 자재 상태를 확인해 주세요' } }, updatedAt: Date.now() });
       return;
     }
-  }, [state.job, patch, addEvent, noteComm]);
+  }, [patch, addEvent, noteComm]);
+
+  // 2026-10-08 리뷰 2번: 재개·복구도 서버가 확인 카드를 만들고(검증), 사용자가 그 카드를 승인해야 시작한다.
+  const requestRecovery = useCallback(async (action, material, extra, prev) => {
+    patch({ busy: true, pauseNote: null, recovery: null });
+    let res;
+    try {
+      res = await call('POST', '/v1/sim-demo/jobs', { action, material, session_id: await ensureSession(), ...extra });
+    } catch (e) {
+      res = { ok: false, status: 0, payload: { detail: e.message } };
+    }
+    const offer = res.payload || {};
+    const card = offer.confirmation;
+    const what = action === 'resume' ? '재개' : '복구';
+    if (!res.ok || offer.decision !== 'CONFIRM' || !card || !card.token) {
+      patch({ busy: false, pauseNote: { tone: 'danger', text: `${what} 요청이 거부되었습니다 — ${reasonOf(res)}` } });
+      return;
+    }
+    addEvent('confirm', `${what} 승인 대기`, card.summary || '');
+    patch({ busy: false, recovery: { action, material, token: card.token, summary: card.summary || `${material} ${what}`,
+      expiresAt: Date.now() + Math.max(0, Number(card.remaining_sec) || 0) * 1000, prev } });
+  }, [patch, addEvent, ensureSession]);
+
+  /** 재개 — 일시정지한 자재를 정지 지점에서 이어서 옮긴다. 서버가 재개 가능하다고 할 때만 확인 카드를 받고, 승인해야 시작한다. */
+  const resume = useCallback(async (target = null) => {
+    // 대상 자재: 창이 서버 상태에서 고른 멈춘 자재(전체 정지 뒤 포함), 없으면 이 화면이 일시정지한 자재.
+    const material = target || (state.job && state.job.paused && state.job.paused.material);
+    if (!material) return;
+    patch({ busy: true, pauseNote: null });
+    const st = await call('GET', '/v1/sim-demo').catch(() => null);
+    const row = st && st.ok ? (st.payload.materials || []).find((m) => m.model === material) : null;
+    const checkpoint = st && st.ok ? (st.payload.state || {}).checkpoint : null;
+    if (!row || !row.actions || !row.actions.resume || !checkpoint || checkpoint.model !== material) {
+      patch({ busy: false, pauseNote: { tone: 'warn', text: '이 지점에서는 이어서 할 수 없습니다 — 서버가 재개 가능 상태로 보지 않습니다(복구가 필요할 수 있습니다)' } });
+      return;
+    }
+    // 진행 표시: 같은 자재를 멈춘 앞 실행의 **확인된** 단계(이 화면이 본 값)가 있으면 그 뒤에 재개 단계를 잇는다.
+    const prev = state.job && state.job.material === material && Array.isArray(state.job.progress) && state.job.progress.length
+      ? { stage_plan: state.job.stage_plan || null, progress: state.job.progress, material, action_label: state.job.action_label || null } : null;
+    await requestRecovery('resume', material, { checkpoint_id: checkpoint.checkpoint_id }, prev);
+  }, [state.job, patch, requestRecovery]);
+
+  /** 복구 — 재개할 수 없는 지점에서 멈춘 자재를 원래 자리로 되돌린다(서버 restore 작업). 확인 카드를 승인해야 시작한다. */
+  const restore = useCallback(async (target = null) => {
+    const material = target || (state.job && state.job.paused && state.job.paused.material);
+    if (!material) return;
+    await requestRecovery('restore', material, {}, null);
+  }, [state.job, requestRecovery]);
+
+  /** 재개·복구 확인 카드의 승인·취소. 한 번만 보낸다. 승인은 같은 세션·만료·상태 변경·정지를 서버가 다시 본다. */
+  const recoveryAnswering = useRef(false);
+  const answerRecovery = useCallback(async (approve) => {
+    const rec = state.recovery;
+    if (!rec || recoveryAnswering.current) return;
+    recoveryAnswering.current = true;
+    try {
+      patch({ busy: true });
+      const res = await call('POST', '/v1/sim-demo/confirm', { token: rec.token, action: approve ? 'confirm' : 'cancel',
+        session_id: await ensureSession() }).catch((e) => ({ ok: false, status: 0, payload: { detail: e.message } }));
+      const what = rec.action === 'resume' ? '재개' : '복구';
+      if (!approve) {
+        addEvent('cancel', `${what} 취소`, '');
+        patch({ busy: false, recovery: null, pauseNote: { tone: 'ok', text: `${what}를 취소했습니다 — 움직이지 않았습니다` } });
+        return;
+      }
+      const job = res.payload && res.payload.job;
+      if (!res.ok || !job || !job.job_id) {
+        patch({ busy: false, recovery: null, pauseNote: { tone: 'danger', text: `${what}를 시작하지 않았습니다 — ${res.payload.reason || reasonOf(res)}` } });
+        return;
+      }
+      patch({ recovery: null });
+      if (rec.action === 'resume') await followResume(job.job_id, rec.prev);
+      else await followRestore(job.job_id, rec.material);
+    } finally {
+      recoveryAnswering.current = false;
+    }
+  }, [state.recovery, patch, addEvent, ensureSession, followResume, followRestore]);
 
   const reset = useCallback(() => {
     bundleRef.current = null;
-    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, updatedAt: null, comm: null, stageAt: null });
+    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, updatedAt: null, comm: null, stageAt: null, recovery: null });
   }, [patch]);
 
-  return { ...state, log, send, answer, stop, pause, resume, restore, reset, mode: 'general' };
+  return { ...state, log, send, answer, stop, pause, resume, restore, answerRecovery, reset, mode: 'general' };
 }

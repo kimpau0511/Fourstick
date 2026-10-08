@@ -412,12 +412,10 @@ class TestGlobalStopReachesEverySession(ClientCase):
         with api._flag_lock:
             api._active_executions.clear()
 
-    async def test_stop_latches_until_a_new_plan_is_accepted(self):
-        """전체 정지는 래치다.
+    async def test_stop_latches_until_explicitly_released(self):
+        """전체 정지는 래치다 — 2026-10-08 리뷰 5번부터 해제 지점은 **명시적인 정지 해제**뿐이다.
 
-        계약(`core/stop_contract.reset_for_new_plan`)이 정한 해제 지점은
-        **새 계획 수락**이다. 실행마다 래치를 풀면 STOP 이후 첫 실행이 이유 없이
-        진행된다(forstick에서 실제로 있었던 문제의 반대 방향).
+        새 계획(다른 세션 포함)은 래치를 풀지 않는다. 실행마다 풀지도 않는다.
         """
         mine = await self.approved_plan(self.a)
         running = asyncio.create_task(self.execute(self.a, mine))
@@ -438,9 +436,19 @@ class TestGlobalStopReachesEverySession(ClientCase):
             len(self.runtime.repository.executions_for_request(mine["request_id"])), 1
         )
 
-        # 새 계획을 요청하면 래치가 풀린다.
+        # 새 계획을 요청해도(같은 세션·다른 세션) 래치는 그대로다.
         fresh = await self.approved_plan(self.a)
-        allowed = (await self.execute(self.a, fresh)).json()
+        still = await self.execute(self.a, fresh)
+        self.assertEqual(still.status, 409)
+        self.assertEqual(still.json()["reason_code"], ReasonCode.EXEC_STOPPED.value)
+        other = await self.approved_plan(self.b)
+        self.assertEqual((await self.execute(self.b, other)).status, 409)
+
+        # 명시적으로 풀면 실행할 수 있다(승인은 한 번만 쓰므로 새로 승인한 계획으로).
+        released = (await self.client.post("/v1/stop/release", {})).json()
+        self.assertTrue(released["released"], released)
+        again = await self.approved_plan(self.a)
+        allowed = (await self.execute(self.a, again)).json()
         self.assertTrue(allowed["ok"])
 
     async def test_new_plan_does_not_clear_the_latch_while_something_runs(self):
@@ -518,6 +526,8 @@ class TestStopAndCancelAreDistinct(ClientCase):
             f"/v1/executions/{execution_id}/cancel", {"session_id": self.a}
         )
         await running
+        # 취소는 래치가 아니다 — 다시 승인하면 다음 실행이 막히지 않는다(승인은 한 번만 쓴다).
+        await self.decide(self.a, mine)
         again = (await self.execute(self.a, mine)).json()
         self.assertTrue(again["ok"])
 

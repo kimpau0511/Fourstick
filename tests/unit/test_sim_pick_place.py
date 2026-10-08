@@ -292,7 +292,7 @@ class GateTransferTest(ContractBase):
             result = SimpleNamespace(enabled=True, detail="", profile=result.profile,
                                      sim=load_simulation_profile(payload))
         return SimpleNamespace(sim_pick_place=result, sim_demo_jobs=self.jobs,
-                               profile=result.profile)
+                               profile=result.profile, sim_view=self.view)
 
     def plan(self, plan_steps=TRANSFER_A):
         return SimpleNamespace(steps=plan_steps)
@@ -324,6 +324,23 @@ class GateTransferTest(ContractBase):
         self.assertEqual(gate_transfer(closed, self.plan())["decision"], "BLOCK")
         pick_only = self.plan(TRANSFER_A[:2])
         self.assertEqual(gate_transfer(self.runtime(), pick_only)["decision"], "BLOCK")
+
+    def test_record_and_observation_are_checked_together(self):
+        """2026-10-08 리뷰 11번: 기록만으로 위치를 확정하지 않는다(불일치·부착 불명·관측 없음을 구분)."""
+        moved = self.view.sample()
+        moved["materials"]["material_a"] = [0.5, 0.0, 0.9, 0, 0, 0, 1]
+        runtime = self.runtime()
+        runtime.sim_view = SimpleNamespace(sample=lambda: moved)
+        result = gate_transfer(runtime, self.plan())
+        self.assertEqual((result["decision"], result["reason"]), ("BLOCK", ReasonCode.EXEC_UNVERIFIABLE))
+        self.assertEqual(result["material_check"]["kind"], "mismatch")
+        runtime.sim_view = None
+        result = gate_transfer(runtime, self.plan())
+        self.assertEqual((result["decision"], result["material_check"]["kind"]), ("ASK", "observation_missing"))
+        (self.tmp / "fixture_joints.json").write_text(json.dumps(
+            {"material_a": {"state": "unknown", "at": time.time(), "confirmed_by": "시험"}}))
+        result = gate_transfer(self.runtime(), self.plan())
+        self.assertEqual((result["decision"], result["material_check"]["kind"]), ("BLOCK", "attach_unknown"))
 
     def test_running_job_asks(self):
         self.jobs.start("transfer", "material_c")

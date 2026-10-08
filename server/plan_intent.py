@@ -795,6 +795,8 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
     if dest_ref.resource_id == source_ref.resource_id:
         where = loc_name(current)
         said = "원래 자리" if dest_ref.evidence.kind == REGISTRY else where
+        # 기록상 이미 목적지다. 관측으로 같은지는 호출자(Api)가 본다(리뷰 11번 — 기록만으로 위치를 확정하지 않는다).
+        info["noop_at"] = {"model": material.get("model"), "location": current}
         return IntentDecision(
             "noop", reason_code=ReasonCode.PLAN_CLARIFICATION_REQUIRED, interpretation=info, draft={},
             detail=f"{name}은(는) 이미 {said}({where})에 있습니다 — 옮길 필요가 없어 실행하지 않습니다",

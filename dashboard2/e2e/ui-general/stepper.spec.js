@@ -32,8 +32,15 @@ async function setup(page, ctl) {
     materials: ctl.materials ? ctl.materials(base.materials) : base.materials,
     state: { ...base.state, checkpoint: ctl.checkpoint || null },
   }))));
+  await page.route((url) => url.pathname === '/v1/sim-demo/confirm', (route) => {
+    ctl.confirmed = route.request().postDataJSON();
+    return json(route, { decision: 'RUN', job: { job_id: 'simjob-2', status: 'running' } }, 202);
+  });
   await page.route((url) => url.pathname.startsWith('/v1/sim-demo/jobs'), (route) => {
-    if (route.request().method() === 'POST') { ctl.posted = route.request().postDataJSON(); return json(route, { job_id: 'simjob-2', status: 'running' }, 202); }
+    if (route.request().method() === 'POST') {
+      ctl.posted = route.request().postDataJSON();                 // 확인 카드만(리뷰 2번) — 승인 뒤 /confirm이 시작한다
+      return json(route, { decision: 'CONFIRM', job: null, confirmation: { token: 'tok-1', remaining_sec: 60, summary: '이어서 옮깁니다' } });
+    }
     if (ctl.jobDown) return route.abort();
     const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').pop());
     const body = (ctl.jobs && ctl.jobs[id]) || ctl.job;
@@ -116,6 +123,7 @@ test('[UI-STEP-03] 일시정지는 그 자리에서 펄스를 멈추고, 재개�
   // 재개 직후: 재개 실행이 아직 단계 목록을 남기기 전(실행기 사전 확인) — 앞 단계만으로 '완료'처럼 보이지 않는다(실기 시험에서 발견).
   ctl.jobs = { 'simjob-2': { job_id: 'simjob-2', action: 'resume', action_label: '재개', material: 'material_a', status: 'running', stage_plan: null, progress: [] } };
   await paused.getByRole('button', { name: /재개/ }).click();
+  await page.getByRole('group', { name: '재개 승인' }).getByRole('button', { name: '승인' }).click();
   await expect(stepper(page).locator('.stepper-chip')).toContainText('진행 중 · 6단계 완료 · 남은 단계 확인 중', { timeout: 8000 });
   await expect(step(page, 7)).toHaveClass(/current/);
   await expect(step(page, 7)).toContainText('남은 단계 확인 중');
@@ -250,4 +258,35 @@ test('[UI-STEP-09] 전체화면에서도 같은 스테퍼를 3D 아래 자기 �
   const bar = await fs.boundingBox();
   expect(bar.y).toBeGreaterThanOrEqual(video.y + video.height - 1);                            // 3D를 덮지 않는다
   ctl.finish({ ok: true, execution_id: 'exec-1', final: { state: 'completed' } });
+});
+
+test('[UI-STEP-10] 실행기가 시작 전에 거절하면 "이송 시작 안 함"과 실행기의 원인·다음 조치를 보인다(결과 확인 안 됨이 아님)', async ({ page }) => {
+  // 2026-10-09 격리 셀 재현: 그리퍼 닫기 중 정지 → 복구 뒤 팔이 집기 자세에 남아, 다음 이송의 첫 경로가 자재와 닿아 시작하지 않았다.
+  const ctl = {};
+  await setup(page, ctl);
+  ctl.job = running(0);
+  await approve(page);
+  await page.waitForTimeout(1500);
+  ctl.job = { ...running(0), status: 'finished', report: { status: 'simulation_transfer_not_started', not_started_reason: 'geometry.collision',
+    detail: '안전 home 경로 5/158 단계에서 선언되지 않은 접촉:finger↔material_b — 로봇이 안전 home 자세가 아니라 출발 경로가 자재와 닿습니다',
+    next_action: "로봇이 안전 home 자세가 아니라 출발 경로가 자재와 닿습니다 — '로봇을 홈 위치로 이동해'로 먼저 홈에 보낸 뒤 다시 요청해 주세요" } };
+  ctl.finish({ ok: false, execution_id: 'exec-1', final: { state: 'unknown', reason_code: 'exec.unverifiable',
+    evidence: { detail: '이송 실행기 결과 simulation_transfer_not_started (종료 코드 1)' } } });
+  const card = page.locator('section.command .cmd-card');
+  await expect(card).toContainText('이송 시작 안 함 · 로봇 이동 없음', { timeout: 8000 });
+  await expect(card).not.toContainText('결과 확인 안 됨');
+  const guide = card.getByRole('note', { name: '오류 원인과 조치' });
+  await expect(guide).toContainText('원인안전 home 경로 5/158 단계');
+  await expect(guide).toContainText("조치로봇이 안전 home 자세가 아니라 출발 경로가 자재와 닿습니다 — '로봇을 홈 위치로 이동해'");
+});
+
+test('[UI-STEP-11] 이송이 아닌 계획(홈 이동)의 결과 카드 제목에 undefined가 보이지 않는다', async ({ page }) => {
+  const ctl = { runningJob: null };
+  await setup(page, ctl);
+  await approve(page);
+  ctl.finish({ ok: true, execution_id: 'exec-2', final: { state: 'completed', reason_code: null, evidence: {} } });
+  const card = page.locator('section.command .cmd-card');
+  await expect(card).toContainText('실행 완료', { timeout: 8000 });
+  await expect(card).not.toContainText('undefined');
+  await expect(card).toContainText('계획 실행');
 });

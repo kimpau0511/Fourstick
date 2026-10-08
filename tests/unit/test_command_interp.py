@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -281,31 +282,37 @@ class SafetyKeptTest(unittest.TestCase):
 
 
 class StopContractTest(unittest.TestCase):
-    """정지 표현 — 기존 계약 그대로: 정지 낱말이 있으면 계획 없이 전체 정지(부정문·인용문도 정지 쪽으로).
+    """정지 표현 — 2026-10-08 리뷰 10번 계약(planning/stop_intent): 분명한 정지 명령만 정지,
+    부정·인용·다른 낱말의 일부는 정지 아님, 애매하면 이동 계획 없이 확인 요청."""
 
-    해석 개선이 정지 판정을 바꾸지 않았는지 본다. 부정문('정지하지 마')·인용문도 정지로 잡는 것은 기존 계약(안전 쪽)이다.
-    """
+    KEYWORDS = tuple(json.loads((ROOT / "examples/config/valid_stt_policy.json").read_text(encoding="utf-8"))["stop_keywords"])
 
-    KEYWORDS = ("정지", "멈춰", "스톱", "스탑")
-
-    def hit(self, utterance):
-        return extract_slots(utterance, CATALOG, stop_keywords=self.KEYWORDS).stop_keyword_hit
+    def slots(self, utterance):
+        return extract_slots(utterance, CATALOG, stop_keywords=self.KEYWORDS)
 
     def test_stop_expressions(self):
-        for utterance in ("정지", "멈춰!", "로봇 멈춰", "스톱", "잠깐 스탑", "A 컨베이어로 옮기다가 멈춰"):
+        for utterance in ("정지", "멈춰!", "로봇 멈춰", "스톱", "잠깐 스탑", "A 컨베이어로 옮기다가 멈춰", "작업을 중지해"):
             with self.subTest(utterance):
-                self.assertTrue(self.hit(utterance))
+                self.assertTrue(self.slots(utterance).stop_keyword_hit)
 
-    def test_negated_and_quoted_stop_words_still_stop(self):
-        for utterance in ("정지하지 마", "멈춰 말고 계속해", "'정지'라고 하면 멈춰?",
-                          "정지 버튼 어디 있어"):
+    def test_negated_words_do_not_stop(self):
+        for utterance in ("정지하지 마", "멈춰 말고 계속해", "멈추지 말고 옮겨"):
             with self.subTest(utterance):
-                self.assertTrue(self.hit(utterance))
+                got = self.slots(utterance)
+                self.assertFalse(got.stop_keyword_hit)
+                self.assertFalse(got.stop_ambiguous)
+
+    def test_quoted_or_questions_ask_instead_of_stopping_or_planning(self):
+        for utterance in ("'정지'라고 하면 멈춰?", "정지 버튼 어디 있어"):
+            with self.subTest(utterance):
+                got = self.slots(utterance)
+                self.assertFalse(got.stop_keyword_hit)
+                self.assertTrue(got.stop_ambiguous)
 
     def test_transfer_without_stop_words_does_not_stop(self):
-        for utterance in ("에이 컨베이어로", "B 다시 돌려놔", "3번 팔레트 위에 놓여 있는 물체 컨베이어로", "멈추지 말고 옮겨"):
+        for utterance in ("에이 컨베이어로", "B 다시 돌려놔", "3번 팔레트 위에 놓여 있는 물체 컨베이어로"):
             with self.subTest(utterance):
-                self.assertFalse(self.hit(utterance))
+                self.assertFalse(self.slots(utterance).stop_keyword_hit)
 
 
 if __name__ == "__main__":

@@ -39,13 +39,23 @@ async function setup(page, { resumable = true } = {}) {
     return json(route, { ok: true, requested: true, execution_ids: ['exec-1'], detail: '일시정지를 요청했습니다 — 실행기가 정지 지점(체크포인트)을 남기고 멈춥니다' });
   });
   await page.route((url) => url.pathname === '/v1/sim-demo', (route) => json(route, simDemo()));
+  let offered = null;
+  await page.route((url) => url.pathname === '/v1/sim-demo/confirm', (route) => {
+    const body = route.request().postDataJSON();
+    calls.push({ path: 'confirm', body });
+    if (body.action !== 'confirm') return json(route, { decision: 'CANCELLED' });
+    if (offered === 'restore') restored = true;
+    return json(route, { decision: 'RUN', job: { job_id: 'simjob-2', status: 'running' } }, 202);
+  });
   await page.route((url) => url.pathname.startsWith('/v1/sim-demo/jobs'), (route) => {
     const path = new URL(route.request().url()).pathname;
     if (route.request().method() === 'POST') {
+      // 2026-10-08 리뷰 2번: 직접 요청은 확인 카드만 만든다(작업 0건). 작업은 /v1/sim-demo/confirm 승인으로 시작한다.
       const body = route.request().postDataJSON();
       calls.push({ path: body.action, body });
-      if (body.action === 'restore') restored = true;
-      return json(route, { job_id: 'simjob-2', status: 'running' }, 202);
+      offered = body.action;
+      return json(route, { decision: 'CONFIRM', job: null, confirmation: { token: `tok-${body.action}`, remaining_sec: 60,
+        summary: body.action === 'resume' ? 'A자재를 정지 지점에서 이어서 옮깁니다' : 'A자재를 원래 자리로 복구합니다' } });
     }
     if (path.endsWith('simjob-1')) return json(route, paused
       ? { job_id: 'simjob-1', material: 'material_a', status: 'finished', progress: progress(7), report: { status: 'simulation_transfer_stopped' } }
@@ -74,7 +84,13 @@ test('[UI-PAUSE-01] 일시정지는 이 작업만 멈추고(전체 정지 아님
   expect(calls).not.toContain('/v1/stop');                                   // 전체 정지가 아니다
   await expect(paused.getByRole('button', { name: /복구/ })).toHaveCount(0);       // 재개 가능하면 복구는 보이지 않는다
   await paused.getByRole('button', { name: /재개/ }).click();
-  await expect.poll(() => calls.find((c) => c.path === 'resume')?.body).toEqual({ action: 'resume', material: 'material_a', checkpoint_id: 'cp-1' });
+  await expect.poll(() => calls.find((c) => c.path === 'resume')?.body).toEqual({ action: 'resume', material: 'material_a', checkpoint_id: 'cp-1', session_id: 'qa-session' });
+  // 승인 전에는 시작하지 않는다 — 확인 카드를 보이고 승인을 기다린다.
+  const card = page.getByRole('group', { name: '재개 승인' });
+  await expect(card).toContainText('A자재를 정지 지점에서 이어서 옮깁니다');
+  expect(calls.some((c) => c.path === 'confirm')).toBe(false);
+  await card.getByRole('button', { name: '승인' }).click();
+  await expect.poll(() => calls.find((c) => c.path === 'confirm')?.body).toEqual({ token: 'tok-resume', action: 'confirm', session_id: 'qa-session' });
   await expect(page.locator('section.command')).toContainText('재개 · 이어서 이송 완료', { timeout: 10000 });
 });
 
@@ -88,7 +104,8 @@ test('[UI-PAUSE-02] 서버가 재개 가능하지 않다고 하면 재개를 잠
   expect(calls.some((c) => c.path === 'resume')).toBe(false);
   // 재개할 수 없으면 복구(원래 자리로)를 제공한다 — 결과는 서버 자재 기록으로 판정.
   await paused.getByRole('button', { name: /복구/ }).click();
-  await expect.poll(() => calls.find((c) => c.path === 'restore')?.body).toEqual({ action: 'restore', material: 'material_a' });
+  await expect.poll(() => calls.find((c) => c.path === 'restore')?.body).toEqual({ action: 'restore', material: 'material_a', session_id: 'qa-session' });
+  await page.getByRole('group', { name: '복구 승인' }).getByRole('button', { name: '승인' }).click();
   await expect(page.locator('section.command')).toContainText('복구 완료 · 원래 자리', { timeout: 10000 });
 });
 
@@ -145,12 +162,34 @@ test('[UI-STOP-03] 전체 정지로 멈춘 자재도 시뮬레이션 보기에�
     materials: base.materials.map((m) => (m.model !== 'material_c' ? m : { ...m, record: { state: 'stopped_unrestored' }, actions: { ...m.actions, transfer: false, resume: true, restore: true } })),
     state: { ...base.state, checkpoint: { model: 'material_c', checkpoint_id: 'cp-9' } },
   })) }));
-  await page.route((url) => url.pathname === '/v1/sim-demo/jobs', (route) => { calls.push(route.request().postDataJSON()); return route.fulfill({ status: 202, json: { job_id: 'simjob-9', status: 'running' } }); });
+  await page.route('**/v1/sessions**', (route) => route.fulfill({ json: { session_id: 'qa-session', client_id: 'c1' } }));
+  await page.route((url) => url.pathname === '/v1/sim-demo/jobs', (route) => { calls.push(route.request().postDataJSON());
+    return route.fulfill({ json: { decision: 'CONFIRM', job: null, confirmation: { token: 'tok-9', remaining_sec: 60, summary: 'C자재를 정지 지점에서 이어서 옮깁니다' } } }); });
+  await page.route((url) => url.pathname === '/v1/sim-demo/confirm', (route) => { calls.push(route.request().postDataJSON());
+    return route.fulfill({ status: 202, json: { decision: 'RUN', job: { job_id: 'simjob-9', status: 'running' } } }); });
   await page.route((url) => url.pathname.startsWith('/v1/sim-demo/jobs/'), (route) => route.fulfill({ json: { job_id: 'simjob-9', material: 'material_c', status: 'finished', report: { status: 'simulation_transfer_resumed_completed' } } }));
   await page.goto('/');
   await page.getByRole('button', { name: '시뮬레이션 보기' }).click();
   const view = page.getByRole('dialog', { name: '시뮬레이션 보기' });
   await expect(view).toContainText('C자재: 정지 지점에서 이어서 옮길 수 있습니다');
   await view.getByRole('button', { name: /재개/ }).click();
-  await expect.poll(() => calls[0]).toEqual({ action: 'resume', material: 'material_c', checkpoint_id: 'cp-9' });
+  await expect.poll(() => calls[0]).toEqual({ action: 'resume', material: 'material_c', checkpoint_id: 'cp-9', session_id: 'qa-session' });
+  await view.getByRole('group', { name: '재개 승인' }).getByRole('button', { name: '승인' }).click();
+  await expect.poll(() => calls[1]).toEqual({ token: 'tok-9', action: 'confirm', session_id: 'qa-session' });
+});
+
+test('[UI-PAUSE-05] 재개 확인 카드를 취소하면 작업을 시작하지 않는다(승인 전 작업 0건)', async ({ page }) => {
+  const calls = await setup(page);
+  const view = page.getByRole('dialog', { name: '가상 동작 확인 중' });
+  await view.getByRole('button', { name: /일시정지/ }).click();
+  const paused = page.getByRole('dialog', { name: '일시정지됨' });
+  await expect(paused).toBeVisible({ timeout: 8000 });
+  await paused.getByRole('button', { name: /재개/ }).click();
+  const card = page.getByRole('group', { name: '재개 승인' });
+  await expect(card).toBeVisible();
+  await expect(paused.getByRole('button', { name: '▶ 재개' })).toBeDisabled();     // 카드가 떠 있는 동안 재개를 다시 누를 수 없다
+  await card.getByRole('button', { name: '취소' }).click();
+  await expect(card).toHaveCount(0);
+  await expect(paused).toContainText('재개를 취소했습니다 — 움직이지 않았습니다');
+  expect(calls.filter((c) => c.path === 'confirm').map((c) => c.body.action)).toEqual(['cancel']);
 });

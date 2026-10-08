@@ -172,6 +172,24 @@ class SimDemoGoalsTest(GoalsBase):
         self.assertTrue(result["plan"][0]["result"]["still_on_conveyor"])
         self.assertEqual(len(self.popen.calls), 1)
 
+    def test_step_with_record_observation_mismatch_does_not_start(self):
+        """2026-10-08 리뷰 11번: 목표 단계도 시작 전에 기록과 관측을 함께 본다."""
+        from server.material_check import check_material_start
+
+        self.hold("material_a", "slot_1")
+        moved = self.view.sample()
+        moved["materials"]["material_a"] = [0.15, -0.5, 0.75, 0, 0, 0, 1]      # 기록은 1번 칸, 관측은 다른 곳
+        view = types.SimpleNamespace(sample=lambda: moved)
+        self.goals.material_check = lambda m, s, d: check_material_start(self.jobs, view, m, s, d,
+                                                                         log_dir=self.tmp)
+        goal = self.goals.create(GOAL_RETURN_ALL)
+        self.goals.confirm(goal["goal_id"], "confirm")
+        self.goals.run(goal["goal_id"])
+        result = self.goals.get(goal["goal_id"])
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("정합", result["plan"][0]["result"]["detail"])
+        self.assertEqual(self.popen.calls, [])
+
     def test_stop_sets_stopping_and_asks_jobs_to_stop(self):
         self.hold("material_a", "slot_1")
         goal = self.goals.create(GOAL_RETURN_ALL)
@@ -231,6 +249,7 @@ class SimDemoGoalRoutesTest(GoalsBase):
             sim_demo_jobs=self.jobs,
             sim_demo_goals=self.goals,
             sim_demo_disabled_reason=None,
+            sim_view=self.view,
         )
 
     def call(self, method: str, path: str, payload=None):
@@ -246,8 +265,9 @@ class SimDemoGoalRoutesTest(GoalsBase):
         self.hold("material_b", "slot_2")
         self.hold("material_a", "slot_1")
 
+        # 2026-10-08 리뷰 2번: 목표 API는 세션 필수 — 만든 세션만 확인한다.
         status, _, raw = self.call(
-            "POST", "/v1/sim-demo/goals", {"goal": GOAL_RETURN_ALL})
+            "POST", "/v1/sim-demo/goals", {"goal": GOAL_RETURN_ALL, "session_id": "s1"})
         created = json.loads(raw)
         goal_id = created["goal_id"]
         self.assertEqual(status, 201)
@@ -258,9 +278,12 @@ class SimDemoGoalRoutesTest(GoalsBase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(raw)["goal_id"], goal_id)
 
+        with self.assertRaises(ApiError) as other:
+            self.call("POST", f"/v1/sim-demo/goals/{goal_id}/confirm", {"action": "confirm", "session_id": "s2"})
+        self.assertEqual(other.exception.status, 409)
         status, _, raw = self.call(
             "POST", f"/v1/sim-demo/goals/{goal_id}/confirm",
-            {"action": "confirm"})
+            {"action": "confirm", "session_id": "s1"})
         self.assertEqual(status, 202)
         self.assertEqual(json.loads(raw)["status"], "running")
 
@@ -273,7 +296,7 @@ class SimDemoGoalRoutesTest(GoalsBase):
 
     def test_routes_translate_invalid_fixed_goal_and_missing_goal(self):
         with self.assertRaises(ApiError) as caught:
-            self.call("POST", "/v1/sim-demo/goals", {"goal": "arbitrary"})
+            self.call("POST", "/v1/sim-demo/goals", {"goal": "arbitrary", "session_id": "s1"})
         self.assertEqual(caught.exception.status, 400)
 
         with self.assertRaises(ApiError) as caught:

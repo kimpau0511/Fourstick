@@ -138,12 +138,18 @@ class TestNoExecutionWithoutAUserPress(IsolationCase):
             self.runtime.repository.execution_environment_counts()["simulated"], 0
         )
 
-    async def test_exactly_one_execution_per_execute_call(self):
+    async def test_exactly_one_execution_per_approval(self):
+        # 2026-10-08 리뷰 3번: 승인 한 번 = 실행 한 번. 같은 승인으로 다시 누르면 거부, 다시 승인하면 새 시도.
         bundle = await self.approved_plan(self.a)
         await self.execute(self.a, bundle)
+        refused = await self.execute(self.a, bundle)
+        self.assertEqual(refused.status, 409)
+        self.assertEqual(refused.json()["reason_code"], ReasonCode.SAFETY_APPROVAL_REQUIRED.value)
+        rows = self.runtime.repository.executions_for_request(bundle["request_id"])
+        self.assertEqual(len(rows), 1)
+        await self.decide(self.a, bundle)
         await self.execute(self.a, bundle)
         rows = self.runtime.repository.executions_for_request(bundle["request_id"])
-        self.assertEqual(len(rows), 2)
         self.assertEqual([r.attempt_no for r in rows], [1, 2])
 
 

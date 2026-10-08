@@ -26,7 +26,10 @@ export async function repeatSession() {
 
 /** 반복 작업 제어(일시정지·재개·취소·회차 후 종료) — 시뮬레이션 보기도 같은 함수를 쓴다. */
 export async function repeatAction(runId, action) {
-  const res = await call('POST', `/v1/sim-demo/repeat/${encodeURIComponent(runId)}/${action}`, {});
+  // 반복을 시작한 세션만 제어할 수 있다(2026-10-08) — 같은 탭 세션을 보낸다.
+  let sessionId;
+  try { sessionId = await repeatSession(); } catch (e) { return { ok: false, reason: e.message }; }
+  const res = await call('POST', `/v1/sim-demo/repeat/${encodeURIComponent(runId)}/${action}`, { session_id: sessionId });
   return res.ok ? { ok: true } : { ok: false, reason: reasonOf(res) };
 }
 

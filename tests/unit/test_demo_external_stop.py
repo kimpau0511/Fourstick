@@ -113,14 +113,24 @@ def install_ros_message_stubs(test):
 class FakeClient:
     def __init__(self, handle):
         self.handle = handle
+        self.sent = 0
 
     def wait_for_server(self, timeout_sec):
         return True
 
     def send_goal_async(self, goal):
+        self.sent += 1
         future = types.SimpleNamespace(done=lambda: True,
                                        result=lambda: self.handle)
         return future
+
+
+def valid_joint_state(names=("j1",)):
+    """목표를 보내기 전에 _send가 읽는 시작 관절 관측(570fb63부터의 전제 — 이 관측이 없으면 목표를 보내지 않는다)."""
+    from robots.fr3_gazebo.transport import JointObservation
+
+    return JointObservation(positions={n: 0.0 for n in names}, velocities={n: 0.0 for n in names},
+                            observed_at=time.time(), valid=True)
 
 
 class TransportShouldStopTest(unittest.TestCase):
@@ -129,6 +139,10 @@ class TransportShouldStopTest(unittest.TestCase):
         self.transport = RosWorkcellTransport(world_name="w", gz_partition="p",
                                               ros_domain_id=44)
         self.transport._ensure_node = lambda: None
+        # 2026-10-08 리뷰 6번: 이 시험들이 실패하던 원인 — 570fb63에서 _send가 목표 전에 시작 관절 관측을 읽게 됐는데
+        # 시험 준비에 관측이 없어 2초(관측 대기 한도)를 기다린 뒤 목표를 보내지 않고 끝났다. 시간 한도·검증은 그대로 두고
+        # 실제 실행과 같은 전제(유효한 관측)를 준다.
+        self.transport._latest = valid_joint_state()
         self.handle = FakeHandle(1)
         self.handle.accepted = True
 
@@ -155,6 +169,57 @@ class TransportShouldStopTest(unittest.TestCase):
                                        6.0, 2.0)
         self.assertTrue(outcome.result_received)
         self.assertEqual(outcome.error_code, 0)
+
+
+class StopBeforeGoalIsSentTest(unittest.TestCase):
+    """2026-10-08 리뷰 6번: 목표를 보내기 전(관절 관측 대기 중)에도 정지 요청을 보고 빠져나오며, 정지 뒤에 목표가 나가지 않는다."""
+
+    def setUp(self):
+        install_ros_message_stubs(self)
+        self.transport = RosWorkcellTransport(world_name="w", gz_partition="p", ros_domain_id=44)
+        self.transport._ensure_node = lambda: None
+        self.handle = FakeHandle(1)
+        self.handle.accepted = True
+
+    def test_stop_while_waiting_for_joint_state_returns_without_sending(self):
+        self.transport._latest = None                      # 관측이 아직 없다 — 한도(2초)까지 기다리는 구간
+        calls = {"n": 0}
+
+        def should_stop():
+            calls["n"] += 1
+            return calls["n"] >= 3
+
+        client = FakeClient(self.handle)
+        started = time.monotonic()
+        outcome = self.transport._send(client, ["j1"], [0.1], 6.0, 2.0, should_stop=should_stop)
+        self.assertLess(time.monotonic() - started, 0.5)  # 관측 대기 한도(2초)를 기다리지 않는다
+        self.assertEqual(outcome.detail, STOP_REQUESTED_DETAIL)
+        self.assertFalse(outcome.accepted)
+        self.assertEqual(client.sent, 0)                    # 목표를 보내지 않았다
+        self.assertEqual(self.transport.live_goals(), 0)
+
+    def test_stop_already_requested_sends_nothing(self):
+        self.transport._latest = valid_joint_state()
+        client = FakeClient(self.handle)
+        outcome = self.transport._send(client, ["j1"], [0.1], 6.0, 2.0, should_stop=lambda: True)
+        self.assertEqual(outcome.detail, STOP_REQUESTED_DETAIL)
+        self.assertEqual(client.sent, 0)
+        self.assertEqual(self.transport.live_goals(), 0)
+
+    def test_stop_arriving_after_observation_but_before_send_sends_nothing(self):
+        self.transport._latest = valid_joint_state()
+        state = {"observed": False}
+        real = self.transport.joint_observation
+
+        def observe(timeout, **kw):
+            out = real(timeout, **kw)
+            state["observed"] = True                       # 관측을 받은 바로 뒤에 정지가 온다
+            return out
+        self.transport.joint_observation = observe
+        client = FakeClient(self.handle)
+        outcome = self.transport._send(client, ["j1"], [0.1], 6.0, 2.0, should_stop=lambda: state["observed"])
+        self.assertEqual(outcome.detail, STOP_REQUESTED_DETAIL)
+        self.assertEqual(client.sent, 0)
 
 
 class ResumeExternalStopTest(ResumeRunBase):

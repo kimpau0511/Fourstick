@@ -342,7 +342,7 @@ class ArrangeRoutesTest(goal_tests.SimDemoGoalRoutesTest):
 
     def test_goals_endpoint_accepts_arrange_spec(self):
         status, _, raw = self.call("POST", "/v1/sim-demo/goals", {
-            "goal": GOAL_ARRANGE, "spec": {"targets": {"material_b": "slot_3"}}})
+            "goal": GOAL_ARRANGE, "spec": {"targets": {"material_b": "slot_3"}}, "session_id": "s1"})
         self.assertEqual(status, 201)
         self.assertEqual(json.loads(raw)["plan"][0]["to"], "slot_3")
 

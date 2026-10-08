@@ -191,3 +191,23 @@ class WakeModeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class FrameLimitTest(unittest.TestCase):
+    """2026-10-08 리뷰 8번: 오디오 프레임 하나가 1초 분량(32 KB)을 넘으면 받아 쌓지 않고 오류로 닫는다."""
+
+    def test_oversized_frame_is_refused_and_socket_closed(self):
+        texts = Texts(["A자재 옮겨줘"])
+        huge = b"\x01\x00" * (stt_route.MAX_STT_FRAME_BYTES // 2 + 1)
+        sent = drive([SPEECH] * 5 + [huge] + [SPEECH] * 5, mode="", transcriber=texts, repository=SpyRepository())
+        errors = [e for e in sent if e.get("kind") == "error"]
+        self.assertTrue(errors, sent)
+        self.assertEqual(errors[-1]["reason_code"], "session.request_too_large")
+        self.assertEqual(sent[-1]["kind"], "__closed__")
+        self.assertEqual(texts.calls, 0)
+
+    def test_normal_frames_still_work(self):
+        texts = Texts(["A자재 옮겨줘"])
+        flush = {"type": "websocket.receive", "text": '{"type":"flush"}'}
+        sent = drive([b"\x01\x00" * 512] * 20 + [flush], mode="", transcriber=texts, repository=SpyRepository())
+        self.assertIn("final", [e["kind"] for e in sent])

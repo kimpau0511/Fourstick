@@ -47,7 +47,7 @@ export default function RepeatPanel({ server, lockReason }) {
   }
   async function verify() {
     setBusy(true); setNote(null);
-    const res = await call('POST', `/v1/sim-demo/repeat/${encodeURIComponent(run.run_id)}/verify`, {})
+    const res = await call('POST', `/v1/sim-demo/repeat/${encodeURIComponent(run.run_id)}/verify`, { session_id: await repeatSession() })
       .catch((e) => ({ ok: false, status: 0, payload: { detail: e.message } }));
     if (!res.ok) setNote({ tone: 'danger', text: reasonOf(res) });
     else if (res.payload.run && res.payload.run.lock_held) setNote({ tone: 'danger', text: '확인되지 않은 항목이 있어 잠금을 유지했습니다' });

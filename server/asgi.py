@@ -33,6 +33,7 @@ from server.api import Api, ApiError
 from server.auth import AuthService, cookie_token
 from server.config import ServerConfig
 from server.exit_watchdog import arm_exit_watchdog
+from server.request_limits import limited_receive as _limited_receive, read_json_body
 from server.robot_names import RobotNames
 from server.routes import (
     HTTP_ROUTES,
@@ -121,6 +122,7 @@ class Application:
     async def _http(self, scope, receive, send) -> None:
         path = scope["path"]
         method = scope["method"]
+        receive = _limited_receive(receive, scope.get("headers", []))
         query = _query_dict(scope.get("query_string", b""))
         token = cookie_token(scope.get("headers", []))
         actor = self.auth.actor_of(method, path, token)
@@ -153,23 +155,7 @@ class Application:
             print(f"[audit] 명령 보낸 사람 기록 실패 {method} {path}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     async def _body(self, receive) -> dict:
-        chunks = b""
-        while True:
-            message = await receive()
-            if message["type"] == "http.disconnect":
-                raise ApiError(400, None, "요청이 끊겼다")
-            chunks += message.get("body", b"")
-            if not message.get("more_body"):
-                break
-        if not chunks:
-            return {}
-        try:
-            payload = json.loads(chunks)
-        except json.JSONDecodeError as exc:
-            raise ApiError(400, None, f"JSON이 아니다: {exc}") from None
-        if not isinstance(payload, dict):
-            raise ApiError(400, None, "객체가 아니다")
-        return payload
+        return await read_json_body(receive)   # 상한은 `_limited_receive`가 읽는 도중에 본다(server/request_limits.py)
 
     async def _route(
         self, method: str, path: str, receive, query: dict[str, str],

@@ -346,3 +346,7 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 }
 /* 로봇 1대 + 펼친 상세 행(768~1023): robots.css의 :not(:only-child) 선택이 상세 행 때문에 켜지지 않게 되돌린다 */
 .robots-list .data-table tbody tr[aria-selected="true"]:first-child:nth-last-child(2):has(+ .row-detail) { background: none; }
+/* 재개·복구 확인 카드(2026-10-08 리뷰 2번) — 승인해야 시작한다. */
+.sim-recovery { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--accent-border); border-radius: 12px; background: var(--info-subtle); }
+.sim-recovery p { margin: 0; font-size: 14px; color: var(--white); }
+.sim-recovery small { display: block; margin-top: 2px; color: var(--muted); }

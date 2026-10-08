@@ -1025,6 +1025,8 @@ class ApprovalRecord:
     snapshot_hash: str | None = None
     #: 이 승인이 근거로 삼은 검증 실행.
     validation_run_id: str | None = None
+    #: 승인 시점의 환경 세션(로봇 id + 어댑터 연결 세션) — 실행 직전 지금 값과 대조한다(2026-10-08 리뷰 9번).
+    environment_session: str | None = None
     #: 사용자가 남긴 메모나 거부 사유.
     note: str = ""
 

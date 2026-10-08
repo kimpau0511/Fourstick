@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from server.routes.common import (
     RouteContext,
     Response,
@@ -35,7 +37,11 @@ async def handle(
 
     if method == "POST":
         payload = await ctx.read_body(receive)
-        result = ctx.api.create_plan(
+        # 계획은 모델(LLM)을 블로킹 호출한다. 이벤트 루프를 막으면 그동안 /v1/stop도 처리되지 않는다
+        # (2026-10-09 격리 셀: 계획 중 보낸 정지 응답 8.8 s, 단독 2.8 s) — 스레드로 보낸다.
+        # create_plan은 반복 실행 스레드에서도 부르는 스레드 안전한 경로다.
+        result = await asyncio.to_thread(
+            ctx.api.create_plan,
             session_id=body_field(payload, "session_id"),
             utterance=str(payload.get("utterance", "")),
             stt_inference_id=payload.get("stt_inference_id"),

@@ -274,22 +274,25 @@ class RepeatRuns:
             doing = f"{PHASE_ING[step['phase']]}(일시정지 요청됨)"
         return f"{step['round']}/{run['count']}회 · {step['name']} {doing}"
 
-    def _require(self, run_id: str) -> dict:
+    def _require(self, run_id: str, session_id: str | None = None) -> dict:
         if self._run is None or self._run.get("run_id") != run_id:
             raise RepeatRunError(404, "그 반복 작업이 없습니다")
+        # 2026-10-08 리뷰 2번: 반복을 시작한(승인한) 세션만 제어한다. 세션을 주지 않은 내부 호출은 그대로.
+        if session_id is not None and self._run.get("session_id") and session_id != self._run["session_id"]:
+            raise RepeatRunError(409, "이 반복 작업을 시작한 세션이 아닙니다 — 제어할 수 없습니다")
         return self._run
 
-    def finish_after_round(self, run_id: str) -> dict | None:
+    def finish_after_round(self, run_id: str, session_id: str | None = None) -> dict | None:
         with self._lock:
-            run = self._require(run_id)
+            run = self._require(run_id, session_id)
             if run["state"] not in ACTIVE:
                 raise RepeatRunError(409, "진행 중인 반복이 아닙니다")
             self._update(finish_after_round=True)
         return self.view()
 
-    def pause(self, run_id: str) -> dict | None:
+    def pause(self, run_id: str, session_id: str | None = None) -> dict | None:
         with self._lock:
-            run = self._require(run_id)
+            run = self._require(run_id, session_id)
             if run["state"] != "running":
                 raise RepeatRunError(409, "실행 중인 반복이 아닙니다")
             self._update(pause_requested=True, state="pausing")
@@ -298,11 +301,13 @@ class RepeatRuns:
         self.api.cancel_active_execution(session_id=session_id)
         return self.view()
 
-    def resume(self, run_id: str) -> dict | None:
+    def resume(self, run_id: str, session_id: str | None = None) -> dict | None:
         with self._lock:
-            run = self._require(run_id)
+            run = self._require(run_id, session_id)
             if run["state"] != "paused":
                 raise RepeatRunError(409, "일시정지된 반복이 아닙니다")
+            if self.api.stop_latched():
+                raise RepeatRunError(409, "전체 정지가 걸려 있습니다 — 정지 해제 뒤 재개하세요")
             step = run["steps"][run["cursor"]]
             facts = self._facts()
             row = next((m for m in self.runtime.sim_demo_jobs.status().get("materials") or []
@@ -321,18 +326,18 @@ class RepeatRuns:
             self._spawn()
         return self.view()
 
-    def cancel(self, run_id: str) -> dict | None:
+    def cancel(self, run_id: str, session_id: str | None = None) -> dict | None:
         with self._lock:
-            run = self._require(run_id)
+            run = self._require(run_id, session_id)
             if run["state"] not in ("paused",):
                 raise RepeatRunError(409, "일시정지된 반복만 취소할 수 있습니다 — 실행 중이면 일시정지 또는 헤더의 즉시 정지를 쓰세요")
             self._finish("cancelled", "사용자가 반복을 취소했습니다")
         return self.view()
 
-    def verify(self, run_id: str) -> dict | None:
+    def verify(self, run_id: str, session_id: str | None = None) -> dict | None:
         """중단된 반복의 잠금 해제: 실행 종료·로봇 정지·부착 상태가 관측으로 확인될 때만 예약을 푼다."""
         with self._lock:
-            run = self._require(run_id)
+            run = self._require(run_id, session_id)
             if not run.get("lock_held"):
                 raise RepeatRunError(409, "잠금이 걸린 중단 반복이 아닙니다")
         check = self._quiet_check or self._default_quiet_check
@@ -525,6 +530,19 @@ class RepeatRuns:
             finally:
                 jobs.release_goal(goal)
             report = current.get("report") or {}
+            if report.get("status") == "resume_stopped":
+                # 2026-10-08 리뷰 12번: 재개가 정지로 끝났다(헤더의 즉시 정지 등) — 실패가 아니라 정지로 남긴다.
+                # 실행기가 남긴 정지 확인 여부를 그대로 보존한다(확인 안 된 정지를 확인됐다고 쓰지 않는다).
+                confirmed = report.get("stop_confirmed")
+                self._note(step, "stopped", resumed=True, job_id=job["job_id"], stop_confirmed=confirmed)
+                with self._lock:
+                    if self._run is not None:
+                        self._update(stop_confirmed=confirmed)
+                note = ("정지 확인됨" if confirmed is True
+                        else "정지가 확인되지 않았습니다 — 자재·로봇 상태를 확인하세요" if confirmed is False
+                        else "정지 확인 여부를 받지 못했습니다")
+                self._finish("stopped", f"재개 중 즉시 정지로 멈췄습니다({note}) — 남은 반복을 취소했습니다")
+                return
             facts = self._facts()
             material = next((m for m in facts["materials"] if m["id"] == step["material"]), None)
             reached = material is not None and material["location"] == (

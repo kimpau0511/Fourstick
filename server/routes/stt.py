@@ -36,6 +36,10 @@ WAKE_IDLE_RESET_SEC = 3.0
 WAKE_PREROLL_SEC = 0.6
 
 
+#: STT 오디오 프레임 상한(바이트) = 1초 분량(16 kHz PCM16). 화면 프레임은 1 KB다(dashboard2/src/pcm-worklet.js).
+MAX_STT_FRAME_BYTES = 32000
+
+
 async def stt_socket(ctx: RouteContext, receive, send, session_id: str, mode: str = "") -> None:
     """PCM16 프레임을 받아 partial/final을 돌려준다.
 
@@ -147,6 +151,15 @@ async def stt_socket(ctx: RouteContext, receive, send, session_id: str, mode: st
                 continue
             if message.get("bytes"):
                 chunk = message["bytes"]
+                if len(chunk) > MAX_STT_FRAME_BYTES:
+                    # 프레임 하나가 1초 분량을 넘는다 — 화면은 512샘플(1 KB)씩 보낸다. 발화 길이 상한(max_audio_sec)과 별개로
+                    # 한 번에 큰 덩어리를 받아 쌓지 않는다(2026-10-08 리뷰 8번).
+                    await send({"type": "websocket.send", "text": json.dumps({
+                        "kind": "error", "reason_code": ReasonCode.SESSION_REQUEST_TOO_LARGE.value,
+                        "detail": f"오디오 프레임이 너무 큽니다({len(chunk)}바이트, 상한 {MAX_STT_FRAME_BYTES}바이트)"},
+                        ensure_ascii=False)})
+                    await send({"type": "websocket.close", "code": 1009})
+                    return
                 if not wake and session.state is SttSessionState.CLOSED:
                     # final을 보내는 동안에도 마이크 프레임은 수신 큐에 쌓일 수 있다.
                     # 한 명령은 이미 끝났다. 잔여 오디오를 새 명령으로 해석하지 않는다.

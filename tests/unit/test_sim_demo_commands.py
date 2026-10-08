@@ -144,7 +144,8 @@ class CommandEndpointTest(JobsBase):
         self.runtime = types.SimpleNamespace(
             sim_demo_jobs=self.jobs, sim_demo_disabled_reason=None,
             sim_demo_confirm=ConfirmStore(ttl_sec=60),
-            simulation_demo_status=lambda: self.state.status())
+            simulation_demo_status=lambda: self.state.status(),
+            sim_view=self.view)
 
     def post(self, path, payload, runtime=None):
         async def read(_receive):
@@ -374,7 +375,13 @@ class CommandEndpointTest(JobsBase):
 
 
 class _NoApi:
-    """계획 생성·LLM 경로를 쓰면 즉시 실패하게 만드는 대역."""
+    """계획 생성·LLM 경로를 쓰면 즉시 실패하게 만드는 대역.
+
+    전체 정지 래치 읽기(`stop_latched`)만 허용한다 — 계획 경로가 아니라 움직이는 작업을 만들기 전 안전 확인이다(2026-10-08 리뷰 2번).
+    """
+
+    def stop_latched(self):
+        return False
 
     def __getattr__(self, name):
         raise AssertionError(f"시연 명령이 일반 API를 썼다: {name}")

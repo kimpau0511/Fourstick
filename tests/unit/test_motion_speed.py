@@ -308,7 +308,7 @@ class TrajectoryTest(unittest.TestCase):
         trajectory = types.ModuleType("trajectory_msgs.msg")
         trajectory.JointTrajectoryPoint = types.SimpleNamespace
         t = RosWorkcellTransport(world_name="fixture", gz_partition="fixture", ros_domain_id=44)
-        t.joint_observation = lambda timeout: types.SimpleNamespace(valid=True, positions={"j1": 0.2})
+        t.joint_observation = lambda timeout, **kw: types.SimpleNamespace(valid=True, positions={"j1": 0.2})
         seconds = policy().arm_seconds({"j1": .2}, {"j1": 1.2}, {"j1": 3.15}, 50)
         with patch.dict(sys.modules, {"builtin_interfaces.msg": builtin, "trajectory_msgs.msg": trajectory}):
             points = t._trajectory_points(["j1"], [1.2], seconds, 20)
@@ -320,7 +320,7 @@ class TrajectoryTest(unittest.TestCase):
                 self.assertLessEqual(abs(point.velocities[0]), 3.15*.8*.5+1e-9)
                 self.assertLessEqual(abs(point.accelerations[0]), 3.15*.5*.8*.5+1e-9)
             self.assertAlmostEqual(points[-1].time_from_start.sec + points[-1].time_from_start.nanosec / 1e9, seconds)
-            t.joint_observation = lambda timeout: types.SimpleNamespace(valid=False, positions={})
+            t.joint_observation = lambda timeout, **kw: types.SimpleNamespace(valid=False, positions={})
             self.assertIsNone(t._trajectory_points(["j1"], [1.2], seconds, 20))
 
 

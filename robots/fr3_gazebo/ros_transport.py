@@ -189,7 +189,7 @@ class RosWorkcellTransport:
 
     # ── 관측 ────────────────────────────────────────────────────────────
     def joint_observation(self, timeout_sec: float,
-                          *, after: float | None = None) -> JointObservation:
+                          *, after: float | None = None, should_stop=None) -> JointObservation:
         """관절 관측 한 장.
 
         `after`를 주면 **그보다 새로운 표본**을 기다린다. 정지 확인은 서로 다른
@@ -203,6 +203,10 @@ class RosWorkcellTransport:
                 latest = self._latest
             if latest is not None and (after is None or latest.observed_at > after):
                 return latest
+            if should_stop is not None and should_stop():
+                # 관측을 기다리는 중에 정지 요청이 왔다 — 더 기다리지 않는다(2026-10-08 리뷰 6번).
+                return JointObservation(positions={}, velocities={}, observed_at=0.0, valid=False,
+                                        detail=STOP_REQUESTED_DETAIL)
             if time.monotonic() > deadline:
                 detail = ("/joint_states를 받지 못했다" if latest is None
                           else "새 표본이 오지 않았다")
@@ -212,13 +216,13 @@ class RosWorkcellTransport:
             time.sleep(0.005)
 
     # ── 명령 ────────────────────────────────────────────────────────────
-    def _trajectory_points(self, names, values, seconds, timeout_sec):
+    def _trajectory_points(self, names, values, seconds, timeout_sec, should_stop=None):
         # 끝점 및 극값 지점의 위치·속도·가속도를 주면 JTC가 동일한 quintic 곡선을 보간한다.
         # 계산에 쓴 T와 전송 T는 동일하다. 현재 위치가 없으면 궤적을 보내지 않는다.
         import math
         from builtin_interfaces.msg import Duration
         from trajectory_msgs.msg import JointTrajectoryPoint
-        observation = self.joint_observation(timeout_sec)
+        observation = self.joint_observation(timeout_sec, should_stop=should_stop)
         if (not observation.valid or not math.isfinite(seconds) or seconds <= 0
                 or any(not math.isfinite(float(v)) for v in values)
                 or any(n not in observation.positions or not math.isfinite(observation.positions[n]) for n in names)):
@@ -246,11 +250,19 @@ class RosWorkcellTransport:
         self._ensure_node()
         from control_msgs.action import FollowJointTrajectory
 
+        # 2026-10-08 리뷰 6번: 목표를 보내기 전 단계(서버 대기·시작 관절 관측)에서도 정지 요청을 본다.
+        # 정지가 이미 왔으면 목표를 **보내지 않고** 돌아온다 — 정지 뒤에 목표가 뒤늦게 나가지 않는다.
+        stopped = lambda: should_stop is not None and should_stop()  # noqa: E731
+        not_sent = GoalOutcome(accepted=False, result_received=False, detail=STOP_REQUESTED_DETAIL)
+        if stopped():
+            return not_sent
         if not client.wait_for_server(timeout_sec=timeout_sec):
             return GoalOutcome(accepted=False, detail="액션 서버가 없다")
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = list(names)
-        points = self._trajectory_points(names, values, seconds, timeout_sec)
+        points = self._trajectory_points(names, values, seconds, timeout_sec, should_stop=should_stop)
+        if stopped():
+            return not_sent
         if points is None:
             return GoalOutcome(accepted=False, detail="궤적 시작 관절 관측 또는 이동 시간이 유효하지 않다")
         goal.trajectory.points = points

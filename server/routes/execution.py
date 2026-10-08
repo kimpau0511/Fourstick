@@ -48,7 +48,10 @@ async def handle(
         decision = str(payload.get("decision", ""))
         if decision not in ("approve", "reject"):
             raise ApiError(400, None, "decision은 approve 또는 reject다")
-        return json_response(api.decide(
+        # 승인은 관문을 다시 계산한다(Gazebo 관측 포함). 이벤트 루프를 막지 않게 스레드로 — 그동안에도 /v1/stop이
+        # 바로 처리된다(2026-10-09). decide는 반복 실행 스레드에서도 부르는 스레드 안전한 경로다.
+        return json_response(await asyncio.to_thread(
+            api.decide,
             session_id=body_field(payload, "session_id"),
             request_id=body_field(payload, "request_id"),
             plan_id=body_field(payload, "plan_id"),
@@ -104,19 +107,12 @@ async def handle(
 
     if method == "POST" and path == "/v1/stop":
         # 전체 정지. 세션 격리로 막지 않는다 — session_id는 있으면 기록만 한다.
+        # 시뮬레이션 시연 작업(별도 프로세스)에 정지 요청을 쓰는 일은 `api.stop`이 **맨 먼저** 한다(2026-10-08 리뷰 4번 —
+        # 전에는 어댑터 연결 확인·정지 확인이 끝난 뒤에야 썼다). 응답의 delivery(전달)와 confirmed(확인)는 따로다.
         payload = await ctx.read_body(receive)
         result = await asyncio.to_thread(
             api.stop, session_id=payload.get("session_id")
         )
-        # 시뮬레이션 시연 작업(별도 프로세스)에도 정지를 **요청**한다. 프로세스를
-        # 죽이지 않는다 — 시연 스크립트가 기존 STOP 절차로 멈춘다.
-        jobs = getattr(ctx.runtime, "sim_demo_jobs", None)
-        if jobs is not None:
-            goals = getattr(ctx.runtime, "sim_demo_goals", None)
-            goal_stop = goals.request_stop() if goals is not None else None
-            sim_stop = (goal_stop if goal_stop and goal_stop.get("requested")
-                        else jobs.request_stop(reason="global_stop"))
-            result = {**result, "simulation_demo_stop": sim_stop}
         return json_response(result)
 
     return None

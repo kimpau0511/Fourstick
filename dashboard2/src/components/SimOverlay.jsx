@@ -111,14 +111,25 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   const moving = state === 'running' || (server && server.simDemo && server.simDemo.running_job);
   const canPause = controls && state === 'running' && !(cmd.job && cmd.job.resumed);
   const pauseWhy = canPause ? null : moving ? '이 화면에서 시작한 작업만 일시정지할 수 있습니다' : '실행 중인 작업이 없습니다';
-  const canResume = controls && !moving && !!(stoppedRow && stoppedRow.actions && stoppedRow.actions.resume) && !lock;
+  // 재개·복구 확인 카드(2026-10-08 리뷰 2번): 서버가 만든 카드를 승인해야 시작한다. 카드가 떠 있는 동안 버튼을 잠근다.
+  const recovery = cmd.recovery || null;
+  const canResume = controls && !moving && !recovery && !!(stoppedRow && stoppedRow.actions && stoppedRow.actions.resume) && !lock;
   const resumeWhy = canResume ? null
     : moving ? '작업이 실행 중입니다'
       : !stoppedRow ? '멈춘 작업이 없습니다'
         : lock || '이 지점에서는 이어서 할 수 없습니다 — 복구하면 원래 자리로 되돌립니다(서버 판정)';
   // 재개할 수 없을 때만 '복구'(원래 자리로) — 서버가 복구 가능(actions.restore)하다고 할 때.
-  const canRestore = controls && !moving && !canResume && !lock
+  const canRestore = controls && !moving && !canResume && !lock && !recovery
     && !!(stoppedRow && stoppedRow.actions && stoppedRow.actions.restore);
+  const recoveryCard = recovery && typeof cmd.answerRecovery === 'function'
+    ? <div className="sim-recovery" role="group" aria-label={`${recovery.action === 'resume' ? '재개' : '복구'} 승인`}>
+      <p><b>{recovery.action === 'resume' ? '재개' : '복구'} 승인 대기</b> — {recovery.summary}
+        {recovery.expiresAt ? <small>승인 기한 {timeText(recovery.expiresAt)}</small> : null}</p>
+      <div className="sim-actions">
+        <button type="button" className="approve" disabled={cmd.busy || !!lock} title={lock || undefined} onClick={() => cmd.answerRecovery(true)}>승인</button>
+        <button type="button" disabled={cmd.busy} onClick={() => cmd.answerRecovery(false)}>취소</button>
+      </div>
+    </div> : null;
   const stoppedName = stoppedRow ? stoppedRow.korean || stoppedRow.model : null;
   // 반복 작업이 진행 중이면 일시정지·재개는 그 반복을 제어한다(서버가 판정 — 재개 가능 구간 제한 그대로).
   const repeatRun = server && server.repeat && server.repeat.run && server.repeat.run.active ? server.repeat.run : null;
@@ -202,7 +213,9 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
             <button type="button" className="sim-fs-pause" disabled={repeatBusy || repeatRun.state !== 'paused' || !!lock} onClick={() => onRepeat('resume')}>▶ 재개</button>
           </> : <>
             {controls && <button type="button" className="sim-fs-pause" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>}
-            {controls && <button type="button" className="sim-fs-pause" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>}
+            {controls && !recovery && <button type="button" className="sim-fs-pause" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>}
+            {controls && recovery && <button type="button" className="sim-fs-pause" disabled={cmd.busy || !!lock} onClick={() => cmd.answerRecovery(true)}>{recovery.action === 'resume' ? '재개' : '복구'} 승인</button>}
+            {controls && recovery && <button type="button" className="sim-fs-pause" disabled={cmd.busy} onClick={() => cmd.answerRecovery(false)}>취소</button>}
           </>}
           <button type="button" className="sim-fs-stop" onClick={cmd.stop}>■ 즉시 정지</button>
         </div>}
@@ -225,6 +238,7 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
         {repeatRun.state === 'paused' && <button type="button" disabled={repeatBusy} onClick={() => onRepeat('cancel')}>반복 취소</button>}
       </div>}
       {repeatRun && <p className="sim-foot" role="status">반복 작업: {repeatRun.label}{repeatNote ? ` — ${repeatNote}` : ''}</p>}
+      {!full && recoveryCard}
       {controls && !repeatRun && <div className="sim-actions" role="group" aria-label="이 작업 제어">
         <button type="button" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>
         <button type="button" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>

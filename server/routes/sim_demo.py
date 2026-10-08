@@ -62,6 +62,134 @@ def _goal_confirmation(goal: dict, utterance: str = "") -> dict:
     }
 
 
+#: 움직이지 않는 작업(관측·사전 검사만). 세션만 확인하고 바로 시작한다.
+READ_ONLY_ACTIONS = ("reconcile", "resume_preflight")
+#: 직접 API로 **확인 카드**를 만들 수 있는 동작 — 서버의 자재별 가능 동작(actions)으로 판정되는 것만.
+#: 칸·경로·표면 자리를 고르는 동작(move·route·spot)은 명령 경로가 자리 검증과 함께 만든다.
+DIRECT_CONFIRMABLE = ("transfer", "return", "resume", "restore")
+
+
+def _confirm_store(ctx: RouteContext):
+    store = getattr(ctx.runtime, "sim_demo_confirm", None)
+    if store is None:
+        from server.sim_demo_confirm import ConfirmStore
+
+        store = ConfirmStore()
+        ctx.runtime.sim_demo_confirm = store
+    return store
+
+
+def _session_of(ctx: RouteContext, payload: dict) -> str:
+    """직접 실행 API의 세션(2026-10-08 리뷰 2번). 없거나 서버가 발급한 쓸 수 있는 세션이 아니면 거절한다."""
+    session_id = body_field(payload, "session_id")
+    api = getattr(ctx, "api", None)
+    if api is not None and hasattr(api, "require_session"):
+        api.require_session(session_id)
+    return session_id
+
+
+def _require_served_session(ctx: RouteContext, payload: dict) -> None:
+    """명령·확인도 서버가 발급한 세션이 있어야 한다(리뷰 2번 — 세션 없는 명령이 만든 카드는 아무 세션이나 확인할 수
+    있었다). 실제 Api가 붙은 서버에서만 본다(Api 없는 단위 시험 대역·미리보기 샌드박스는 그대로)."""
+    api = getattr(ctx, "api", None)
+    check = getattr(type(api), "require_session", None)
+    if callable(check):
+        check(api, body_field(payload, "session_id"))
+
+
+def _stop_latched(ctx: RouteContext) -> bool:
+    api = getattr(ctx, "api", None)
+    check = getattr(type(api), "stop_latched", None)       # 대역(__getattr__)을 건드리지 않고 메서드가 있을 때만
+    return bool(check(api)) if callable(check) else False
+
+
+def _refuse_if_stopped(ctx: RouteContext) -> None:
+    """전체 정지가 걸려 있으면 움직이는 작업을 만들거나 시작하지 않는다(명시적인 정지 해제 전까지)."""
+    if _stop_latched(ctx):
+        raise ApiError(409, ReasonCode.EXEC_STOPPED,
+                       "전체 정지가 걸려 있다 — 정지 해제 뒤 다시 요청해 주세요")
+
+
+def _material_check(ctx: RouteContext, jobs, model: str, action: str) -> dict | None:
+    """이송·복귀 시작 전 기록·관측 확인(2026-10-08 리뷰 11번). 다른 동작은 None(각자의 사전 검사가 있다)."""
+    from server.material_check import check_for_action
+
+    # workcell_log_dir: 미리보기·평가 샌드박스가 부착 기록 폴더를 정할 때만 둔다(없으면 운영 기본 폴더).
+    return check_for_action(jobs, getattr(ctx.runtime, "sim_view", None), model, action,
+                            log_dir=getattr(ctx.runtime, "workcell_log_dir", None))
+
+
+def _material_refusal(ctx: RouteContext, jobs, spec: dict) -> tuple[dict, int] | None:
+    """확인 카드를 만들기 전 기록·관측 확인. 통과면 None, 아니면 (응답 본문, 상태 코드) — 카드를 만들지 않는다."""
+    check = _material_check(ctx, jobs, spec["material"], spec["action"])
+    if check is None or check["kind"] == "ok":
+        return None
+    base = {"intent": spec["action"], "material": spec["material"], "job_spec": None, "material_check": check}
+    if check["kind"] == "noop":
+        return {**base, "decision": "NOOP", "reason": check["detail"]}, 200
+    return {**base, "decision": "BLOCK", "reason": f"{check['detail']} — {check['guidance']}"}, 409
+
+
+def _direct_job_request(ctx: RouteContext, payload: dict) -> Response:
+    """POST /v1/sim-demo/jobs 본문(리뷰 2번·11번). 이벤트 루프 밖(`_off_loop`)에서 돈다."""
+    from server.sim_demo_jobs import SimDemoJobError
+
+    jobs = _jobs(ctx)                         # 셀이 없으면 먼저 그 사실(403)을 알린다
+    session_id = _session_of(ctx, payload)
+    action = body_field(payload, "action")
+    if action in READ_ONLY_ACTIONS:
+        # Slot is intentionally not read from the request.
+        job = jobs.start(action, payload.get("material") or None,
+                         checkpoint_id=payload.get("checkpoint_id") or None)
+        return json_response(job, 202)
+    _refuse_if_stopped(ctx)
+    if action not in DIRECT_CONFIRMABLE:
+        raise SimDemoJobError(409, f"'{action}'은(는) 직접 요청할 수 없다 — 명령으로 요청해 주세요(자리 검증을 함께 한다)")
+    material = body_field(payload, "material")
+    status = jobs.status()
+    if (status.get("running_job") or {}).get("job_id"):
+        raise SimDemoJobError(409, "다른 시연 작업이 실행 중이다")
+    row = next((m for m in status.get("materials") or () if m.get("model") == material), None)
+    if row is None:
+        raise SimDemoJobError(400, f"셀 선언의 자재가 아니다: {material}")
+    if not (row.get("actions") or {}).get(action):
+        raise SimDemoJobError(409, f"지금 {row.get('korean') or material}에 '{action}'을(를) 할 수 없다(서버 판정)")
+    spec = {"action": action, "material": material}
+    refusal = _material_refusal(ctx, jobs, spec)
+    if refusal is not None:
+        return json_response({**refusal[0], "job": None, "session_id": session_id}, refusal[1])
+    if action == "resume":
+        checkpoint = (status.get("state") or {}).get("checkpoint") or {}
+        wanted = payload.get("checkpoint_id") or None
+        if checkpoint.get("model") != material or not checkpoint.get("checkpoint_id") \
+                or (wanted is not None and wanted != checkpoint.get("checkpoint_id")):
+            raise SimDemoJobError(409, "이어서 할 정지 지점(체크포인트)이 맞지 않는다")
+        spec["checkpoint_id"] = checkpoint["checkpoint_id"]
+    store = _confirm_store(ctx)
+    offer, code = offer_confirmation(jobs, store, spec, utterance=f"[직접 요청] {action} {material}",
+                                     source="direct")
+    token = (offer.get("confirmation") or {}).get("token")
+    if token:
+        store.bind_session(token, session_id)
+    return json_response({**offer, "job": None, "session_id": session_id}, code)
+
+
+#: 시연 명령·확인·직접 요청을 처리하는 **한 줄짜리** 작업 스레드. 모델(Qwen) 호출·Gazebo 관측 같은 블로킹 일을
+#: 이벤트 루프 밖에서 하되(그동안에도 /v1/stop이 바로 처리된다 — 2026-10-09 리뷰 4번 보완), 이 요청들끼리는
+#: 전처럼 한 번에 하나씩 처리한다(대화 맥락·확인 카드 순서를 바꾸지 않는다).
+_SERIAL = None
+
+
+async def _off_loop(fn, *args):
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    global _SERIAL
+    if _SERIAL is None:
+        _SERIAL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sim-demo-command")
+    return await asyncio.get_running_loop().run_in_executor(_SERIAL, lambda: fn(*args))
+
+
 def _jobs(ctx: RouteContext):
     jobs = getattr(ctx.runtime, "sim_demo_jobs", None)
     if jobs is None:
@@ -136,7 +264,8 @@ async def handle(
 
     if method == "POST" and path == "/v1/sim-demo/command":
         payload = await ctx.read_body(receive)
-        return command_response(ctx, payload)
+        _require_served_session(ctx, payload)
+        return await _off_loop(command_response, ctx, payload)
 
     if method == "POST" and path == "/v1/sim-demo/interpret":
         # 해석 미리보기 — 샌드박스에서 같은 해석을 돌린다. 작업·확인·환경을 만들지 않는다.
@@ -148,16 +277,21 @@ async def handle(
 
     if method == "POST" and path == "/v1/sim-demo/confirm":
         payload = await ctx.read_body(receive)
-        return confirm_response(ctx, payload)
+        _require_served_session(ctx, payload)
+        return await _off_loop(confirm_response, ctx, payload)
 
     try:
         if method == "POST" and path == "/v1/sim-demo/goals":
+            # 목표 = 계획(여기) → 확인(/confirm, 같은 세션만). 세션 필수, 정지 중에는 만들지 않는다(리뷰 2번).
             payload = await ctx.read_body(receive)
+            session_id = _session_of(ctx, payload)
+            _refuse_if_stopped(ctx)
             goals = getattr(ctx.runtime, "sim_demo_goals", None)
             if goals is None:
                 raise SimDemoJobError(503, "시연 목표 실행기를 쓸 수 없다")
-            return json_response(goals.create(body_field(payload, "goal"),
-                                              payload.get("spec")), 201)
+            created = goals.create(body_field(payload, "goal"), payload.get("spec"))
+            goals.bind_session(created["goal_id"], session_id)
+            return json_response({**created, "session_id": session_id}, 201)
         if path.startswith("/v1/sim-demo/goals/"):
             rest = path[len("/v1/sim-demo/goals/"):]
             parts = rest.split("/")
@@ -169,18 +303,18 @@ async def handle(
                 return json_response(goals.get(goal_id))
             if method == "POST" and len(parts) == 2 and parts[1] == "confirm":
                 payload = await ctx.read_body(receive)
+                action = body_field(payload, "action")
+                if action == "confirm":
+                    _refuse_if_stopped(ctx)
                 return json_response(goals.confirm(
-                    goal_id, body_field(payload, "action")), 202)
+                    goal_id, action, session_id=str(payload.get("session_id") or "")), 202)
             if method == "POST" and len(parts) == 2 and parts[1] == "stop":
                 return json_response(goals.request_stop(goal_id))
         if method == "POST" and path == "/v1/sim-demo/jobs":
+            # 2026-10-08 리뷰 2번: 직접 실행 API도 세션·안전 검증·승인을 거친다. 움직이는 동작은 **확인 카드만** 만들고
+            # (작업 0건), 작업은 /v1/sim-demo/confirm(같은 세션·한 번·만료·상태 변경·정지 재검사)으로만 시작한다.
             payload = await ctx.read_body(receive)
-            # Slot is intentionally not read from the request.  SimDemoJobs picks
-            # it atomically after acquiring the shared workcell execution lease.
-            job = _jobs(ctx).start(
-                body_field(payload, "action"), body_field(payload, "material"),
-                checkpoint_id=payload.get("checkpoint_id") or None)
-            return json_response(job, 202)
+            return await _off_loop(_direct_job_request, ctx, payload)
         if method == "GET" and path.startswith("/v1/sim-demo/jobs/"):
             return json_response(_jobs(ctx).job(path[len("/v1/sim-demo/jobs/"):]))
         if method == "POST" and path == "/v1/sim-demo/stop":
@@ -485,6 +619,9 @@ def _classify(ctx: RouteContext, jobs, utterance: str, source: str,
     if spec["action"] not in EXECUTABLE_INTENTS:
         return fallback(f"발화 해석으로는 실행하지 않는 동작입니다: {spec['action']}",
                         info, decision=ASK)
+    refusal = _material_refusal(ctx, jobs, spec)
+    if refusal is not None:
+        return {**refusal[0], "intent_result": info}, refusal[1]
     return offer_confirmation(jobs, store, spec, utterance=utterance,
                               source=source, rule_decision=rule_decision,
                               rule_reason=rule_reason, classifier=info)
@@ -922,6 +1059,8 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
     from stt.command_normalization import normalize_command
 
     utterance = str(payload.get("utterance") or "")
+    from server.api import check_utterance_length
+    check_utterance_length(utterance.strip())          # 모델·해석 전에 길이를 본다(리뷰 8번)
     source = str(payload.get("source") or "")
     raw_transcript = str(payload.get("raw_transcript") or utterance) if source == "stt_final" else None
     normalized = normalize_command(utterance)
@@ -967,6 +1106,17 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
             }
             logging.getLogger(__name__).info("stt_command_diagnostic %s",
                 json.dumps(response["diagnostic"], ensure_ascii=False))
+        # 확인 카드·목표를 요청 세션에 묶는다(2026-10-08 리뷰 2번) — 같은 세션만 확인한다.
+        req_session = str(payload.get("session_id") or "")
+        token = (response.get("confirmation") or {}).get("token")
+        if req_session and token:
+            store_ = getattr(ctx.runtime, "sim_demo_confirm", None)
+            if store_ is not None:
+                store_.bind_session(token, req_session)
+        goal_id = (response.get("goal") or {}).get("goal_id")
+        goals_ = getattr(ctx.runtime, "sim_demo_goals", None)
+        if req_session and goal_id and goals_ is not None and hasattr(goals_, "bind_session"):
+            goals_.bind_session(goal_id, req_session)
         return json_response(response, status)
 
     config = getattr(ctx.runtime, "config", None)
@@ -987,8 +1137,12 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
         return answer(403, decision=BLOCK,
                       reason="시뮬레이션 시연을 쓸 수 없다: "
                              + str(getattr(ctx.runtime, "sim_demo_disabled_reason", "")))
-    from server.sim_demo_commands import is_stop_command
-    if is_stop_command(normalized):
+    from server.sim_demo_commands import stop_intent as _stop_intent
+    _stop = _stop_intent(normalized)
+    if _stop.kind == "ambiguous":
+        from planning.stop_intent import AMBIGUOUS_STOP_MESSAGE
+        return answer(200, decision=ASK, intent=None, reason=AMBIGUOUS_STOP_MESSAGE)
+    if _stop.is_stop:
         # 정지는 **다른 모든 해석보다 먼저**다 — 색·맥락·배치 해석과 Qwen을 거치지 않는다.
         # (전에는 맥락 해석이 "그거 멈춰"를 ASK로 먼저 끝낼 수 있었다.)
         return answer(200, decision=STOP, intent="stop",
@@ -1178,6 +1332,9 @@ def command_response(ctx: RouteContext, payload: dict) -> Response:
         return answer(409, **{**fields, "decision": BLOCK, "job_spec": None,
                               "reason": "확인 카드가 필요한데 확인 기능을 쓸 수 없어"
                                         " 실행하지 않았습니다"})
+    refusal = _material_refusal(ctx, jobs, spec)
+    if refusal is not None:
+        return answer(refusal[1], **{**fields, **refusal[0]})
     body, code = offer_confirmation(
         jobs, store, spec, utterance=utterance, source=source,
         rule_decision=decision.get("decision"),
@@ -1213,13 +1370,22 @@ def confirm_response(ctx: RouteContext, payload: dict) -> Response:
                              + str(getattr(ctx.runtime, "sim_demo_disabled_reason", "")))
     if action not in ("confirm", "cancel"):
         return answer(400, decision=BLOCK, reason=f"알 수 없는 동작이다: {action}")
+    session_id = str(payload.get("session_id") or "")
     if action == "cancel":
+        owner = store.peek(token)
+        if owner is not None and owner.session_id and owner.session_id != session_id:
+            return answer(409, decision=BLOCK, reason="이 확인 카드를 만든 세션이 아닙니다",
+                          confirm_rejection="session")
         removed = store.cancel(token)
         return answer(200, decision=CANCELLED,
                       reason="확인을 취소했습니다 — 작업을 만들지 않았습니다"
                              if removed else "확인 대기가 이미 없습니다")
 
-    taken = store.take(token, jobs.status())
+    if _stop_latched(ctx):
+        # 정지 래치 — 확인 카드가 있어도 시작하지 않는다. 카드는 지우지 않는다(남의 카드일 수도 있다 — 만료로 사라진다).
+        return answer(409, decision=BLOCK, reason="전체 정지가 걸려 있습니다 — 정지 해제 뒤 다시 요청해 주세요",
+                      confirm_rejection="stopped", reason_code=ReasonCode.EXEC_STOPPED.value)
+    taken = store.take(token, jobs.status(), session_id=session_id)
     if isinstance(taken, ConfirmRejection):
         return answer(409, decision=BLOCK, reason=taken.reason,
                       confirm_rejection=taken.code)
@@ -1244,6 +1410,12 @@ def confirm_response(ctx: RouteContext, payload: dict) -> Response:
                       job_spec=spec, job=job, utterance=taken.utterance,
                       summary=taken.summary, free_spot={"recheck": recheck})
     from server.sim_demo_commands import requested_slot
+    check = _material_check(ctx, jobs, spec["material"], spec["action"])
+    if check is not None and check["kind"] == "noop":
+        return answer(200, decision="NOOP", reason=check["detail"], job_spec=spec, material_check=check)
+    if check is not None and check["kind"] != "ok":
+        return answer(409, decision=BLOCK, reason=f"실행 직전 확인에서 막았습니다: {check['detail']} — {check['guidance']}",
+                      confirm_rejection="material_check", job_spec=spec, material_check=check)
     try:
         job = jobs.start(spec["action"], spec["material"],
                          checkpoint_id=spec.get("checkpoint_id"),
@@ -1251,6 +1423,12 @@ def confirm_response(ctx: RouteContext, payload: dict) -> Response:
     except SimDemoJobError as exc:
         return answer(409, decision=BLOCK, reason=str(exc),
                       confirm_rejection="not_allowed", job_spec=spec)
+    if _stop_latched(ctx):
+        # 확인은 이벤트 루프 밖에서 돈다 — 위의 정지 검사와 시작 사이에 들어온 전체 정지는 실행 중 작업이 없어
+        # 전달되지 않았다. 시작 직후 다시 보고 바로 정지를 전달한다(작업이 정지 없이 계속 움직이지 않게).
+        stop = jobs.request_stop(reason="global_stop")
+        return answer(409, decision=BLOCK, reason="시작 직후 전체 정지가 확인돼 바로 정지를 전달했습니다",
+                      confirm_rejection="stopped", job_spec=spec, job=job, stop=stop)
     actual_spec = {**spec, "slot": job.get("slot")}
     return answer(202, decision=RUN, intent=spec["action"],
                   material=spec["material"], job_spec=actual_spec, job=job,

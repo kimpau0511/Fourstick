@@ -63,9 +63,10 @@ class PermitContext:
     robot_state_valid: bool
     #: 환경(셀) 전수 확인 시각. None이면 확인 이력 없음.
     environment_observed_at: float | None
-    #: 계획 등록 당시 환경 버전/세션과 현재 값. 다르면 계획이 낡았다.
-    recorded_environment_version: int | None
-    current_environment_version: int | None
+    #: 승인 당시 환경 버전/세션과 현재 값. 다르면 계획이 낡았다(2026-10-08 리뷰 9번: 서버는 기하 snapshot 버전과
+    #: '로봇 id:어댑터 연결 세션'을 넣는다).
+    recorded_environment_version: int | str | None
+    current_environment_version: int | str | None
     recorded_environment_session: str | None
     current_environment_session: str | None
     #: 계획 등록 시 기록한 plan hash. 실행 시점 계획과 다르면 거부.

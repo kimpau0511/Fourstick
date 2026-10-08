@@ -507,9 +507,9 @@ class TestDuplicateExecutionRace(IsolationCase):
         statuses = sorted([first.status, second.status])
         self.assertEqual(statuses, [200, 409])
         refused = first if first.status == 409 else second
-        self.assertEqual(
-            refused.json()["reason_code"], ReasonCode.EXEC_GOAL_REJECTED.value
-        )
+        # 셀이 바쁘거나(이미 실행 중) 승인을 이미 썼다(한 번만 쓴다) — 어느 쪽이든 실행은 하나뿐이다.
+        self.assertIn(refused.json()["reason_code"],
+                      (ReasonCode.EXEC_GOAL_REJECTED.value, ReasonCode.SAFETY_APPROVAL_REQUIRED.value))
         rows = self.runtime.repository.executions_for_request(mine["request_id"])
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0].attempt_no, 1)
@@ -530,6 +530,7 @@ class TestDuplicateExecutionRace(IsolationCase):
     async def test_retry_gets_a_new_execution_id_and_attempt_no(self):
         mine = await self.approved_plan(self.a)
         first = (await self.execute(self.a, mine)).json()
+        await self.decide(self.a, mine)                  # 승인은 한 번만 쓴다 — 다시 시도하려면 다시 승인
         second = (await self.execute(self.a, mine)).json()
         self.assertNotEqual(first["execution_id"], second["execution_id"])
         self.assertEqual([first["attempt_no"], second["attempt_no"]], [1, 2])
@@ -616,7 +617,8 @@ class TestPerExecutionCancel(IsolationCase):
         self.assertEqual(
             result["final"]["reason_code"], ReasonCode.EXEC_CANCELED.value
         )
-        # 전체 정지 요청은 남지 않는다 — 다음 실행이 막히지 않는다.
+        # 전체 정지 요청은 남지 않는다 — 다음 실행이 막히지 않는다(승인은 한 번만 쓰므로 다시 승인).
+        await self.decide(self.a, mine)
         follow_up = (await self.execute(self.a, mine)).json()
         self.assertTrue(follow_up["ok"])
         self.assertEqual(follow_up["attempt_no"], 2)

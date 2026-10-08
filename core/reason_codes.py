@@ -62,6 +62,8 @@ class ReasonCode(str, Enum):
     PLAN_UNKNOWN_FRAME = "plan.unknown_frame"
     PLAN_UNKNOWN_RESOURCE = "plan.unknown_resource"
     PLAN_SLOT_INCOMPLETE = "plan.slot_incomplete"
+    #: 명령 문장이 상한(server/api.MAX_UTTERANCE_CHARS)보다 길다 — 모델을 부르지 않고 거절한다(2026-10-08 리뷰 8번).
+    PLAN_INPUT_TOO_LONG = "plan.input_too_long"
     PLAN_AMBIGUOUS = "plan.ambiguous"
     PLAN_EXPIRED = "plan.expired"
     PLAN_HASH_MISMATCH = "plan.hash_mismatch"
@@ -144,6 +146,8 @@ class ReasonCode(str, Enum):
     #: 같은 session_id를 이미 다른 살아 있는 클라이언트가 쓰고 있다.
     #: 탭 복제처럼 sessionStorage가 복사된 경우가 여기 걸린다.
     SESSION_CLIENT_CONFLICT = "session.client_conflict"
+    #: HTTP 요청 본문·STT 프레임이 상한보다 크다 — 읽는 도중에 끊는다(2026-10-08 리뷰 8번).
+    SESSION_REQUEST_TOO_LARGE = "session.request_too_large"
     #: 세션의 클라이언트 등록이 없거나 다른 클라이언트의 것이다.
     SESSION_CLIENT_UNKNOWN = "session.client_unknown"
     # 로그인(구글, 등록 계정만 — 2026-10-06 결정). 위 세션(작업 묶음)과 다른 '사람' 확인이다.

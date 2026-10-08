@@ -1014,6 +1014,11 @@ def main() -> int:
             detail += (f" — 시뮬레이션 시연 상태가 셀에 남아 있다"
                        f" ({', '.join(sorted(left))}), --restore-only로"
                        " 되돌린 뒤 다시 시작한다")
+        if reason == ReasonCode.GEOMETRY_COLLISION and detail.startswith("안전 home 경로 "):
+            # 첫 경로(지금 자세 → 안전 home)에서 닿는다 — 팔이 home이 아닌 자세(예: 그리퍼 닫기 중 정지 → 복구 뒤
+            # 집기 자세)에 남아 있다(2026-10-09 격리 셀 재현). 화면이 그대로 보여 줄 다음 조치를 함께 남긴다.
+            preflight_extra["next_action"] = ("로봇이 안전 home 자세가 아니라 출발 경로가 자재와 닿습니다 — "
+                                              "'로봇을 홈 위치로 이동해'로 먼저 홈에 보낸 뒤 다시 요청해 주세요")
         result = not_started(
             scenario=scenario, object_id=object_rid, support_id=support_rid,
             target_id=target_rid, reason=reason, detail=detail,
@@ -2159,6 +2164,8 @@ def run_resume(ctx: ResumeContext, *, checkpoint_id: str,
         model, checkpoint_id=checkpoint_id, outcome=outcome_name,
         final_pose_m=final_pose, reasons=reasons, new_checkpoint=new_checkpoint)
     return {**report, "status": status, "reasons": reasons,
+            # 정지 확인 여부(2026-10-08 리뷰 12번): 정지가 없었으면 None, 있었으면 실제 확인 결과.
+            "stop_confirmed": (bool(stop_info.get("confirmed")) if stop_requested else None),
             "robot_commands_sent": len(ctx.commands),
             "commands": list(ctx.commands), "fixture_rebound": rebound,
             "detached": detached, "stage_records": stage_records,

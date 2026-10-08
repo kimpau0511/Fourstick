@@ -61,6 +61,10 @@ class FakeApi:
         self.on_execute = None          # (n, intent) -> 결과 dict 또는 None(성공)
         self.intents = {}
 
+    def stop_latched(self):
+        with self._flag_lock:
+            return self._stop_requested
+
     def require_session(self, session_id):
         if session_id != "sess":
             from server.api import ApiError
@@ -331,3 +335,64 @@ class RepeatRunsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class ResumeOutcomeTest(unittest.TestCase):
+    """2026-10-08 리뷰 12번: 반복 재개 중 전체 정지로 끝나면 stopped로 남기고 실제 정지 확인 여부를 보존한다.
+    일반 실패를 정지로 바꾸지 않는다."""
+
+    setUp = RepeatRunsTest.setUp
+    make = RepeatRunsTest.make
+    start = RepeatRunsTest.start
+
+    def resume_with_report(self, report, exit_code):
+        world = self.world
+
+        class ResumeJobs(FakeJobs):
+            def status(self):
+                out = super().status()
+                out["state"]["checkpoint"] = {"model": "material_a", "checkpoint_id": "cp1"}
+                return out
+
+            def reserve_goal(self, goal, owner, reservation=None):
+                return True
+
+            def release_goal(self, goal):
+                return True
+
+            def start(self, action, model, checkpoint_id=None, goal_id=None):
+                return {"job_id": "simjob_resume"}
+
+            def job(self, job_id, console_lines=1):
+                return {"status": "finished", "exit_code": exit_code, "report": report}
+
+        self.runtime.sim_demo_jobs = ResumeJobs(world)
+
+        def pause_first(n, intent):
+            self.runs.pause(self.runs.view()["run_id"])
+            return {"ok": False, "interrupted": "exec.canceled", "execution_id": "e1", "final": {}}
+        self.api.on_execute = pause_first
+        self.start(["mat_a"], 1)
+        step = self.runs._run["steps"][self.runs._run["cursor"]]
+        self.runs._resume_then_loop(step)
+        return self.runs.view()
+
+    def test_stopped_and_confirmed(self):
+        run = self.resume_with_report({"status": "resume_stopped", "stop_confirmed": True, "reasons": []}, 1)
+        self.assertEqual(run["state"], "stopped", run)
+        self.assertEqual(run["history"][-1]["outcome"], "stopped")
+        self.assertIs(run["history"][-1]["stop_confirmed"], True)
+        self.assertIn("정지", run["reason"])
+        self.assertIsNone(self.cell.reservation())
+
+    def test_stopped_but_unconfirmed_keeps_that_fact(self):
+        run = self.resume_with_report({"status": "resume_stopped", "stop_confirmed": False,
+                                       "reasons": ["STOP이 확인되지 않았다(unconfirmed)"]}, 1)
+        self.assertEqual(run["state"], "stopped", run)
+        self.assertIs(run["history"][-1]["stop_confirmed"], False)
+        self.assertIn("확인되지 않", run["reason"])
+
+    def test_ordinary_failure_stays_failed(self):
+        run = self.resume_with_report({"status": "resume_failed", "reasons": ["목표 미도달"]}, 1)
+        self.assertEqual(run["state"], "failed", run)
+        self.assertEqual(run["history"][-1]["outcome"], "failed")

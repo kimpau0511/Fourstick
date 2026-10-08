@@ -25,6 +25,16 @@ FIXTURES = ROOT / "fixtures/workcell_eval"
 MANIFEST = ROOT / "config/workcell/active.json"
 STOP_KEYWORDS = tuple(json.loads(
     (ROOT / "examples/config/valid_stt_policy.json").read_text(encoding="utf-8"))["stop_keywords"])
+# 2026-10-08 리뷰 10번 정지 계약 변경(사용자 지시): 명확한 부정은 그 표현만으로 정지하지 않고, '멈추세요'는 정지다.
+# 평가셋의 stop_bypass는 옛 계약(정지 낱말이 있으면 무조건 정지)으로 적혀 있다 — 바뀐 것만 여기서 덮는다.
+STOP_SPEC_CHANGED = {
+    # 봉인 평가 문장은 시험 코드에 옮겨 적지 않는다(누설 검사) — id와 바뀐 이유만 둔다.
+    "dev_030": False,       # 명확한 부정('…하지 말고')
+    "sealed_032": False,    # 명확한 부정('… 말고')
+    "dev_032": True,        # '멈추' 어간 명령형
+    "sealed_033": True,     # 2026-10-09 '그만' + 멈춤 동사(정답 의도가 정지 — 모델을 거치지 않고 바로 정지)
+}
+# sealed2_028(명확한 부정 '… 없이')도 같은 이유로 바뀐다 — 이 시험이 읽지 않는 봉인 2차 자료라 여기 적지 않는다.
 
 
 def _catalog():
@@ -113,6 +123,12 @@ class TestDataset(unittest.TestCase):
                     for value in step.args.values():
                         self.assertIn(value, cell_ids, row.id)
 
+    def test_stop_spec_changes_are_only_the_listed_ones(self):
+        # 평가셋 파일(봉인 자료)은 고치지 않는다. 바뀐 정지 계약만 여기 명시한다.
+        _, dev, sealed = _sets()
+        ids = {r.id for r in dev + sealed}
+        self.assertTrue(set(STOP_SPEC_CHANGED) <= ids)
+
     def test_expected_resources_equal_catalog_extraction(self):
         """자원 추출은 결정적이다. 정답이 카탈로그와 어긋나면 평가셋 결함이다."""
         catalog = _catalog()
@@ -120,7 +136,8 @@ class TestDataset(unittest.TestCase):
         for row in dev + sealed:
             got = extract_slots(row.utterance, catalog, stop_keywords=STOP_KEYWORDS)
             self.assertEqual({m.resource_id for m in got.matches}, set(row.expect.resources), row.id)
-            self.assertEqual(got.stop_keyword_hit, row.expect.stop_bypass, row.id)
+            expected = STOP_SPEC_CHANGED.get(row.id, row.expect.stop_bypass)
+            self.assertEqual(got.stop_keyword_hit, expected, row.id)
 
     def test_sealed_set_not_in_dev_prompt_catalog_tests_or_ui(self):
         _, dev, sealed = _sets()

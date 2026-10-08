@@ -971,7 +971,7 @@ class SqliteRepository(Repository):
         "consistency_status", "consistency_reason_code", "note", "session_id",
         "robot_id", "profile_id", "profile_version",
         "policy_id", "policy_version", "snapshot_id", "snapshot_version",
-        "snapshot_hash", "validation_run_id",
+        "snapshot_hash", "validation_run_id", "environment_session",
     )
 
     @staticmethod
@@ -984,7 +984,7 @@ class SqliteRepository(Repository):
             r.note, r.session_id,
             r.robot_id, r.profile_id, r.profile_version,
             r.policy_id, r.policy_version, r.snapshot_id, r.snapshot_version,
-            r.snapshot_hash, r.validation_run_id,
+            r.snapshot_hash, r.validation_run_id, r.environment_session,
         )
 
     @staticmethod
@@ -1016,6 +1016,7 @@ class SqliteRepository(Repository):
                 snapshot_version=row["snapshot_version"],
                 snapshot_hash=row["snapshot_hash"],
                 validation_run_id=row["validation_run_id"],
+                environment_session=row["environment_session"],
             )
         except ValueError as exc:
             raise CorruptedRecord(
@@ -1046,6 +1047,25 @@ class SqliteRepository(Repository):
             raise IntegrityViolation(
                 ReasonCode.CONFIG_INVALID, f"승인 기록을 넣을 수 없다: {exc}"
             ) from exc
+
+    def claim_approval(self, approval_id: str, *, claimed_at: float, session_id: str | None) -> bool:
+        """승인을 실행 한 번에 쓴다고 표시한다(2026-10-08 리뷰 3번). 이미 쓴 승인이면 False — 동시 요청 중 하나만 True다."""
+        try:
+            with self._tx() as conn:
+                conn.execute("INSERT INTO approval_uses (approval_id, claimed_at, session_id) VALUES (?,?,?)",
+                             (approval_id, claimed_at, session_id))
+        except sqlite3.IntegrityError:
+            return False
+        return True
+
+    def approval_used(self, approval_id: str) -> bool:
+        return self._conn.execute("SELECT 1 FROM approval_uses WHERE approval_id = ?",
+                                  (approval_id,)).fetchone() is not None
+
+    def link_approval_execution(self, approval_id: str, execution_id: str) -> None:
+        with self._tx() as conn:
+            conn.execute("UPDATE approval_uses SET execution_id = ? WHERE approval_id = ? AND execution_id IS NULL",
+                         (execution_id, approval_id))
 
     def get_approval(self, approval_id: str) -> ApprovalRecord:
         return self._approval_from_row(

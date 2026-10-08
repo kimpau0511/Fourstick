@@ -92,6 +92,62 @@ class RecordTest(unittest.TestCase):
                 self.assertEqual(sim_fixture.read_joint_record()["material_b"]["state"],
                                  "detached" if want else "unknown")
 
+    def test_no_notice_is_settled_by_observing_the_joint(self):
+        """2026-10-09 격리 셀: 이미 떨어진 관절에 보낸 detach는 알림이 없다. 월드 상태에 그 자재의 붙임 관절이
+        없을 때만 떨어짐으로 기록하고, 붙어 있거나 관측하지 못하면 'unknown'(실패) 그대로다."""
+        import tempfile
+        from unittest import mock
+
+        from robots.fr3_gazebo import joint_observation
+
+        for observed, want in ((set(), True), ({"material_b"}, False), (None, False)):
+            with self.subTest(observed=observed), tempfile.TemporaryDirectory() as tmp, \
+                    mock.patch.dict("os.environ", {"FORSTICK2_WORKCELL_LOG_DIR": tmp}), \
+                    mock.patch.object(joint_observation, "observe_attached_isolated",
+                                      lambda world, partition, **kw: (observed, "시험 관측")):
+                fx = fixture("joint")
+                fx._subscribe_joint_state = lambda model: None
+                fx.joint_system_loaded = lambda model: True
+                fx._publish_empty = lambda topic: None
+                fx._wait_joint_state = lambda model, want_state, since, **kw: False
+                ok, _ = fx._joint_detach("material_b")
+                self.assertEqual(ok, want)
+                self.assertEqual(sim_fixture.read_joint_record()["material_b"]["state"],
+                                 "detached" if want else "unknown")
+
+    def test_attached_models_maps_child_links_to_models(self):
+        from robots.fr3_gazebo.joint_observation import attached_models
+
+        owner = {95: "fr3wms", 60: "material_a", 68: "material_c"}
+        self.assertEqual(attached_models([b"95 60 fixed"], owner), {"material_a"})
+        self.assertEqual(attached_models([], owner), set())
+        self.assertEqual(attached_models(["95 7 fixed"], owner), {"?7"})      # 모르는 링크도 숨기지 않는다
+
+    def test_isolated_observation_reads_the_child_process_answer(self):
+        """구독 중인 프로세스에서는 서비스 응답이 오지 않는다 — 새 프로세스의 한 줄 JSON을 읽는다. 실패는 None(모름)."""
+        from types import SimpleNamespace
+
+        from robots.fr3_gazebo.joint_observation import observe_attached_isolated
+
+        seen = {}
+
+        def runner(argv, **kw):
+            seen.update(argv=argv, env=kw["env"])
+            return SimpleNamespace(returncode=0, stdout='{"attached": ["material_a"], "detail": "붙임 관절 1개"}\n', stderr="")
+        got = observe_attached_isolated("w", "part_x", runner=runner)
+        self.assertEqual(got, ({"material_a"}, "붙임 관절 1개"))
+        self.assertEqual(seen["env"]["GZ_PARTITION"], "part_x")
+        self.assertEqual(seen["argv"][-2:], ["robots.fr3_gazebo.joint_observation", "w"])
+        none = lambda argv, **kw: SimpleNamespace(returncode=3, stdout='{"attached": null, "detail": "월드 상태 조회 실패"}', stderr="")
+        self.assertEqual(observe_attached_isolated("w", "p", runner=none)[0], None)
+        broken = lambda argv, **kw: SimpleNamespace(returncode=1, stdout="", stderr="ImportError")
+        self.assertIsNone(observe_attached_isolated("w", "p", runner=broken)[0])
+
+        def slow(argv, **kw):
+            import subprocess
+            raise subprocess.TimeoutExpired(argv, kw["timeout"])
+        self.assertIsNone(observe_attached_isolated("w", "p", runner=slow)[0])
+
     def test_confirmed_state_is_persisted_across_processes(self):
         with tempfile.TemporaryDirectory() as tmp, \
                 mock.patch.dict(os.environ, {"FORSTICK2_WORKCELL_LOG_DIR": tmp}):
