@@ -169,7 +169,7 @@ export function useSimCommand() {
   }, [patch, pollJob, addEvent]);
 
   /** 확인 카드의 버튼. confirm일 때만 작업(또는 고정 목표)이 시작된다. */
-  const answerOnce = useCallback(async (action) => {
+  const answer = useCallback(async (action) => {
     const pending = state.pending;
     if (!pending) return;
     const id = currentId.current;
@@ -207,13 +207,6 @@ export function useSimCommand() {
     patch({ result: res.payload });
     if (res.payload.job) pollJob(res.payload.job.job_id, id);
   }, [state.pending, patch, pollJob, pollGoal, addEvent]);
-  // 승인·취소는 한 번만 — 음성 승인과 버튼이 겹쳐도 응답이 올 때까지 다음 요청을 보내지 않는다(두 번 실행 방지).
-  const answering = useRef(false);
-  const answer = useCallback(async (action) => {
-    if (answering.current) return false;
-    answering.current = true;
-    try { await answerOnce(action); return true; } finally { answering.current = false; }
-  }, [answerOnce]);
 
   /** 작업 정지. 실행 중인 시연 작업(또는 목표)에 정지를 **요청**한다 — 확인 없이 즉시.
    *  프로세스를 죽이지 않는다. 시뮬레이터가 정지를 확인하면 체크포인트가 남는다. */

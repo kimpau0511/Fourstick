@@ -13,7 +13,6 @@ const SOURCES = [
   ['simState', '/v1/sim-view/state', FAST_MS],
   ['robots', '/v1/robots', SLOW_MS],
   ['config', '/v1/config', SLOW_MS],
-  ['robotName', '/v1/settings/robot-name', SLOW_MS], // 로봇 이름·호출어(로봇 관리에서 저장)
 ];
 
 const INITIAL = {
@@ -25,9 +24,6 @@ const INITIAL = {
 
 // 새 명령·승인을 잠그는 사유(없으면 null). 즉시 정지는 이 잠금을 타지 않는다.
 // 명령 패널과 시뮬레이션 창의 '다시 보내기'가 같은 기준을 쓴다.
-/** 저장된 로봇 이름(로봇 관리). 아직 못 받았으면 기본 '지니'. */
-export const robotNameOf = (server) => (server && server.robotName && server.robotName.name) || '지니';
-
 export function commandLock(server) {
   if (!server || server.conn.status !== 'ok') return '서버와 연결이 정상이 아니어서 명령을 보낼 수 없습니다';
   const { level, reasons } = server.robotStatus;
@@ -154,8 +150,8 @@ export function useServer() {
 
   // 작업이 끝나면(완료·실패·취소) 주기를 기다리지 않고 자재 상태를 다시 조회한다 — 버튼이 서버 기록을 따라가게.
   // robots: 즉시 정지·해제 뒤 정지 래치 상태(stop_diagnostics)를 주기(10초)를 기다리지 않고 다시 읽는다.
-  const refresh = useCallback(() => Promise.all(['simDemo', 'simState', 'robots', 'repeat', 'robotName'].map((key) => fetchers.current[key]?.())), []);
+  const refresh = useCallback(() => Promise.all(['simDemo', 'simState', 'robots', 'repeat'].map((key) => fetchers.current[key]?.())), []);
 
-  const { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, repeat, robotName, conn, alerts, robotStatus, refreshedAt } = state;
-  return { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, repeat, robotName, conn, alerts, robotStatus, refreshedAt, refresh };
+  const { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, repeat, conn, alerts, robotStatus, refreshedAt } = state;
+  return { health, config, robots, robotsFailing, simDemo, simDemoFailing, simState, repeat, conn, alerts, robotStatus, refreshedAt, refresh };
 }

@@ -61,18 +61,6 @@ export async function mockBackend(page, { command, confirm, jobs = [], overrides
   await page.route('**/v1/scene**', (route) => route.fulfill({ status: 503, json: { available: false, reason_code: 'config.missing', detail: 'QA: 서버 없음' } }));
   // 영상 스트림(웹소켓)도 실제 서버로 나가지 않게 바로 닫는다.
   await page.routeWebSocket(/\/v1\/(scene|sim-view)\/stream/, (ws) => ws.close());
-  // 로봇 이름·호출어(/v1/settings/robot-name) — 저장하면 이 페이지(새로고침 포함) 동안 유지된다. overrides.robotName으로 시작 값.
-  const nameStore = { name: overrides.robotName || '지니' };
-  await page.route('**/v1/settings/robot-name**', (route) => {
-    const req = route.request();
-    if (req.method() === 'POST') {
-      const name = String((req.postDataJSON() || {}).name || '').trim();
-      calls.push({ method: 'POST', path: '/v1/settings/robot-name', body: { name } });
-      if (!/^[가-힣]{2,4}$/.test(name)) return route.fulfill({ status: 400, json: { detail: '로봇 이름은 한글 2~4글자로 입력하세요(공백·영문·숫자 제외)' } });
-      nameStore.name = name;
-    }
-    return route.fulfill({ json: { robot_id: 'fr3', name: nameStore.name, wake_word: `${nameStore.name}야` } });
-  });
   let jobIndex = 0;
   await page.route((url) => url.pathname.startsWith('/v1/sim-demo'), async (route) => {
     const req = route.request();

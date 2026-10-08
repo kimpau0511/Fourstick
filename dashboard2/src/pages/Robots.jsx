@@ -4,7 +4,6 @@ import { useExpand } from '../components/useExpand.js';
 import Spinner from '../components/Spinner.jsx';
 import { LEVEL_LABELS } from '../server.js';
 import RobotConfig from './RobotConfig.jsx';
-import RobotNameCard from '../components/RobotNameCard.jsx';
 import './robots.css';
 
 // 화면 탭. 고른 탭은 주소(#/robots?tab=config)에 둔다 — 새로고침해도 같은 탭에 머문다.
@@ -36,8 +35,6 @@ export default function Robots({ server }) {
   }
   return <section>
     <h2>로봇 관리</h2>
-    {/* 로봇 이름·호출어(2026-10-07) — 대시보드 음성 명령의 호출어가 된다. */}
-    <RobotNameCard server={server} robotId={server.health?.robot?.robot_id} />
     <div className="page-tabs" role="tablist" aria-label="로봇 관리 화면">
       {VIEWS.map(([v, label]) => <button key={v} type="button" role="tab" id={`robots-tab-${v}`} aria-controls={`robots-view-${v}`}
         aria-selected={view === v} onClick={() => pick(v)}>{label}</button>)}
