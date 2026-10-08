@@ -17,6 +17,7 @@
 #     (safety_controller 제거만으로는 처리기 종류만 바뀌고 증상은 같았다 — 59ccd85 실행)
 #   JLT_Z(기본 1.0): 팔 생성 높이(m). 0이면 바닥에 붙임 — 0 자세에서 팔이 높이 0.14 m로 수평, 손목 끝 0.04 m라 바닥에 닿는다(5e3106a까지의 실행).
 #   JLT_STRIP_SOFT=1: 공식 URDF의 <safety_controller>(값 전부 0)를 사본에서 지운다(기본은 원본 그대로).
+#   JLT_GRAVITY=0: 월드 사본의 중력을 끈다(한계에서 잠김이 중력에 눌린 관절만인지 확인용).
 set -eo pipefail
 
 REPO="${1:?forstick 저장소 경로를 인자로 주세요}"
@@ -102,6 +103,22 @@ out = src.replace(key, key + "    enforce_command_limits: false\n")
 open(sys.argv[2], "w", encoding="utf-8").write(out)
 print("[비교] 명령 한계 강제: 끔(설정 사본에 enforce_command_limits: false)")
 PYYAML
+fi
+if [[ "${JLT_GRAVITY:-1}" == 0 ]]; then
+  # 한계에서 잠기는 관절이 중력에 눌린 쪽뿐인지 보려고 월드 사본의 중력을 끈다(원본 월드는 그대로).
+  WORLD_COPY="$LOG/fr3_cell_no_gravity.sdf"
+  python3 - "$WORLD" "$WORLD_COPY" "$WORLD_NAME" <<'PYGRAV'
+import sys
+src = open(sys.argv[1], encoding="utf-8").read()
+tag = f'<world name="{sys.argv[3]}">'
+if src.count(tag) != 1 or "<gravity>" in src:
+    sys.exit("[비교] 월드 파일 형식이 예상과 다르다 — 시험 중단")
+open(sys.argv[2], "w", encoding="utf-8").write(src.replace(tag, tag + "\n    <gravity>0 0 0</gravity>"))
+print("[비교] 중력: 끔(월드 사본에 <gravity>0 0 0</gravity>)")
+PYGRAV
+  WORLD="$WORLD_COPY"
+else
+  echo "[비교] 중력: 켬(원본 월드)"
 fi
 ARM_URDF="$FR3_URDF"
 if [[ "${JLT_STRIP_SOFT:-0}" != 1 ]]; then
