@@ -50,7 +50,6 @@ function RobotList({ server }) {
   const [selected, setSelected] = useState(null);
   const [tab, setTab] = useState(TABS[0]);
   const expand = useExpand();
-  const [open, setOpen] = useState(false); // 상세(개요·도구 장착 이력·프로파일 버전)는 버튼을 눌러야 펼친다
   const ids = Object.keys(robots?.robots || {});
   const id = ids.includes(selected) ? selected : ids[0];
   const profile = id ? robots.robots[id] : null;
@@ -60,7 +59,7 @@ function RobotList({ server }) {
   const op = isServerRobot ? operability(server) : NONE;
 
   return <>
-    {!ids.length ? <p className="muted">{!robots && server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p> : <div className="robots-split">
+    {!ids.length ? <p className="muted">{!robots && server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p> : <div className="robots-stack">
       <div className="card table robots-list">
         <table className="data-table" aria-label="로봇 목록">
           <thead><tr><th>로봇</th><th className="col-extra">모델</th><th className="col-extra">셀</th><th className="col-extra">현재 도구</th><th>운용 여부</th></tr></thead>
@@ -83,15 +82,16 @@ function RobotList({ server }) {
           })}</tbody>
         </table>
       </div>
+      {/* 상세는 목록 아래 전체 폭에 늘 펼쳐 둔다(2026-10-08 요청 — 로봇 1대라 좌우로 나누면 표는 비고 상세 칸은 좁았다).
+          위 목록에 있는 이름·모델·셀·도구·운용 여부는 되풀이하지 않는다. 목록에 없는 것만 둔다. */}
       <div className="card robots-detail" aria-label="로봇 상세">
-        {/* 왼쪽 목록에 있는 이름·모델·셀·도구·운용 여부는 되풀이하지 않는다. 목록에 없는 것만 둔다. */}
+        <h3>{roleName(skills)} 상세</h3>
         <div className="detail-fixed">
           <div><span>현재 상태</span><b>{isServerRobot ? robotStatus.label || LEVEL_LABELS.NO_DATA : NONE}</b></div>
           <div><span>지원 스킬</span><b>{skills?.join(', ') || NONE}</b></div>
           {op !== '운용 가능' && op !== NONE && <div className="wide"><span>운용 불가 사유</span><b className="warn">{op.replace('운용 불가 — ', '')}</b></div>}
         </div>
-        <button type="button" className="detail-toggle" aria-expanded={open} aria-controls="robot-detail" onClick={() => setOpen((v) => !v)}>{open ? '상세 닫기' : '상세'}</button>
-        {open && <div id="robot-detail" className="detail-more">
+        <div className="detail-more">
         <div className="detail-tabs" role="tablist">
           {TABS.map((t) => <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}</button>)}
         </div>
@@ -108,7 +108,7 @@ function RobotList({ server }) {
             <dt>설정 프로파일</dt><dd>{robot?.profile_id ? `${robot.profile_id} ${robot.profile_version || ''}` : NONE}</dd>
           </dl>}
         </div>
-        </div>}
+        </div>
       </div>
     </div>}
   </>;

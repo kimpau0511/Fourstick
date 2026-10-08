@@ -1,23 +1,23 @@
-.robots-split { display: flex; gap: 16px; align-items: flex-start; }
-.robots-list { flex: 1.6; min-width: 380px; } /* 좌측 목록이 기본 창 */
+/* 로봇 목록 탭: 목록 위, 상세 아래 전체 폭(2026-10-08 요청). */
+.robots-stack { display: flex; flex-direction: column; gap: 16px; }
 .robots-list .data-table td:first-child { white-space: nowrap; }
-.robots-detail { flex: 1; min-width: 0; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.robots-detail { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.robots-detail h3, .cfg-card h3 { margin: 0; font-size: 14px; font-weight: 700; }
 .robots-list .data-table tbody tr { cursor: pointer; }
 /* 선택 표시는 고를 게 있을 때(2대 이상)만 — 1대면 늘 선택이라 다른 표와 달리 줄이 회색으로만 보인다. */
 .robots-list .data-table tbody tr[aria-selected="true"]:not(:only-child) { background: var(--nav-active); }
-.detail-fixed { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.detail-fixed > div { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); font-size: 13px; }
+.detail-fixed { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.detail-fixed > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); font-size: 13px; }
 .detail-fixed span { color: var(--muted); font-size: 11px; }
 .detail-fixed b { font-weight: 600; }
 .detail-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
-.detail-tabs [role="tab"] { padding: 8px 12px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
+.detail-tabs [role="tab"] { padding: 8px 12px; white-space: nowrap; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
 .detail-tabs [role="tab"][aria-selected="true"] { border-bottom-color: var(--cyan); color: var(--white); font-weight: 600; }
 .detail-body { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-.detail-body dl { margin: 0; display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; }
+.detail-body dl { margin: 0; display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 8px 12px; }
 .detail-body dt { color: var(--muted); }
 .detail-body dd { margin: 0; overflow-wrap: anywhere; }
 .detail-fixed > .wide { grid-column: 1 / -1; }
-.detail-toggle { align-self: flex-start; padding: 6px 16px; border-radius: 12px; background: var(--panel-2); box-shadow: var(--btn); font-size: 13px; font-weight: 700; color: var(--cyan); }
 .detail-more { display: flex; flex-direction: column; gap: 14px; }
 
 /* 화면 탭(로봇 목록 / 구성 · 작업 셀) — 상세 탭과 같은 밑줄 모양 */
@@ -27,14 +27,25 @@
 
 /* 구성 · 작업 셀 탭 */
 .robot-config { display: flex; flex-direction: column; gap: 16px; }
+/* 두 카드는 카드 하나가 380px보다 좁아지면 위아래로 쌓는다 — 좁은 칸에서 값이 대부분 말줄임으로 가려졌다(1366 폭). */
+.robot-config .row3 { flex-wrap: wrap; }
+.robot-config .row3 > * { flex: 1 1 380px; }
 .cfg-card { display: flex; flex-direction: column; gap: 14px; padding: 18px; }
-.cfg-card h3 { font-size: 14px; font-weight: 700; }
 .cfg-kv { margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
-.cfg-kv > div { display: grid; grid-template-columns: 110px 1fr; gap: 12px; }
+.cfg-kv > div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
 .cfg-kv dt { color: var(--muted); }
-.cfg-kv dd { margin: 0; overflow-wrap: anywhere; }
+/* 긴 영문 id가 단어 중간에서 끊기지 않게 한 줄로 두고, 넘치면 말줄임 — 전체 값은 마우스를 올리면(title) 보인다. */
+.cfg-kv dd { margin: 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .cfg-label { margin-bottom: 6px; color: var(--muted); font-size: 12px; }
 .cfg-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.cfg-notice { padding: 8px 10px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); font-size: 13px; }
+.cfg-notice { padding: 8px 10px; word-break: keep-all; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); font-size: 13px; }
 .cfg-hint { font-size: 12px; }
 .robot-config .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+
+/* 이 두 탭의 표만 왼쪽 정렬 — 글자·id가 많은 표라 읽기 쉽게. 공용 .data-table(가운데 정렬)은 그대로 둔다. */
+.robots-list .data-table :is(th, td), .robot-config .data-table :is(th, td) { text-align: left; }
+/* 로봇 목록은 열이 짧아 카드가 좁아도(공용 기준 720px 미만) 모든 열을 보인다. 480px 미만에서만 행 펼침으로 줄인다. */
+@container (min-width: 480px) {
+  .robots-list .data-table .col-extra { display: table-cell; }
+  .robots-list .row-expand, .robots-list .row-detail { display: none; }
+}
