@@ -94,8 +94,8 @@ class StoreTest(unittest.TestCase):
 
     def test_only_matching_real_final_human(self):
         other = dict(KEY, model_name="small")
-        for r, i in ((result(key=other, rate_errors=0), 1), (result(source="synthetic", rate_errors=0), 2),
-                     (result(split="dev", rate_errors=0), 3), (result(purpose="functional", rate_errors=0), 4),
+        for r, i in ((result(key=other, rate_errors=0), 1), (result(split="dev", rate_errors=0), 3),
+                     (result(purpose="functional", rate_errors=0), 4),
                      (result(ref_source="tts_script", rate_errors=0), 5), (result(by=None, rate_errors=0), 6),
                      (result(norm="ko-cer-0", rate_errors=0), 7)):
             save_result({**r, "run_id": f"skip{i}"}, root=self.tmp)
@@ -105,6 +105,31 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(s["status"], "measured")
         self.assertEqual(s["label"], "음성 인식률 92.3%")
         self.assertEqual(s["note"], "글자 기준 평가 결과이며 현재 발화의 정확도를 뜻하지 않습니다.")
+
+    def synth(self, *, run_id, created, errors=1, n=10, split="final", noise=None, key=KEY, norm=NORMALIZATION_VERSION):
+        r = result(source="synthetic", split=split, purpose="functional", ref_source="tts_script", by=None,
+                   created=created, rate_errors=errors, n=n, key=key, norm=norm, dataset=f"synth-{run_id}")
+        r["cases"][0]["noise"] = noise
+        r["dataset"]["synth_engine"] = ["windows-sapi:Microsoft Heami Desktop"]
+        save_result({**r, "run_id": run_id}, root=self.tmp)
+
+    def test_synthetic_fallback_is_labelled_and_never_noisy_dev_or_other_model(self):
+        self.synth(run_id="noisy", created=5.0, errors=0, noise={"kind": "white", "snr_db": 10})
+        self.synth(run_id="dev", created=6.0, errors=0, split="dev")
+        self.synth(run_id="other", created=7.0, errors=0, key=dict(KEY, compute_type="int8"))
+        self.synth(run_id="oldnorm", created=8.0, errors=0, norm="ko-cer-0")
+        self.assertEqual(display_summary(KEY, root=self.tmp)["status"], "unmeasured")
+        self.synth(run_id="clean-old", created=1.0, errors=2, n=10)
+        self.synth(run_id="clean-new", created=2.0, errors=3, n=28)
+        s = display_summary(KEY, root=self.tmp)
+        self.assertEqual((s["status"], s["source"]), ("measured", "synthetic"))
+        self.assertEqual(s["label"], "음성 인식률 89.3%")          # 가장 최근 한 실행만(합치지 않음). 라벨은 그대로
+        self.assertIn("합성 음성", s["note"])
+        self.assertIn("실제 사용자 음성", s["note"])
+        # 실제 녹음 평가가 생기면 그쪽이 우선
+        save_result({**result(rate_errors=1, n=13, created=0.5), "run_id": "real"}, root=self.tmp)
+        s = display_summary(KEY, root=self.tmp)
+        self.assertEqual((s["source"], s["label"]), ("real", "음성 인식률 92.3%"))
 
     def test_latest_run_not_merged(self):
         save_result({**result(rate_errors=5, created=1.0), "run_id": "old"}, root=self.tmp)

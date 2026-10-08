@@ -47,3 +47,12 @@ test('[UI-RATE-03] 조회 실패·형식 이상이면 미측정', async ({ page 
   await page.goto('/');
   await expect(panel(page).getByTestId('recognition-rate')).toHaveText(/^음성 인식률 미측정/);
 });
+
+test('[UI-RATE-04] 합성 음성 평가 결과도 라벨은 그대로, 설명(title)에 합성 근거', async ({ page }) => {
+  const note = '합성 음성(windows-sapi:Microsoft Heami Desktop) 28문장, 글자 기준 평가 결과입니다. 실제 사용자 음성·현재 발화의 정확도가 아닙니다.';
+  await mockBackend(page, { overrides: { recognition: { status: 'measured', source: 'synthetic', rate_percent: 89.2, label: '음성 인식률 89.2%', note } } });
+  await page.goto('/');
+  const label = panel(page).getByTestId('recognition-rate');
+  await expect(label).toHaveText(/^음성 인식률 89\.2%/);
+  await expect(label).toHaveAttribute('title', note);
+});

@@ -16,13 +16,17 @@
   원본 STT 결과·용어 후보정 결과·정답·모델/설정 키·정규화 버전·자료 출처·사례별/종합 계산을 모두 담는다.
   purpose: official(실제 평가) | functional(기능·회귀 시험). 모의 표시용 숫자는 **저장하지 않는다**(화면 시험은 응답을 가짜로 바꾼다).
 
-화면 표시값(`display_summary`) — 아래를 **모두** 만족하는 가장 최근 실행 하나만 쓴다. 없으면 '미측정'.
+화면 표시값(`display_summary`) — 1순위: 아래를 **모두** 만족하는 가장 최근 실행 하나(실제 음성).
   - 현재 모델·설정 키와 같다(모델·프로필·설정 버전·장치·연산 형식·언어·VAD 임계값)
   - 정규화 버전이 같다
   - purpose=official, source_type=real, split=final
   - 평가된 사례의 정답이 모두 human이고 확인자가 있다
   - 평가된 사례가 1개 이상
   여러 실행·자료를 합치지 않는다(서로 다른 자료·조건의 결과를 섞지 않는다).
+  2순위(2026-10-08 사용자 결정): 실제 음성 결과가 없으면 **합성 음성** 결과 하나 — 같은 모델·설정·정규화, final 자료,
+  잡음 없는 사례만, 가장 최근 실행. 라벨은 '음성 인식률 N%' 그대로(사용자 결정), 합성이라는 사실·합성 엔진·문장 수는
+  설명(note)과 source='synthetic'에 남긴다.
+  둘 다 없으면 '미측정'.
 """
 
 from __future__ import annotations
@@ -155,17 +159,33 @@ def official_real(result: Mapping[str, Any], key: Mapping[str, Any]) -> tuple[bo
     return True, ""
 
 
+def synthetic_clean_final(result: Mapping[str, Any], key: Mapping[str, Any]) -> bool:
+    """2순위 표시 후보: 같은 모델·설정·정규화의 합성 음성 final 자료, 잡음 없는 사례만, 평가된 사례 있음."""
+    ds = result.get("dataset") or {}
+    cases = result.get("cases") or ()
+    return (dict(result.get("model_key") or {}) == dict(key)
+            and result.get("normalization_version") == NORMALIZATION_VERSION
+            and ds.get("source_type") == "synthetic" and ds.get("split") == "final"
+            and bool(cases) and not any(c.get("noise") for c in cases)
+            and any((c.get("raw") or {}).get("status") == MEASURED for c in cases))
+
+
 def display_summary(key: Mapping[str, Any], *, root: Path | None = None) -> dict:
     """화면 표시값. 현재 모델·설정의 실제 녹음·최종 평가가 없으면 unmeasured."""
-    best = None
+    best = synth = None
     skipped: dict[str, int] = {}
     for path, d in iter_results(root):
         ok, why = official_real(d, key)
         if not ok:
             skipped[why] = skipped.get(why, 0) + 1
+            if synthetic_clean_final(d, key) and (synth is None or (d.get("created_at") or 0) > (synth[1].get("created_at") or 0)):
+                synth = (path, d)
             continue
         if best is None or (d.get("created_at") or 0) > (best[1].get("created_at") or 0):
             best = (path, d)
+    kind = "real"
+    if best is None and synth is not None:
+        best, kind = synth, "synthetic"
     base = {"model_key": dict(key), "normalization_version": NORMALIZATION_VERSION, "note": DISPLAY_NOTE,
             "skipped_results": skipped}
     if best is None:
@@ -174,7 +194,13 @@ def display_summary(key: Mapping[str, Any], *, root: Path | None = None) -> dict
     path, d = best
     agg = d["aggregate_raw"]
     rate = agg.get("rate_percent")
-    return {**base, "status": "measured", "rate_percent": rate, "label": f"음성 인식률 {rate:.1f}%",
+    # 라벨은 실제·합성 모두 '음성 인식률 N%'(2026-10-08 사용자 결정). 합성이면 설명(마우스를 올리면 보임)과 source에 밝힌다.
+    label = f"음성 인식률 {rate:.1f}%"
+    if kind == "synthetic":
+        engines = ", ".join(d["dataset"].get("synth_engine") or ()) or "합성 엔진 미상"
+        base["note"] = (f"합성 음성({engines}) {agg.get('cases_measured')}문장, 글자 기준 평가 결과입니다."
+                        " 실제 사용자 음성·현재 발화의 정확도가 아닙니다. 실제 녹음 평가가 생기면 그 결과로 바뀝니다.")
+    return {**base, "status": "measured", "source": kind, "rate_percent": rate, "label": label,
             "basis": {"run_id": d.get("run_id"), "created_at": d.get("created_at"), "dataset_id": d["dataset"]["id"],
                       "cases_measured": agg.get("cases_measured"), "reference_chars": agg.get("reference_chars"),
                       "errors": agg.get("errors"), "substitutions": agg.get("substitutions"),
