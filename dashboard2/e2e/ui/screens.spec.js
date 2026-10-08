@@ -140,7 +140,7 @@ test.describe('비상 정지·용어', () => {
 });
 
 test.describe('로봇 관리', () => {
-  test('[UI-ROBOTS-01][⑬-1] 목록 + 선택 시 우측 상세 패널 구조', async ({ page }) => {
+  test('[UI-ROBOTS-01][⑬-1] 목록 + 선택한 로봇의 상세 패널 구조', async ({ page }) => {
     await page.goto('/#/robots');
     await expect(page.getByRole('table', { name: /로봇/ }).or(page.getByRole('list', { name: /로봇/ }))).toBeVisible();
   });
@@ -163,14 +163,15 @@ test.describe('로봇 관리', () => {
 
   test('[UI-ROBOTS-03][⑬-2] 상세 탭 3개: 개요·도구 장착 이력·프로파일 버전', async ({ page }) => {
     await page.goto('/#/robots');
-    // 2026-10-02 사용자 결정: 상세 탭은 우측 창의 '상세' 버튼을 눌러야 펼친다.
-    const more = page.getByRole('button', { name: '상세', exact: true });
-    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    // 2026-10-08 사용자 결정: 상세는 목록 아래 전체 폭에 늘 펼쳐 둔다('상세' 버튼 없음 — 2026-10-02 결정을 바꿈).
+    await expect(page.getByRole('button', { name: '상세', exact: true })).toHaveCount(0);
     // 화면 탭(로봇 목록 / 구성 · 작업 셀)은 늘 보이므로 상세 패널 안의 탭만 센다(2026-10-06).
     const detail = page.getByLabel('로봇 상세');
-    await expect(detail.getByRole('tab')).toHaveCount(0);
-    await more.click();
     for (const tab of ['개요', '도구 장착 이력', '프로파일 버전']) await expect(detail.getByRole('tab', { name: tab })).toBeVisible();
+    // 상세는 목록 아래에 있다.
+    const listBox = await page.getByRole('table', { name: '로봇 목록' }).boundingBox();
+    const detailBox = await detail.boundingBox();
+    expect(detailBox.y).toBeGreaterThan(listBox.y + listBox.height);
   });
   test('[UI-ROBOTS-04][2026-10-02 결정] 우측 창은 좌측 목록과 겹치는 항목(이름·셀·도구·운용 가능 여부)을 되풀이하지 않는다', async ({ page }) => {
     await page.goto('/#/robots');

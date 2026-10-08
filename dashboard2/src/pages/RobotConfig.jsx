@@ -1,3 +1,6 @@
+import { Fragment } from 'react';
+import { DetailRow, ExpandButton } from '../components/ExpandRow.jsx';
+import { useExpand } from '../components/useExpand.js';
 import Spinner from '../components/Spinner.jsx';
 
 // 로봇 관리 > 구성 · 작업 셀 탭. 옛 웹(html/static/js/render.js)의 「로봇 및 정책」·「작업 셀 자원」 카드를 옮겼다.
@@ -30,12 +33,14 @@ function resourceRows(workcell) {
     .sort((a, b) => (a.kind === b.kind ? a.id.localeCompare(b.id) : a.kind === '위치' ? -1 : 1));
 }
 
+// 값은 한 줄 말줄임(robots.css .cfg-kv dd) — 글자 값은 title로 전체를 보인다.
 function KV({ rows }) {
-  return <dl className="cfg-kv">{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>;
+  return <dl className="cfg-kv">{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd title={typeof v === 'string' ? v : undefined}>{v}</dd></div>)}</dl>;
 }
 
 export default function RobotConfig({ server }) {
   const { config } = server;
+  const expand = useExpand();
   if (!config) {
     return <p className="muted">{server.conn.status === 'connecting' ? <><Spinner size={14} label="불러오는 중" /> 불러오는 중</> : NONE}</p>;
   }
@@ -78,10 +83,14 @@ export default function RobotConfig({ server }) {
     <div className="card table">
       <table className="data-table" aria-label="작업 셀 자원">
         <thead><tr><th>구분</th><th>이름</th><th>자원 id</th><th className="col-extra">Gazebo 모델</th><th className="col-extra">프레임</th><th className="col-extra">접근 자세</th></tr></thead>
-        <tbody>{resources.length ? resources.map((r) => <tr key={r.id}>
-          <td>{r.kind}</td><td>{r.korean}</td><td className="mono">{r.id}</td>
-          <td className="col-extra mono">{r.model}</td><td className="col-extra mono">{r.frame}</td><td className="col-extra mono">{r.movePose}</td>
-        </tr>) : <tr><td colSpan={6} className="muted">{registered ? NONE : '작업 셀에 연결되지 않았습니다'}</td></tr>}</tbody>
+        {/* 카드가 좁으면 숨는 열(col-extra)은 행 펼침으로 본다 — 다른 표와 같은 방식 */}
+        <tbody>{resources.length ? resources.map((r) => <Fragment key={r.id}>
+          <tr>
+            <td><ExpandButton open={expand.isOpen(r.id)} onToggle={() => expand.toggle(r.id)} />{r.kind}</td><td>{r.korean}</td><td className="mono">{r.id}</td>
+            <td className="col-extra mono">{r.model}</td><td className="col-extra mono">{r.frame}</td><td className="col-extra mono">{r.movePose}</td>
+          </tr>
+          <DetailRow open={expand.isOpen(r.id)} span={3} items={[['Gazebo 모델', r.model], ['프레임', r.frame], ['접근 자세', r.movePose]]} />
+        </Fragment>) : <tr><td colSpan={6} className="muted">{registered ? NONE : '작업 셀에 연결되지 않았습니다'}</td></tr>}</tbody>
       </table>
     </div>
     <p className="muted cfg-hint">좌표는 화면에 두지 않습니다. 자세는 config/workcell의 검증된 값에서만 옵니다.</p>
