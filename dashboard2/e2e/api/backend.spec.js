@@ -28,6 +28,19 @@ async function command(utterance) {
   return { status: res.status(), body, raw: JSON.stringify(body) };
 }
 
+// 일반 모드(FORSTICK2_SIM_DEMO_COMMAND=0): 시연 명령 입구는 전부 PASS_THROUGH이고 실제 명령 경로는 /v1/plan이다.
+// 세션은 서버가 만든다(POST /v1/sessions). 계획 생성은 실행하지 않는다 — /v1/decision·/v1/execute는 보내지 않는다.
+async function plan(utterance) {
+  const session = await (await api.post('/v1/sessions', { data: { origin: 'qa-api' } })).json();
+  try {
+    const res = await api.post('/v1/plan', { data: { session_id: session.session_id, utterance } });
+    return { status: res.status(), body: await res.json() };
+  } finally {
+    await api.delete(`/v1/sessions/${session.session_id}`);
+  }
+}
+const mode = (m) => test.info().annotations.push({ type: '시험 모드', description: m });
+
 test('[API-01][SFR-011·DEV-10] /health: DB 사용 가능, 로봇은 시뮬레이션', async () => {
   const h = await (await api.get('/health')).json();
   expect(h.status).toBe('ok');
@@ -66,6 +79,18 @@ test('[API-04][SFR-010] 시연 명령이 아닌 문장: 판정 + 사람이 읽�
 
 test('[API-05][SFR-003·⑥-2] 대상이 모호한 문장은 되묻는다(작업 없음)', async () => {
   const { body } = await command('그거 옮겨줘');
+  if (body.decision === 'PASS_THROUGH') {
+    // 일반 모드: /v1/plan이 되묻는다(ASK, ok=false, 계획 없음).
+    mode('일반 모드(/v1/plan)');
+    const r = await plan('그거 옮겨줘');
+    expect(r.body.decision).toBe('ASK');
+    expect(r.body.ok).toBe(false);
+    expect(String(r.body.clarification || '')).not.toBe('');
+    expect(r.body.plan ?? null).toBeNull();
+    expect(r.body.job ?? null).toBeNull();
+    return;
+  }
+  mode('시연 명령(/v1/sim-demo/command)');
   expect(['ASK', 'CONFIRM', 'CONFIRM_GOAL']).toContain(body.decision);
   if (body.decision === 'ASK') expect(String(body.reason || '')).not.toBe('');
   expect(body.job ?? null).toBeNull();
@@ -76,6 +101,22 @@ test('[API-06][DEV-11·⑥-4] 이송 명령은 바로 실행하지 않고 확인
   const body = await res.json();
   test.info().annotations.push({ type: '판정', description: `${body.decision} · ${body.reason || body.confirmation?.summary || ''}` });
   expect(body.job ?? null).toBeNull();
+  if (body.decision === 'PASS_THROUGH') {
+    // 일반 모드: 계획만 만들어지고 승인(/v1/decision) 없이는 실행되지 않는다. 승인·실행은 보내지 않으므로 "승인 대기"까지만 확인한다.
+    mode('일반 모드(/v1/plan)');
+    const r = await plan('A 자재를 컨베이어로 옮겨줘');
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.plan?.steps?.length).toBeGreaterThan(0);
+    expect(r.body.plan.ttl_sec).toBeGreaterThan(0);
+    expect(r.body.validation?.decision).toBe('allow'); // 승인 대기(실행 가능한 계획일 뿐 실행 기록 없음)
+    expect(r.body.executable).toBe(true);
+    expect(r.body.job ?? null).toBeNull();
+    expect(r.body.execution ?? null).toBeNull();
+    expect(r.body.execution_id ?? null).toBeNull();
+    return;
+  }
+  mode('시연 명령(/v1/sim-demo/command)');
   if (!['CONFIRM', 'CONFIRM_GOAL'].includes(body.decision)) {
     // 지금 자재 상태 때문에 BLOCK/ASK일 수 있다 — 그래도 작업이 생기지 않았으면 이 요구(바로 실행 안 함)는 지킨 것이다.
     expect(['ASK', 'BLOCK', 'NOOP']).toContain(body.decision);
