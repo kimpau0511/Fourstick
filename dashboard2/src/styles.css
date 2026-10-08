@@ -29,6 +29,9 @@
   --info-subtle: rgba(21, 94, 117, .12);
   /* Elevation/Raised · Inset · Button/Default */
   --raised: -8px -8px 16px rgba(255, 255, 255, .7), 8px 8px 16px rgba(163, 177, 198, .5), inset 0 1px 0 rgba(255, 255, 255, .45);
+  /* 카드류(카드·명령 패널·알림·시뮬레이션 창)만 네 변 모두 같은 음영(2026-10-08 요청 — 위·왼쪽은 흰 빛이라 음영이 없어 보였다).
+     --raised는 메뉴 선택·서랍·위젯 스위치가 그대로 쓴다. */
+  --card-raised: -8px -8px 16px rgba(163, 177, 198, .5), 8px 8px 16px rgba(163, 177, 198, .5), inset 0 1px 0 rgba(255, 255, 255, .45);
   --inset: inset -3px -3px 6px rgba(255, 255, 255, .7), inset 3px 3px 6px rgba(163, 177, 198, .5);
   --btn: -3px -3px 7px rgba(255, 255, 255, .72), 3px 3px 7px rgba(255, 255, 255, .72), inset 0 1px 1px rgba(255, 255, 255, .28);
   --glass-bg: rgba(255, 255, 255, .35);   /* 명령 패널 배경 */
@@ -89,7 +92,7 @@ small { display: block; }
 section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .row3 { display: flex; gap: 16px; }
 .row3 > * { flex: 1; min-width: 0; }
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--raised); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 20px; box-shadow: var(--card-raised); }
 .tag { padding: 2px 6px; border-radius: 10px; font-size: 12px; font-weight: 600; font-style: normal; white-space: nowrap; }
 .tag.ok { background: var(--ok-subtle); color: var(--green); }
 .tag.warn { background: var(--warn-subtle); color: var(--amber); }
@@ -130,7 +133,7 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .note { font-size: 12px; }
 
 /* ── 통합 작업 명령 패널 ── */
-.command { display: flex; flex-direction: column; gap: 16px; padding: 20px; background: var(--glass-bg); backdrop-filter: blur(6px); border: 2px solid var(--accent-border); border-radius: 24px; box-shadow: var(--raised); }
+.command { display: flex; flex-direction: column; gap: 16px; padding: 20px; background: var(--glass-bg); backdrop-filter: blur(6px); border: 2px solid var(--accent-border); border-radius: 24px; box-shadow: var(--card-raised); }
 .command-head { display: flex; align-items: center; justify-content: space-between; }
 .command-head span { display: flex; gap: 8px; align-items: center; font-size: 15px; font-weight: 700; }
 .command-head small { color: var(--muted-2); font-size: 12px; }
@@ -161,7 +164,7 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .alerts-head h2 { margin: 0; }
 .alerts-head span { color: var(--muted); font-size: 12px; }
 .alerts { display: flex; flex-direction: column; gap: 10px; }
-.alert { display: flex; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: var(--raised); }
+.alert { display: flex; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: var(--card-raised); }
 .alert.danger { border-color: var(--danger-border); }
 .alert > i { width: 4px; height: 36px; flex: none; border-radius: 3px; }
 .alert.danger > i { background: var(--red); }
@@ -178,7 +181,7 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 /* ── 시뮬레이션 오버레이(C안) ── */
 /* 스크림은 헤더 아래부터 덮는다 — 헤더의 즉시 정지는 항상 누를 수 있어야 한다(피그마 메모). */
 .scrim { position: fixed; inset: 64px 0 0; z-index: 20; display: grid; place-items: center; padding: 24px; background: var(--scrim); }
-.sim-card { container-type: inline-size; width: min(1080px, 100%); max-height: calc(100vh - 112px); overflow: auto; display: flex; flex-direction: column; gap: 20px; padding: 28px 32px; background: var(--panel); border: 2px solid var(--accent-border); border-radius: 24px; box-shadow: var(--raised); }
+.sim-card { container-type: inline-size; width: min(1080px, 100%); max-height: calc(100vh - 112px); overflow: auto; display: flex; flex-direction: column; gap: 20px; padding: 28px 32px; background: var(--panel); border: 2px solid var(--accent-border); border-radius: 24px; box-shadow: var(--card-raised); }
 .sim-card.stopping, .sim-card.danger { border-color: var(--danger-border); }
 .sim-head { display: flex; gap: 12px; align-items: center; }
 .sim-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
