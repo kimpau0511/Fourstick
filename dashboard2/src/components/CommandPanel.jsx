@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RESULT_LABELS } from '../simCommand.js';
 import { commandLock } from '../server.js';
 import { useVoice } from '../voice.js';
-import { useRecognitionRate } from '../recognitionRate.js';
 import { simAlertOf } from '../simPanels.js';
 import RepeatPanel from './RepeatPanel.jsx';
 import SimAlert from './SimAlert.jsx';
@@ -67,14 +66,17 @@ function materialSkills(server) {
 // 로봇 이름은 역할 우선(이송 가능하면 "이송 로봇"), 모델·id는 title로 보조.
 const robotName = (id, profile) => ((profile.supported_skills || []).some((k) => k === 'pick' || k === 'place') ? '이송 로봇' : id);
 
-// 음성 인식률(글자 기준 평가 결과) — 입력칸 아래 왼쪽, 보내기 버튼 왼쪽. 현재 발화의 점수가 아니다.
-function RecognitionRate({ rate }) {
-  const measured = rate.status === 'measured';
-  const detail = [rate.note, !measured && rate.reason].filter(Boolean).join(' ');
-  return <span className={`cmd-rate${measured ? '' : ' unmeasured'}`} title={detail} aria-describedby="cmd-rate-note" data-testid="recognition-rate">
-    {rate.label}
-    <span id="cmd-rate-note" className="sr-only">{detail}</span>
-  </span>;
+// 음성 인식 신뢰도 — STT 엔진이 준 점수(세그먼트 avg_logprob의 exp를 길이 가중 평균, 0~1)를 그대로 %로.
+// 보정된 정답 확률이 아니다. 중간 결과는 최근 window 구간 전사의 점수다. 없는 점수는 만들지 않는다:
+// 말하는 중 점수가 없으면 '인식 중…', 끝난 뒤 값이 없거나 0~1 밖이면 '확인 불가'. 계획·안전 검증·실행 승인에 쓰지 않는다.
+function validScore(v) {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1;
+}
+function SttConfidence({ score }) {
+  const ok = validScore(score.value);
+  const label = ok ? `음성 인식 신뢰도 ${Math.round(score.value * 100)}%`
+    : score.kind === 'partial' ? '인식 중…' : '음성 인식 신뢰도 확인 불가';
+  return <span className={`cmd-rate${ok ? '' : ' unmeasured'}`} data-testid="stt-confidence" data-kind={score.kind} role="status">{label}</span>;
 }
 
 // 입력칸 안 마이크 버튼. 듣는 동안은 음성 파형(막대 3개), 연결·확정 중에는 스피너를 보인다.
@@ -97,7 +99,11 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   // 음성 확정 결과(2026-10-08): 바로 보내지 않고 입력칸에 넣는다. 사용자가 확인·수정한 뒤 보내기를 누른다.
   // { text: STT 확정 문장, rawText, confidence, requestId } — 보낼 때 고쳤는지(edited)를 함께 보낸다.
   const [sttDraft, setSttDraft] = useState(null);
-  const recognition = useRecognitionRate();
+  // 음성 인식 신뢰도(2026-10-08): 발화 인식이 끝나면 STT가 준 점수를 바로 보인다. 모델 추정치이지 정확도가 아니다.
+  // { value: 0~1 또는 null, kind: 'final' | 'clarify' } — 새 녹음을 시작하면 지운다.
+  const [sttScore, setSttScore] = useState(null);
+  const sttDraftRef = useRef(null);
+  useEffect(() => { sttDraftRef.current = sttDraft; }, [sttDraft]);
   const [picked, setPicked] = useState(null);
   const robots = Object.entries((server && server.robots && server.robots.robots) || {})
     .map(([id, profile]) => ({ id, name: robotName(id, profile), title: profile.profile_id || id }));
@@ -121,9 +127,20 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     onFinal: (utterance, stt) => {
       if (phase !== 'idle' && phase !== 'ask') return;
       setText(utterance);
-      setSttDraft({ text: utterance, rawText: stt && stt.rawText, confidence: stt && stt.confidence, requestId: stt && stt.requestId });
+      // 새 녹음 = 새 발화(새 id). 이전 발화의 점수를 남기지 않는다.
+      const id = `utt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      setSttDraft({ id, text: utterance, rawText: stt && stt.rawText, confidence: stt && stt.confidence, requestId: stt && stt.requestId,
+        sessionId: stt && stt.sessionId, persisted: stt && stt.persisted });
+      setSttScore({ value: stt ? stt.confidence : null, kind: 'final' });
       const box = document.getElementById('command-input');
       if (box) box.focus();
+    },
+    // 신뢰도가 기준 미만이라 다시 말해 달라고 할 때도 그 점수를 보인다(입력칸에는 넣지 않는다).
+    onClarify: (info) => setSttScore({ value: info ? info.confidence : null, kind: 'clarify' }),
+    // 새 녹음 시작: 이전 음성 결과(입력칸 문장·점수)를 지운다. 사용자가 직접 친 문장(음성 결과가 아닌 것)은 그대로 둔다.
+    onStart: () => {
+      setSttScore(null);
+      if (sttDraftRef.current) { setText(''); setSttDraft(null); }
     },
   });
   const { result, pending, job, goal } = sim;
@@ -155,12 +172,16 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const percent = steps.length ? Math.round((steps.filter(Boolean).length / steps.length) * 100) : 0;
   const cardTone = { confirm: expired ? 'warn' : 'ok', running: 'info', done: resultTone, ask: 'warn', other: statusTone }[phase];
 
+  // 말하는 중: 중간 결과의 점수(없으면 '인식 중…'). 끝나면: 최종(또는 되묻기) 점수.
+  const recording = ['connecting', 'listening', 'finalizing'].includes(voice.status);
+  const scoreView = recording ? { value: voice.partialConfidence, kind: 'partial' } : sttScore;
+
   function submit(event) {
     event.preventDefault();
     if (!sim.busy && !lockReason && text.trim()) {
       if (voice.status !== 'idle' && voice.status !== 'error') voice.cancel(); // 텍스트가 이긴다 — 듣던 음성은 버린다
       const stt = sttDraft ? { ...sttDraft, edited: text.trim() !== (sttDraft.text || '').trim() } : null;
-      sim.send(text, target && target.id, stt); setText(''); setSttDraft(null);
+      sim.send(text, target && target.id, stt); setText(''); setSttDraft(null); setSttScore(null);
     }
   }
 
@@ -186,16 +207,22 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     <div className="cmd-field">
       <textarea id="command-input" className="command-input" rows={phase === 'idle' ? 3 : 1} value={text}
         aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: A 자재를 컨베이어로 옮겨줘'}
-        onChange={(e) => { setText(e.target.value); if (!e.target.value.trim()) setSttDraft(null); }}
+        onChange={(e) => {
+          setText(e.target.value);
+          if (!e.target.value.trim()) setSttDraft(null);
+        }}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
       <MicButton voice={voice} locked={!!lockReason} />
     </div>
+    {/* 말하는 동안 STT 중간 결과(입력칸 바로 아래) */}
+    {voice.partial && <small className="cmd-partial" aria-live="polite">{voice.partial}</small>}
     {sttDraft && text.trim() && <small className="cmd-stt-hint" role="status">음성 인식 결과입니다 — 문장을 확인·수정한 뒤 {phase === 'ask' ? '답변 보내기' : '보내기'}를 누르세요</small>}
     {(phase === 'idle' || phase === 'ask') && <div className="cmd-actions">
-      <RecognitionRate rate={recognition} />
+      {/* 음성 인식 신뢰도만 보인다(2026-10-08). 전체·합성 평가 인식률과 정답 확정 점수는 이 영역에 없다
+          (평가 데이터·조회 API·정답 확정 API는 평가용으로 그대로 둔다). */}
+      {scoreView ? <SttConfidence score={scoreView} /> : <span />}
       <button type="submit" className="btn-primary send" disabled={sim.busy || !!lockReason || !text.trim()}>{sim.busy ? '보내는 중…' : phase === 'ask' ? '답변 보내기' : '보내기'}</button>
     </div>}
-    {voice.partial && <small className="cmd-partial" aria-live="polite">{voice.partial}</small>}
     {voice.clarify && <small className="cmd-lock" role="status">{voice.clarify}</small>}
     {(voice.error || voice.unavailable) && <small className="cmd-lock" role="status">{voice.error || voice.unavailable}</small>}
     {lockReason && <small className="cmd-lock" role="status">{lockReason}</small>}

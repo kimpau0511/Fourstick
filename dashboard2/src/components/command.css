@@ -22,7 +22,7 @@
 @media (prefers-reduced-motion: reduce) { .voice-bars i { animation-duration: 3s; } }
 .cmd-partial { color: var(--muted); font-size: 12px; font-style: italic; }
 
-/* 음성 인식률(2026-10-08) — 입력칸 아래 한 줄: 왼쪽 인식률, 오른쪽 보내기. 좁으면 줄을 바꿔도 보내기는 오른쪽에 남는다. */
+/* 입력칸 아래 한 줄(2026-10-08): 왼쪽 음성 인식 신뢰도, 오른쪽 보내기. 좁으면 줄을 바꿔도 보내기는 오른쪽에 남는다. */
 .cmd-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
 .cmd-actions .send { align-self: auto; margin-left: auto; }
 .cmd-rate { min-width: 0; color: var(--white); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: help; }

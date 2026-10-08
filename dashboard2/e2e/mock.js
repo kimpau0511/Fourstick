@@ -61,6 +61,8 @@ export async function mockBackend(page, { command, confirm, jobs = [], overrides
   await page.route('**/health', (route) => (pathOf(route.request().url()) === '/health'
     ? route.fulfill({ json: fixture('health', overrides.health) }) : route.fallback()));
   await page.route('**/v1/config', (route) => route.fulfill({ json: fixture('config', overrides.config) }));
+  // 이번 발화 확정(기본): 시험이 따로 정하지 않으면 실패로 답한다(실제 계산은 시험이 가짜로 넣는다).
+  await page.route('**/v1/stt/utterance-check', (route) => route.fulfill({ status: 503, json: { detail: 'QA: 가짜 응답 없음' } }));
   // 음성 인식률 표시값(2026-10-08). 기본은 미측정 — 숫자 표시는 시험마다 모의 값을 넣는다(운영 성적으로 저장하지 않는다).
   await page.route('**/v1/stt/recognition-rate', (route) => route.fulfill({ json: overrides.recognition
     ?? { status: 'unmeasured', label: '음성 인식률 미측정', rate_percent: null, note: '글자 기준 평가 결과이며 현재 발화의 정확도를 뜻하지 않습니다.',

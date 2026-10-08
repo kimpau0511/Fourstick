@@ -36,14 +36,18 @@ function micError(error) {
 }
 
 /** config: /v1/config, health: /health(선택). 서버가 STT를 꺼 두었으면 unavailable에 이유가 담긴다. */
-export function useVoice({ config, health, onFinal }) {
+export function useVoice({ config, health, onFinal, onClarify, onStart }) {
   const [status, setStatus] = useState('idle'); // idle | connecting | listening | finalizing | error
   const [partial, setPartial] = useState('');
+  // 중간 결과의 신뢰도(서버 partial 이벤트의 confidence — 최근 window 구간 전사의 점수). 없으면 null.
+  const [partialConfidence, setPartialConfidence] = useState(null);
   const [error, setError] = useState(null);
   const [clarify, setClarify] = useState(null);
   const rt = useRef(null); // 지금 열려 있는 입력 한 번분(소켓·마이크·컨텍스트)
   const finalRef = useRef(onFinal);
-  useEffect(() => { finalRef.current = onFinal; });
+  const clarifyRef = useRef(onClarify);
+  const startRef = useRef(onStart);
+  useEffect(() => { finalRef.current = onFinal; clarifyRef.current = onClarify; startRef.current = onStart; });
 
   const feature = (config && config.features && config.features.stt) || (health && health.features && health.features.stt) || null;
   const unavailable = feature && feature.available === false
@@ -67,11 +71,12 @@ export function useVoice({ config, health, onFinal }) {
     if (r.context && r.context.state !== 'closed') r.context.close().catch(() => {});
   }, []);
 
-  const fail = useCallback((message) => { release(); setPartial(''); setError(message); setStatus('error'); }, [release]);
+  const fail = useCallback((message) => { release(); setPartial(''); setPartialConfidence(null); setError(message); setStatus('error'); }, [release]);
 
   const start = useCallback(async () => {
     if (unavailable || rt.current) return;
-    setError(null); setClarify(null); setPartial(''); setStatus('connecting');
+    setError(null); setClarify(null); setPartial(''); setPartialConfidence(null); setStatus('connecting');
+    startRef.current?.(); // 새 녹음 시작 — 화면이 이전 발화의 점수를 지운다
     const mine = { socket: null, context: null, node: null, stream: null, timer: null };
     rt.current = mine;
     const dead = () => rt.current !== mine; // 취소·언마운트 뒤에는 아무것도 하지 않는다
@@ -98,15 +103,18 @@ export function useVoice({ config, health, onFinal }) {
         let ev;
         try { ev = JSON.parse(message.data); } catch { return; }
         if (ev.kind === 'session') setStatus('listening');
-        else if (ev.kind === 'partial') setPartial(ev.text || '');
+        else if (ev.kind === 'partial') { setPartial(ev.text || ''); setPartialConfidence(ev.confidence ?? null); }
         else if (ev.kind === 'final') {
-          release(); setPartial(''); setStatus('idle');
+          release(); setPartial(''); setPartialConfidence(null); setStatus('idle');
           // 정규화된 문장(text)을 명령으로, 원문·신뢰도는 기록용으로 함께 넘긴다.
           const text = ev.text || ev.raw_text || '';
-          if (text) finalRef.current?.(text, { rawText: ev.raw_text || text, confidence: ev.confidence ?? null, requestId: ev.request_id || null });
+          if (text) finalRef.current?.(text, { rawText: ev.raw_text || text, confidence: ev.confidence ?? null, requestId: ev.request_id || null,
+            // 이번 발화 확정 때 서버가 이 세션의 STT 기록과 대조한다
+            sessionId, persisted: ev.persisted ?? null });
         } else if (ev.kind === 'clarify') {
-          release(); setPartial(''); setStatus('idle');
+          release(); setPartial(''); setPartialConfidence(null); setStatus('idle');
           setClarify(ev.detail || '잘 알아듣지 못했습니다. 다시 말해 주세요');
+          clarifyRef.current?.({ confidence: ev.confidence ?? null });
         } else if (ev.kind === 'error') {
           fail(ev.reason_code === 'stt.no_speech' ? '말소리를 감지하지 못했습니다 — 마이크와 음량을 확인하고 다시 말해 주세요'
             : `음성 인식 오류${ev.detail ? ` — ${ev.detail}` : ''}`);
@@ -137,9 +145,9 @@ export function useVoice({ config, health, onFinal }) {
   }, [config, fail]);
 
   /** 결과를 버리고 중단한다(서버에 abort). */
-  const cancel = useCallback(() => { release('abort'); setPartial(''); setError(null); setStatus('idle'); }, [release]);
+  const cancel = useCallback(() => { release('abort'); setPartial(''); setPartialConfidence(null); setError(null); setStatus('idle'); }, [release]);
 
   useEffect(() => () => release(), [release]);
 
-  return { status, partial, error, clarify, unavailable, start, stop, cancel };
+  return { status, partial, partialConfidence, error, clarify, unavailable, start, stop, cancel };
 }
