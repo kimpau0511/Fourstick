@@ -34,21 +34,25 @@ TASK_FIELDS = ("material_text", "source_text", "destination_text", "material_id"
 FIELDS = ("tasks", "action", "confidence", "reason")
 MAX_TASKS = 4
 REASON_MAX = 120
-INTERPRETER_VERSION = "intent-ko-2.0"
+INTERPRETER_VERSION = "intent-ko-2.1"
 
 SYSTEM_PROMPT = """너는 로봇 작업 셀의 요청 해석기다. 계획을 만들지 않는다. 아래 JSON 하나만 출력한다.
 
 tasks: 발화 속 이송 작업들을 말한 순서대로. 자재 하나를 한 곳으로 옮기는 것이 작업 하나다.
   - 자재가 둘이거나 '~하고 ~도', '~한 다음'처럼 작업이 이어지면 작업마다 따로 적는다. 합치지 않는다.
   - 정정('아니', '말고')이 있으면 고친 앞뒤 표현을 모두 destination_text에 발화 그대로 남긴다.
+  - 같은 자재를 '집은 다음 ~에 놔', '들어서 ~에 내려놔'처럼 집기·놓기로 풀어 말한 것은 작업 하나다.
   각 작업(먼저 표현을 그대로 옮기고, 그다음 id를 고른다):
   material_text: 옮길 자재를 가리킨 표현 그대로(이름·색·'그거'). 없으면 null.
   source_text: 출발지 표현을 조사까지 그대로('1번 팔레트에서', '컨베이어에 있는'). 출발지를 말하지 않았으면 null.
   destination_text: 목적지 표현을 조사까지 그대로('컨베이어로', '원래 자리로', '컨베이어 빈 곳으로'). 없으면 null.
     - '~로/~으로/~에/~쪽으로'는 목적지, '~에서/~에 있는/~위의'는 출발지다.
-    - '원래 자리로·제자리에'는 목적지다. 출발지에 적지 않는다.
+    - '원래 자리로·제자리에'는 목적지다. 출발지에 적지 않는다. 목적지 없이 '다시 돌려놔'만 말하면 destination은 origin.
+    - 조사 없이 '초록 컨베이어'처럼 자재 다음에 장소만 말하면 그 장소는 목적지 후보다. 출발지에 적지 않는다.
     - '저기 있는', '거기'처럼 위치 이름이 없는 말은 출발지가 아니다(null).
   material_id: 자재 id(이름·별칭·색). 표현이 '그거' 같은 가리키는 말뿐이면 맥락의 자재 id, 맥락이 없거나 여러 자재에 맞으면 null.
+    - 'A자재'를 'A'·'에이'처럼 코드만 말할 수 있다('비'=B, '씨'=C). 다른 낱말의 일부('비가 오네', '에이씨')는 자재가 아니다.
+    - '물체·물건·거'처럼 이름 없이 위치로만 말하면('3번 팔레트 위에 놓여 있는 물체') material_id는 null, 그 위치는 source_text에 적는다.
   source_id: source_text가 가리키는 위치 id. 어느 팔레트인지 특정하지 않았으면 null.
   destination: 위치 id | origin(그 자재의 원래 자리) | free_slot(빈자리·빈 칸·빈 곳) | null.
 action: transfer(자재를 옮기는 요청) | other(자재를 옮기지 않음: 위치로 이동·홈 등) | unknown(알 수 없음)

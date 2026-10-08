@@ -1,0 +1,30 @@
+{"id": "interp_final_01", "split": "final", "category": "일반명사", "utterance": "파란 물건 컨베이어 위로 옮겨 줘", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_02", "split": "final", "category": "일반명사", "utterance": "초록색 모형 벨트에 놔", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_03", "split": "final", "category": "일반명사", "utterance": "주황 부품 컨베이어로 보내", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_04", "split": "final", "category": "일반명사", "utterance": "부품 하나만 벨트로", "expect": {"decision": "ask"}, "state": null}
+{"id": "interp_final_05", "split": "final", "category": "명사생략", "utterance": "주황 벨트로", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_06", "split": "final", "category": "명사생략", "utterance": "파란 컨베이어에", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_07", "split": "final", "category": "명사생략", "utterance": "C 원래 자리로", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_pallet_3"}, "state": {"mat_c": "loc_conveyor"}}
+{"id": "interp_final_08", "split": "final", "category": "명사생략", "utterance": "주황 컨베이어", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_09", "split": "final", "category": "한글코드", "utterance": "씨 컨베이어로 옮겨", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_10", "split": "final", "category": "한글코드", "utterance": "에이를 벨트에 올려", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_11", "split": "final", "category": "한글코드", "utterance": "비 원래 자리로", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_pallet_2"}, "state": {"mat_b": "loc_conveyor"}}
+{"id": "interp_final_12", "split": "final", "category": "한글코드오해방지", "utterance": "비 오는 날 컨베이어 점검해야 해", "expect": {"decision": "ask"}, "state": null}
+{"id": "interp_final_13", "split": "final", "category": "짧은요청", "utterance": "B 옮겨", "expect": {"decision": "ask"}, "state": null}
+{"id": "interp_final_14", "split": "final", "category": "구어체긴문장", "utterance": "음 일단 지금은 다른 건 말고요 파란색 물건 하나만 컨베이어 위로 좀 올려 주세요", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_15", "split": "final", "category": "말고침", "utterance": "B 말고 C 컨베이어로", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_16", "split": "final", "category": "말고침", "utterance": "에이 말고 비 벨트로", "expect": {"decision": "plan", "material": "mat_b", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_17", "split": "final", "category": "말고침", "utterance": "컨베이어로 아니 아니 잠깐", "expect": {"decision": "ask"}, "state": null}
+{"id": "interp_final_18", "split": "final", "category": "복귀", "utterance": "C 원위치", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_pallet_3"}, "state": {"mat_c": "loc_conveyor"}}
+{"id": "interp_final_19", "split": "final", "category": "복귀", "utterance": "에이 다시 돌려놔", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_pallet_1"}, "state": {"mat_a": "loc_conveyor"}}
+{"id": "interp_final_20", "split": "final", "category": "복귀", "utterance": "파란 거 원래 자리로", "expect": {"decision": "noop"}, "state": null}
+{"id": "interp_final_21", "split": "final", "category": "위치묘사", "utterance": "1번 팔레트 위에 놓여 있는 물체를 벨트로", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_22", "split": "final", "category": "위치묘사", "utterance": "3번 팔레트에 올려져 있는 부품 컨베이어로", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_23", "split": "final", "category": "풀어말하기", "utterance": "C 집어서 컨베이어에 내려놔", "expect": {"decision": "plan", "material": "mat_c", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_24", "split": "final", "category": "풀어말하기", "utterance": "주황색 물체 잡은 다음 벨트에 놓아 줘", "expect": {"decision": "plan", "material": "mat_a", "to": "loc_conveyor"}, "state": null}
+{"id": "interp_final_25", "split": "final", "category": "복수작업", "utterance": "C는 컨베이어로 그리고 A도 벨트로", "expect": {"decision": "ask"}, "state": null}
+{"id": "interp_final_26", "split": "final", "category": "모호", "utterance": "저거 거기로 옮겨", "expect": {"decision": "ask"}, "state": null}
+{"id": "interp_final_27", "split": "final", "category": "모호", "utterance": "그것 좀 원래 자리로", "expect": {"decision": "ask"}, "state": null}
+{"id": "interp_final_28", "split": "final", "category": "겹침", "utterance": "초록이랑 주황 둘 다 벨트로", "expect": {"decision": "ask"}, "state": null}
+{"id": "interp_final_29", "split": "final", "category": "미등록", "utterance": "노란 물체 벨트로", "expect": {"decision": "block"}, "state": null}
+{"id": "interp_final_30", "split": "final", "category": "점유", "utterance": "C를 1번 팔레트에 놔", "expect": {"decision": "block"}, "state": null}

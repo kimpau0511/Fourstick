@@ -102,11 +102,13 @@ export function useGeneralCommand() {
     }
     const p = res.payload;
     if (!p.ok) {
-      // 계획을 못 만들었다: 되묻기(clarification)면 ASK, 그 밖(모델 없음·슬롯 부족 등)은 실행 없음.
-      const decision = p.clarification ? 'ASK' : 'BLOCK';
+      // 계획을 못 만들었다. 의도 단계는 서버 판정(decision: ASK·BLOCK·NOOP)을 그대로 쓴다(2026-10-08 — 전에는 질문 문구만 보고
+      // '이미 원래 자리에 있음'(NOOP)도 되묻기로 보였다). 판정이 없으면 되묻기(clarification)면 ASK, 그 밖(모델 없음 등)은 실행 없음.
+      const decision = p.decision === 'BLOCK' || p.blocked ? 'BLOCK' : p.decision === 'NOOP' ? 'NOOP'
+        : p.decision === 'ASK' || p.clarification ? 'ASK' : 'BLOCK';
       const reason = p.clarification || p.detail || reasonOf(res);
       patch({ busy: false, result: { decision, reason, code: p.reason_code || null } });
-      addEvent('decision', decision === 'ASK' ? '추가 확인 필요' : '계획 실패', reason, id);
+      addEvent('decision', { ASK: '추가 확인 필요', NOOP: '할 일 없음' }[decision] || (p.decision === 'BLOCK' ? '실행 차단' : '계획 실패'), reason, id);
       return;
     }
     const [decision, label] = GATE[(p.validation || {}).decision] || ['BLOCK', '확인 안 됨'];

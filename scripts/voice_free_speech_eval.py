@@ -21,7 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-RUN = Path.home() / "voiceeval-run"
+# 실행·증거 폴더(2026-10-08: 명령 해석 개선은 ~/interp-run에서 돌린다). 기본은 예전 그대로.
+RUN = Path(os.environ.get("FORSTICK2_EVAL_RUN_DIR") or Path.home() / "voiceeval-run")
 
 
 def require_isolation() -> None:

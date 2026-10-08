@@ -174,10 +174,18 @@ def load_language_terms(manifest_path) -> dict:
     norm = lambda rows: [normalize(t) for t in rows or () if normalize(t)]  # noqa: E731
     # 긴 조사부터 본다('에서'가 '에'보다 먼저, '으로'가 '로'보다 먼저).
     by_length = lambda rows: sorted(set(norm(rows)), key=len, reverse=True)  # noqa: E731
+    codes = refs.get("code_readings") or {}
     return {"context": norm((refs.get("context") or {}).get("terms")),
             "correction": norm((refs.get("correction") or {}).get("terms")),
             "generic": by_length((refs.get("generic") or {}).get("terms")),
             "filler": by_length((refs.get("filler") or {}).get("terms")),
+            "pointing": by_length((refs.get("pointing") or {}).get("terms")),
+            "return_verbs": by_length((refs.get("return_verbs") or {}).get("terms")),
+            # 코드 한글 읽기(2026-10-08): {코드 글자: [읽기]}와 읽기 뒤에 붙을 수 있는 조사. 원문 경계는 material_positions가 본다.
+            "code_readings": {str(k).lower(): [str(r) for r in v or () if str(r).strip()]
+                              for k, v in (codes.get("readings") or {}).items()},
+            "code_particles": sorted({str(t) for t in codes.get("particles") or () if str(t).strip()},
+                                     key=len, reverse=True),
             "source": by_length(markers.get("source")),
             "destination": by_length(markers.get("destination"))}
 
@@ -256,14 +264,21 @@ def material_code(m: Mapping[str, Any]) -> str | None:
     return hit.group(1).lower() if hit else None
 
 
-def material_positions(utterance: str, facts: Mapping[str, Any]) -> dict[str, list[int]]:
+def material_positions(utterance: str, facts: Mapping[str, Any], *, readings: bool = False) -> dict[str, list[int]]:
     """자재 id → 원문(정규화)에서 가리킨 위치들. 이름·별칭·색 + 단독 코드 글자(2026-10-08: 'A 컨베이어로').
 
     단독 코드 글자는 앞뒤에 다른 라틴 글자·숫자가 없는 글자 하나다('A로', 'A 컨베이어' — 'AB'·'A1'은 아니다).
-    정규화(공백 제거) 전 원문에서 경계를 보고, 위치는 정규화 문자열 기준으로 바꾼다."""
+    정규화(공백 제거) 전 원문에서 경계를 보고, 위치는 정규화 문자열 기준으로 바꾼다.
+
+    `readings=True`(이송 요청으로 읽혔을 때만)면 코드의 한글 읽기('에이'·'비'·'씨', 등록 파일 code_readings)도 본다.
+    따로 떨어진 낱말일 때만이다: 앞에 한글·라틴·숫자가 붙지 않고, 뒤에는 등록된 조사 하나만 붙고 그다음이 끝·공백·
+    문장부호다. '비가 오네'(주어 조사 '가'는 등록하지 않았다)·'에이씨'·'시비'·'비닐'은 코드가 아니다."""
     import re
 
     u = normalize(utterance)
+    terms = facts.get("terms") or {}
+    table = terms.get("code_readings") or {}
+    particles = "|".join(re.escape(p_) for p_ in terms.get("code_particles") or ())
     out: dict[str, list[int]] = {}
     for m in facts["materials"]:
         hits = [s for tok in m["tokens"] if tok for s, _ in _find_all(u, tok)]
@@ -272,20 +287,36 @@ def material_positions(utterance: str, facts: Mapping[str, Any]) -> dict[str, li
             for hit in re.finditer(r"(?<![A-Za-z0-9])([A-Za-z])(?![A-Za-z0-9])", utterance):
                 if hit.group(1).lower() == code:
                     hits.append(len(normalize(utterance[:hit.start()])))
+            for reading in (table.get(code) or ()) if readings else ():
+                # 읽기 + (이름의 일부 '자재') + (등록 조사 하나) — 그 뒤는 끝·공백·문장부호여야 한다.
+                pattern = (rf"(?<![가-힣A-Za-z0-9]){re.escape(reading)}(?:자재)?"
+                           + (rf"(?:{particles})?" if particles else ""))
+                for hit in re.finditer(pattern + r"(?![가-힣A-Za-z0-9])", utterance):
+                    hits.append(len(normalize(utterance[:hit.start()])))
         if hits:
             out[m["id"]] = sorted(set(hits))
     return out
 
 
-def _material_surface(m: Mapping[str, Any], u: str) -> str:
-    """근거 문구: 원문(정규화)에 있는 등록 토큰, 없으면 단독 코드 글자('A' — 단독 글자)."""
+def _material_surface(m: Mapping[str, Any], u: str, facts: Mapping[str, Any] | None = None,
+                      utterance: str = "", readings: bool = False) -> str:
+    """근거 문구: 원문(정규화)에 있는 등록 토큰, 없으면 단독 코드 글자('A' — 단독 글자) 또는 한글 읽기."""
     tok = next((t for t in m["tokens"] if t and t in u), None)
-    return tok or f"'{(material_code(m) or '?').upper()}'(단독 글자)"
+    if tok:
+        return tok
+    code = (material_code(m) or "?")
+    if readings and facts is not None:
+        bare = {**facts, "terms": {**(facts.get("terms") or {}), "code_readings": {}}}
+        if not material_positions(utterance, {**bare, "materials": [m]}).get(m["id"]):
+            said = next((r for r in ((facts.get("terms") or {}).get("code_readings") or {}).get(code, ())
+                         if r in u), code.upper())
+            return f"'{said}'({code.upper()}의 한글 읽기 — 단독 낱말)"
+    return f"'{code.upper()}'(단독 글자)"
 
 
-def scan_materials(utterance: str, facts: Mapping[str, Any]) -> list[str]:
-    """원문이 이름·별칭·색(·단독 코드 글자)으로 가리킨 자재들(처음 나온 순서)."""
-    first = {mid: pos[0] for mid, pos in material_positions(utterance, facts).items()}
+def scan_materials(utterance: str, facts: Mapping[str, Any], *, readings: bool = False) -> list[str]:
+    """원문이 이름·별칭·색(·단독 코드 글자·한글 읽기)으로 가리킨 자재들(처음 나온 순서)."""
+    first = {mid: pos[0] for mid, pos in material_positions(utterance, facts, readings=readings).items()}
     return sorted(first, key=lambda mid: first[mid])
 
 
@@ -327,6 +358,53 @@ def _strip_markers(text: str, terms: Mapping[str, Any]) -> str:
     return core
 
 
+def merge_pick_place(tasks):
+    """'A 집은 다음 컨베이어에 놔'처럼 한 이송을 집기·놓기로 나눠 말한 것을 작업 하나로 합친다(2026-10-08).
+
+    합치는 조건(모두): 작업이 둘 이상, 목적지(id·표현)가 있는 작업은 **마지막 하나뿐**, 그 앞 작업들은 목적지가 없다,
+    모델이 고른 자재 id가 하나 이하, 출발지 id가 하나 이하. 자재가 둘이거나 목적지가 둘이면(실제 복수 작업)
+    합치지 않는다 — 서버가 복수 작업으로 되묻는다. 자재 표현이 실제로 하나인지는 서버가 원문으로 다시 본다."""
+    if len(tasks) < 2:
+        return tasks
+    has_dest = [bool(t.destination or t.destination_text) for t in tasks]
+    if not has_dest[-1] or any(has_dest[:-1]):
+        return tasks
+    if len({t.material_id for t in tasks if t.material_id}) > 1 \
+            or len({t.source_id for t in tasks if t.source_id}) > 1:
+        return tasks
+    texts = [normalize(t.material_text) for t in tasks if t.material_text]
+    pick = next((t for t in tasks if t.material_id), None) or next((t for t in tasks if t.material_text), tasks[0])
+    if len(set(texts)) > 1 and not all(x in texts[0] or texts[0] in x for x in texts):
+        # 자재 표현이 서로 다르다('A' / '파란 거') — 모델 id가 비어 있어도 합치지 않는다. 단, 뒤 표현이 '그거'처럼
+        # 앞을 가리키면(모델이 같은 id를 줬을 때) 위에서 id로 이미 하나다.
+        if len({t.material_id for t in tasks}) != 1:
+            return tasks
+    last = tasks[-1]
+    src = next((t for t in tasks if t.source_id or t.source_text), None)
+    return (TaskMention(material_id=pick.material_id, material_text=pick.material_text,
+                        source_id=src.source_id if src else None, source_text=src.source_text if src else None,
+                        destination=last.destination, destination_text=last.destination_text),)
+
+
+def _leftover(text: str | None, facts: Mapping[str, Any], terms: Mapping[str, Any]) -> str:
+    """자재 표현에서 위치 이름·조사·일반 명사·군말·가리키는 말을 뺀 나머지. 비면 '위치로만 가리킨 자재'다."""
+    core = normalize(text or "")
+    for tok in sorted({t for loc in facts["locations"] for t in loc["tokens"]}, key=len, reverse=True):
+        core = core.replace(tok, "")
+    for word in sorted({w for group in ("source", "destination", "generic", "filler", "pointing")
+                        for w in terms.get(group) or ()}, key=len, reverse=True):
+        core = core.replace(word, "")
+    for word in ("있는", "있던", "놓인", "놓여", "올려진", "올려져", "위", "의"):
+        core = core.replace(word, "")
+    return core
+
+
+def _rest_word(text: str | None, facts: Mapping[str, Any], terms: Mapping[str, Any]) -> str:
+    """근거 문구용: 자재 표현 끝의 일반 명사('물체'·'거'), 없으면 빈 문자열."""
+    core = normalize(text or "")
+    return next((g for g in terms.get("generic") or () if core.endswith(g)), "")
+
+
 # ── 판정 ──────────────────────────────────────────────────────────────────────
 
 
@@ -348,15 +426,51 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
     tasks = tuple(t for t in (getattr(interp, "tasks", ()) or ())
                   if any((t.material_text, t.material_id, t.source_text, t.destination_text,
                           t.destination)))
+    tasks = merge_pick_place(tasks)
     task = tasks[0] if tasks else None
     info = {k: getattr(interp, k, None) for k in (
         "ok", "action", "confidence", "model_reason", "failure", "reason", "raw", "model_id",
         "latency_sec", "prompt_tokens")}
-    info["tasks"] = [t.__dict__ for t in tasks]
+    info["tasks"] = [t.__dict__ for t in getattr(interp, "tasks", ()) or ()]
+    if len(tasks) == 1 and len(info["tasks"]) > 1:
+        info["merged_tasks"] = "집기·놓기로 나눠 말한 한 이송(같은 자재, 목적지 하나)"
     u = normalize(utterance)
     places = scan_places(utterance, facts, terms)
-    named = scan_materials(utterance, facts)
+    # 코드 한글 읽기('에이'·'비'·'씨')는 이송 요청으로 읽혔을 때만 본다(2026-10-08) — '비가 오네' 같은 말을 자재로 읽지 않는다.
+    readings = bool(interp.ok) and interp.action == "transfer"
+    named = scan_materials(utterance, facts, readings=readings)
     pointing = next((t for t in terms.get("context") or () if t in u), None)
+    returning = next((t for t in terms.get("return_verbs") or () if t in u), None)
+    source_locs = sorted({p.key for p in places if p.role == "source" and p.kind == "location"})
+    if len(tasks) > 1 and len({t_.material_id for t_ in tasks}) == 1 and tasks[0].material_id:
+        # 2026-10-08 '1번 팔레트에 있는 주황색 자재를 … 집은 다음에 컨베이어로': 모델이 출발지 묘사를 목적지로 읽어
+        # 같은 자재의 작업을 하나 더 만들었다. 원문에 근거(출발 조사가 아닌 장소 표현·복귀 동사)가 없는 목적지의 작업은
+        # 모델의 잘못 읽기로 보고 뺀다. 근거 있는 작업이 둘 이상이면(실제 복수 작업) 그대로 둔다.
+        def backed(t_):
+            dt = normalize(t_.destination_text or "") if _in_utterance(t_.destination_text, utterance) else ""
+            in_text = [p for p in places if p.role != "source" and dt and u[p.start:p.end] in dt]
+            if t_.destination == "origin":
+                return any(p.kind == "symbol" and p.key == "origin" for p in in_text) or bool(returning)
+            return any(p.key == t_.destination or (p.kind == "symbol" and p.key == t_.destination) for p in in_text)
+        def misread(t_):
+            # 목적지 표현이 없거나, 그 표현이 원문의 **출발지 묘사**('1번 팔레트에 있는')다 — 그 밖의 근거 없는 목적지
+            # ('다시 가져와' 등)는 사용자가 실제로 말한 다른 작업일 수 있어 빼지 않는다(복수 작업으로 되묻는다).
+            dt = normalize(t_.destination_text or "")
+            return not dt or any(p.role == "source" and u[p.start:p.end] in dt for p in places)
+        kept = [t_ for t_ in tasks if backed(t_)]
+        if len(kept) == 1 and all(misread(t_) for t_ in tasks if t_ is not kept[0]):
+            info["dropped_tasks"] = [t_.__dict__ for t_ in tasks if t_ is not kept[0]]
+            tasks = (kept[0],)
+            task = tasks[0]
+    if len(tasks) > 1 and len({(t_.material_id, t_.destination) for t_ in tasks}) == 1 and tasks[0].material_id \
+            and tasks[0].destination and named == [tasks[0].material_id] \
+            and len(material_positions(utterance, facts, readings=readings)[named[0]]) == 1 \
+            and len([p for p in places if p.role != "source"]) == 1:
+        # 모델이 '집은 다음 ~에 놔'를 같은 작업 둘로 적었다. 원문에 자재·장소 표현이 각각 한 번뿐이면 같은 이송 하나다
+        # (같은 자재를 두 번 말했거나 장소가 둘이면 합치지 않는다 — 반복·복수 작업은 되묻는다).
+        tasks = (tasks[-1],)
+        task = tasks[0]
+        info["merged_tasks"] = "같은 이송을 두 작업으로 나눠 읽음(원문의 자재·장소 표현 각 1회)"
     loc_name = lambda rid: locations[rid]["name"] if rid in locations else "위치 모름"  # noqa: E731
     choices = " / ".join(f"{m['name']}({'·'.join(m['colors'][:1]) or '-'}, {loc_name(m['location'])})"
                          for m in facts["materials"])
@@ -376,6 +490,7 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
     corrected = next((c for c in terms.get("correction") or () if c in u), None)
     marker_at = [s for c in terms.get("correction") or () for s, _ in _find_all(u, c)]
     corrections: list[str] = []
+    corrected_to = None          # 목적지 정정의 뒤 표현(정규화) — 모델이 그 표현을 읽었는지 아래에서 본다
     label_of = lambda p: (loc_name(p.key) if p.kind == "location"  # noqa: E731
                           else {"origin": "원래 자리", "free_slot": "빈자리"}[p.key])
     if corrected and len({(p.kind, p.key) for p in dest_marked}) == 2:
@@ -389,6 +504,7 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
             old_p = next(p for p in dest_marked if (p.kind, p.key) == old)
             new_p = next(p for p in dest_marked if (p.kind, p.key) == new)
             dest_marked = [p for p in dest_marked if (p.kind, p.key) == new]
+            corrected_to = u[new_p.start:new_p.end]
             corrections.append(f"목적지 정정: {label_of(old_p)} → {label_of(new_p)}")
     if corrected and len({(p.kind, p.key) for p in dest_marked}) > 1:
         said = ", ".join(dict.fromkeys(
@@ -397,7 +513,7 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
         return ask(f"목적지를 고쳐 말한 것 같습니다({said}) — 어느 쪽인지 추측하지 않습니다."
                    " 최종 목적지 하나로 다시 말해 주세요", code=ReasonCode.PLAN_AMBIGUOUS, keep={})
     if len(named) == 2 and corrected:
-        mpos = material_positions(utterance, facts)
+        mpos = material_positions(utterance, facts, readings=readings)
         pick = corrected_choice({k: mpos[k] for k in named}, marker_at)
         if pick:
             old, new = pick
@@ -408,7 +524,7 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
         # 정정 말 뒤에 무엇으로 고쳤는지 원문에서 확인되지 않으면(정정 앞의 것만 남음) 계획하지 않는다.
         # 2026-10-08 합성 음성 실측: 'B자재 아니 C자재를' → STT '비차트 아니 시차제를' — C를 못 읽고 B만 남아
         # B를 옮기는 계획이 만들어졌다.
-        mpos = material_positions(utterance, facts)
+        mpos = material_positions(utterance, facts, readings=readings)
         if len(named) == 1 and all(p_ < last for p_ in mpos.get(named[0], [last + 1])) and not corrections:
             return ask(f"'{materials[named[0]]['name']}' 뒤에 고쳐 말한 내용이 있는데 어느 자재로 고쳤는지 확인할 수"
                        f" 없습니다 — 옮길 자재 하나만 다시 말해 주세요: {choices}", code=ReasonCode.PLAN_AMBIGUOUS, keep={})
@@ -446,7 +562,8 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
     # 앞 질문("A자재를 어디로 옮길까요?")의 답: 모델이 이송으로 읽었거나, 자재 없이 목적지만 말했다.
     answers_draft = bool(draft) and (interp.action == "transfer" or (
         bool(draft.get("material")) and bool(dest_marked) and not named))
-    material_signal = bool(named or t.material_text or t.material_id or pointing)
+    material_signal = bool(named or t.material_text or t.material_id or pointing
+                           or (source_locs and interp.action == "transfer"))
     if not material_signal and not answers_draft:
         if interp.action == "transfer" and dest_marked:
             # 옮기라는데 자재가 없다 — 목적지는 남기고 무엇을 옮길지만 묻는다.
@@ -472,11 +589,12 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
     known = None
     if len(named) == 1:
         m = materials[named[0]]
-        known = ResolvedRef(m["id"], Evidence(UTTERANCE, _material_surface(m, u)))
+        known = ResolvedRef(m["id"], Evidence(UTTERANCE, _material_surface(m, u, facts, utterance, readings)))
     elif pointing and context_candidates:
         why, mid = context_candidates[0]
         known = ResolvedRef(mid, Evidence(CONTEXT, f"{why}({materials[mid]['name']}) ← '{pointing}'"))
-    if uncertain and known and not dest_marked and not _in_utterance(t.destination_text, utterance):
+    if uncertain and known and not dest_marked and not returning \
+            and not _in_utterance(t.destination_text, utterance):
         # 자재는 원문(또는 '그거' + 세션 맥락)이 가리켰고 목적지만 없다 — 자재는 남기고 목적지만 묻는다.
         m, ref = materials[known.resource_id], known
         here, home = m["location"], m["origin"]
@@ -512,6 +630,9 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
         # 2026-10-08 생략 발화('파란색 벨트', '씨자재 컨베이어'): 조사 없는 장소 표현이 하나뿐이면 목적지로 본다.
         # 그 자재가 이미 거기 있으면(출발지일 수도 있다) 아래에서 목적지로 쓰지 않고 되묻는다.
         marked = [dict(place_ref(bare[0]), bare=True)]
+    if not marked and returning and "origin" in symbols:
+        # 2026-10-08 복귀 동사('다시 돌려놔'): 목적지 장소 표현이 따로 없을 때만 그 자재의 원래 자리(등록 정보)로 읽는다.
+        marked = [{"kind": "symbol", "key": "origin", "text": returning, "implied": True}]
     if not marked and draft and draft.get("destination") and not dtext:
         marked = [dict(draft["destination"], from_draft=True)]
 
@@ -524,7 +645,7 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
         if (t.material_id not in (None, mid)) or (by_text and by_text != [mid]):
             return ask(f"자재 해석이 엇갈립니다(원문: {materials[mid]['name']}) — 자재를 다시 말해 주세요: {choices}")
         surface = (mtext if mtext and by_text == [mid]
-                   else _material_surface(materials[mid], u))
+                   else _material_surface(materials[mid], u, facts, utterance, readings))
         material_ref = ResolvedRef(mid, Evidence(UTTERANCE, surface))
     elif pointing or (mtext and any(t_ in normalize(mtext) for t_ in terms.get("context") or ())):
         if not context_candidates:
@@ -537,10 +658,36 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
                        f" 해석: {materials[t.material_id]['name']}) — 자재 이름으로 말해 주세요")
         material_ref = ResolvedRef(mid, Evidence(
             CONTEXT, f"{why}({materials[mid]['name']}) ← '{pointing or mtext}'"))
+    elif len(source_locs) == 1 and not _leftover(mtext, facts, terms):
+        # 2026-10-08 위치 묘사('3번 팔레트 위에 놓여 있는 물체'): 이름·색 없이 출발 위치만 말했다 — 그 위치에
+        # **기록된** 자재가 하나뿐일 때만 그 자재다(상태 근거). 없거나 여럿이면 추측하지 않고 묻는다.
+        src = source_locs[0]
+        surface = next(p.surface for p in places if p.role == "source" and p.key == src)
+        if facts.get("state_error"):
+            return ask(f"{loc_name(src)}에 어떤 자재가 있는지 확인할 수 없습니다({facts['state_error']})"
+                       f" — 자재 이름이나 색으로 말해 주세요: {choices}", keep=_draft_with(None, marked))
+        holders = [m for m in facts["materials"] if m["location"] == src]
+        if len(holders) != 1:
+            said = ("기록된 자재가 없습니다" if not holders
+                    else f"자재가 여럿 있습니다({', '.join(m['name'] for m in holders)})")
+            return ask(f"{loc_name(src)}에 {said} — 옮길 자재를 이름이나 색으로 말해 주세요: {choices}",
+                       keep=_draft_with(None, marked))
+        mid = holders[0]["id"]
+        if t.material_id not in (None, mid):
+            return ask(f"자재 해석이 엇갈립니다({loc_name(src)}에 기록된 자재: {materials[mid]['name']},"
+                       f" 해석: {materials[t.material_id]['name']}) — 자재 이름으로 말해 주세요: {choices}")
+        material_ref = ResolvedRef(mid, Evidence(
+            STATE, f"{loc_name(src)}에 기록된 자재({materials[mid]['name']}) ← '{surface}{_rest_word(mtext, facts, terms)}'"))
     elif mtext:
         core = _strip_markers(mtext, terms)
-        for g in (*(terms.get("generic") or ()), *(terms.get("filler") or ())):
+        # 긴 말부터 뺀다('이거'를 '거'보다 먼저 — 아니면 '이'가 남아 없는 자재로 막혔다).
+        for g in sorted({*(terms.get("generic") or ()), *(terms.get("filler") or ()), *(terms.get("pointing") or ())},
+                        key=len, reverse=True):
             core = core.replace(g, "")
+        if core and any(core == normalize(r) for rs in (terms.get("code_readings") or {}).values() for r in rs):
+            # 코드 한글 읽기('비')인데 따로 떨어진 낱말이 아니다('비가 오네') — 없는 자재로 막지도, 그 자재로 읽지도 않는다.
+            return ask(f"'{mtext}'이(가) 자재를 말한 것인지 확인할 수 없습니다 — 옮길 자재와 목적지를 말해 주세요: {choices}",
+                       keep={})
         if not core:
             return ask(f"'{mtext}'이(가) 어느 자재인지 알 수 없습니다 — 자재 이름이나 색으로 말해 주세요:"
                        f" {choices}", keep=_draft_with(None, marked))
@@ -584,11 +731,16 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
                  else f"지금 {loc_name(here)}, 원래 자리는 {loc_name(home)}")
         return ask(f"{name}을(를) 어디로 옮길까요? ({where})", keep=_draft_with(material_ref, []))
     dest_ref = resolved[0]
-    if marked[0].get("bare") and dest_ref.resource_id == material["location"]:
+    if marked[0].get("bare") and marked[0]["kind"] == "location" and dest_ref.resource_id == material["location"]:
+        # 조사 없는 **위치**는 출발지일 수도 있다. '원위치'처럼 상징 표현은 출발지가 될 수 없어 아래 noop으로 간다.
         return ask(f"{name}이(가) 지금 {loc_name(material['location'])}에 있습니다 — 어디로 옮길까요?"
                    " (목적지에 '로/에'를 붙여 말해 주세요)", keep=_draft_with(material_ref, []))
     model_dest = t.destination
-    if model_dest in locations and model_dest != dest_ref.resource_id and not marked[0].get("from_draft"):
+    if model_dest in locations and model_dest != dest_ref.resource_id and not marked[0].get("from_draft") \
+            and not (corrected_to and any(corrected_to in normalize(t_.destination_text or "")
+                                          for t_ in getattr(interp, "tasks", ()) or ())):
+        # 목적지를 원문 정정('컨베이어로, 아니 원래 자리에')으로 골랐고 모델도 고친 뒤 표현을 읽었으면(목적지 표현에 있음)
+        # 모델 id가 고치기 전 것이어도 엇갈림이 아니다. 모델이 고친 표현을 아예 못 읽었으면 되묻는다.
         return ask(f"목적지 해석이 엇갈립니다(원문: {loc_name(dest_ref.resource_id)}, 해석: {loc_name(model_dest)})"
                    " — 목적지를 다시 말해 주세요", keep=_draft_with(material_ref, []))
 
@@ -602,6 +754,12 @@ def decide_intent(interp, utterance: str, facts: Mapping[str, Any], *,
         stated, stated_text = source_marked[0].key, source_marked[0].surface
     else:
         stext = t.source_text if _in_utterance(t.source_text, utterance) else None
+        bare_dest = [m_ for m_ in marked if m_.get("bare")]
+        in_stext = [p.key for p in places if stext and normalize(stext).find(u[p.start:p.end]) >= 0]
+        if stext and bare_dest and in_stext and set(in_stext) == {bare_dest[0]["key"]}:
+            # 2026-10-08 '초록 컨베이어': 모델이 조사 없는 장소를 출발지로 적었다. 서버는 그 장소를 목적지로 읽었고,
+            # 자재가 이미 거기 있으면 위에서 되물었다 — 같은 표현을 출발지로 또 쓰지 않는다.
+            stext = None
         if stext and not _overlaps(stext, dtext) and not any(
                 normalize(stext).find(u[p.start:p.end]) >= 0 for p in dest_marked):
             named_locs = [p.key for p in places if normalize(stext).find(u[p.start:p.end]) >= 0
