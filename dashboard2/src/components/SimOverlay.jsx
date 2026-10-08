@@ -4,22 +4,60 @@ import SimView3D from '../SimView3D.jsx';
 import { commandLock } from '../server.js';
 import { simLabel } from '../simLabel.js';
 import { simAlertOf } from '../simPanels.js';
+import { stepperOf } from '../simStepper.js';
 import JointPanel from './JointPanel.jsx';
 import SimAlert from './SimAlert.jsx';
+import SimStepper from './SimStepper.jsx';
 import dotSimDanger from '../assets/dot-sim-danger.svg';
 import dotSimRunning from '../assets/dot-sim-running.svg';
 import dotSimStopping from '../assets/dot-sim-stopping.svg';
 
 const timeText = (ms) => new Date(ms).toTimeString().slice(0, 8);
+const RUN_POLL_MS = 1500; // 반복 작업 회차의 진행 조회 주기(화면 갱신 속도일 뿐 판단 기준 아님)
+
+// 반복 작업처럼 이 화면의 명령 흐름(cmd.job)이 아닌 실행: 서버가 알려 준 실행 중 작업(running_job)의 진행만 읽는다(GET).
+// 작업 id가 바뀌면(다음 회차) 이전 값을 버린다.
+function useServerRun(jobId) {
+  const [state, setState] = useState({ id: null, run: null, updatedAt: null, comm: null, stageAt: null });
+  useEffect(() => {
+    if (!jobId) return undefined;
+    let alive = true;
+    const tick = async () => {
+      let run = null;
+      try {
+        const res = await fetch(`/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`);
+        if (res.ok) run = await res.json();
+      } catch { /* 실패는 아래에서 통신 실패로 센다 — 마지막 값은 그대로 둔다 */ }
+      if (!alive) return;
+      const at = Date.now();
+      setState((s) => {
+        const same = s.id === jobId;
+        const prev = same && s.comm ? s.comm : {};
+        if (!run) return { ...(same ? s : { id: jobId, run: null, updatedAt: null, stageAt: null }), id: jobId, comm: { okAt: prev.okAt || null, failAt: at, fails: (prev.fails || 0) + 1 } };
+        const before = same && s.run && Array.isArray(s.run.progress) ? s.run.progress.length : -1;
+        const count = Array.isArray(run.progress) ? run.progress.length : 0;
+        return { id: jobId, run, updatedAt: at, comm: { okAt: at, failAt: prev.failAt || null, fails: 0 }, stageAt: before !== count || !same || !s.stageAt ? at : s.stageAt };
+      });
+    };
+    tick();
+    const timer = setInterval(tick, RUN_POLL_MS);
+    return () => { alive = false; clearInterval(timer); };
+  }, [jobId]);
+  return state.id === jobId ? state : { id: jobId, run: null, updatedAt: null, comm: null, stageAt: null };
+}
+
+// 갱신 중단 판정용 시계. 진행 값을 바꾸지 않는다 — 마지막 갱신에서 얼마나 지났는지만 본다.
+function useNow(active) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+  return now;
+}
 const HEADER_STOP = '헤더의 즉시 정지는 언제든 즉시 실행됩니다.';
 
-// 진행 단계: 서버 job.progress([{no,of,label,reached}]) 또는 goal.plan을 그대로. 없으면 null.
-function stepsOf(cmd) {
-  const { job, goal } = cmd;
-  if (job && Array.isArray(job.progress) && job.progress.length) return job.progress.map((p) => ({ label: p.label, reached: !!p.reached }));
-  if (goal && Array.isArray(goal.plan) && goal.plan.length) return goal.plan.map((p) => ({ label: `${p.material_label || p.material} · ${p.from_label || ''} → ${p.to_label || ''}`, reached: p.status === 'completed' }));
-  return null;
-}
 
 // 시뮬레이션 창(⑧). 내용은 overlay(simOverlayState.js)와 cmd의 서버 값으로만 채운다.
 export default function SimOverlay({ overlay, cmd, server, onClose }) {
@@ -50,11 +88,18 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
     else videoRef.current?.requestFullscreen?.().catch(() => {});
   }, []);
   const { state } = overlay;
-  const steps = stepsOf(cmd);
+  // 가로 스테퍼(2026-10-08): 이 화면의 실행(cmd.job)이 있으면 그것, 없으면 서버가 알려 준 실행 중 작업(반복 회차 등).
+  const serverRunId = !cmd.job && server && server.simDemo && server.simDemo.running_job ? server.simDemo.running_job.job_id : null;
+  const serverRun = useServerRun(serverRunId);
+  const names = Object.fromEntries(((server && server.simDemo && server.simDemo.materials) || []).map((m) => [m.model, m.korean || m.model]));
+  const tracking = (cmd.job && cmd.job.status === 'running') || !!serverRunId;
+  const now = useNow(tracking);
+  const stepper = cmd.job ? stepperOf(cmd, { now, names })
+    : serverRun.run ? stepperOf({ job: serverRun.run, updatedAt: serverRun.updatedAt, comm: serverRun.comm, stageAt: serverRun.stageAt }, { now, names })
+      : null;
+  const stepperStamp = (cmd.job ? cmd.updatedAt : serverRun.updatedAt) ? timeText(cmd.job ? cmd.updatedAt : serverRun.updatedAt) : null;
   const lock = commandLock(server);
-  const done = steps ? steps.filter((s) => s.reached).length : 0;
   const stamp = cmd.updatedAt ? timeText(cmd.updatedAt) : null;
-  const first = steps ? steps.findIndex((s) => !s.reached) : -1;
   // 일시정지·재개·복구는 일반 경로 명령(cmd.pause·cmd.resume·cmd.restore)에서. 창이 열려 있으면 늘 보이고,
   // 쓸 수 없을 때는 잠근 채 이유를 보인다(2026-10-07). 멈춘 자재는 서버 상태에서 찾는다 — 이 창의 일시정지든
   // 헤더의 즉시 정지든 실행기가 남긴 '정지·미복구' 기록이 기준이다. 재개 가능 여부는 서버 판정(actions.resume).
@@ -92,7 +137,7 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   if (state === 'viewing') {
     card = {
       dot: dotSimRunning, title: '시뮬레이션 보기', titleTone: '', sub: simLabel(scene),
-      section: '작업 셀 관측', foot: HEADER_STOP,
+      section: stepper ? '동작 세부 진행' : '작업 셀 관측', foot: HEADER_STOP,
     };
   } else if (state === 'danger') {
     card = {
@@ -108,17 +153,13 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
     card = {
       dot: dotSimRunning, title: '가상 동작 확인 중', titleTone: '', sub: simLabel(scene),
       section: '동작 세부 진행',
-      stages: steps && steps.map((s, i) => ({ mark: s.reached ? '✓' : String(i + 1), tone: s.reached ? 'done' : i === first ? 'current' : 'wait', label: s.label })),
-      lines: steps && steps.slice(1).map((s) => (s.reached ? 'done' : 'wait')),
-      foot: `${steps ? `${done}/${steps.length} 단계 완료${stamp ? ` · 마지막 갱신 ${stamp}` : ''}` : '진행 단계 정보 없음'}   ·   이 창이 열려 있어도 ${HEADER_STOP}`,
+      foot: `${stamp ? `마지막 갱신 ${stamp}   ·   ` : ''}이 창이 열려 있어도 ${HEADER_STOP}`,
     };
   } else if (state === 'paused') {
     card = {
       dot: dotSimStopping, title: '일시정지됨', titleTone: '',
       sub: `${stoppedName || pausedModel} — 정지 지점에서 멈췄습니다. 재개하면 그 지점부터 이어서 옮깁니다`,
       section: '동작 세부 진행 · 일시정지',
-      stages: steps && steps.map((s, i) => ({ mark: s.reached ? '✓' : String(i + 1), tone: s.reached ? 'done' : i === first ? 'current' : 'wait', label: s.label })),
-      lines: steps && steps.slice(1).map((s) => (s.reached ? 'done' : 'wait')),
       foot: HEADER_STOP,
     };
   } else {
@@ -126,10 +167,7 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
       dot: dotSimStopping, titleTone: 'danger',
       title: overlay.confirmed ? '정지 확인됨' : '정지 요청됨 · 시뮬레이터 확인 대기',
       sub: overlay.confirmed ? `시뮬레이터가 정지를 확인했습니다 · ${overlay.resultLabel}` : '정지를 요청했습니다 — 시뮬레이터가 정지를 확인하면 결과가 표시됩니다',
-      section: '즉시 정지 처리 흐름',
-      stages: [{ mark: '✓', tone: 'requested', label: '즉시 정지 요청됨' },
-        overlay.confirmed ? { mark: '✓', tone: 'confirmed', label: '정지 확인' } : { mark: '?', tone: 'wait', label: '정지 확인 대기' }],
-      lines: [overlay.confirmed ? 'danger' : 'wait'],
+      section: '동작 세부 진행 · 즉시 정지',
       foot: `${overlay.confirmed && stamp ? `정지 확인 · ${stamp}   ·   ` : ''}${HEADER_STOP}`,
     };
   }
@@ -158,7 +196,7 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
         {full && showAlert && <SimAlert alert={showAlert} compact onDismiss={() => setDismissed(showAlert.key)} />}
         {full && <button type="button" className="sim-fullscreen sim-fullscreen-exit" onClick={toggleFull} aria-pressed>전체화면 종료 (Esc)</button>}
         {full && <div className="sim-fs-bar">
-          <span className={card.titleTone}>{card.title}{state !== 'viewing' && steps ? ` · ${done}/${steps.length} 단계` : ''}</span>
+          <span className={card.titleTone}>{card.title}{stepper && stepper.steps ? (stepper.total ? ` · ${stepper.done}/${stepper.total} 단계` : ` · ${stepper.done}단계 완료 · 남은 단계 확인 중`) : ''}</span>
           {repeatRun ? <>
             <button type="button" className="sim-fs-pause" disabled={repeatBusy || repeatRun.state !== 'running'} onClick={() => onRepeat('pause')}>❚❚ 일시정지</button>
             <button type="button" className="sim-fs-pause" disabled={repeatBusy || repeatRun.state !== 'paused' || !!lock} onClick={() => onRepeat('resume')}>▶ 재개</button>
@@ -169,6 +207,7 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
           <button type="button" className="sim-fs-stop" onClick={cmd.stop}>■ 즉시 정지</button>
         </div>}
       </div>
+      {full && stepper && <SimStepper model={stepper} stamp={stepperStamp} compact />}
       </div>
       {!full && showAlert && <SimAlert alert={showAlert} onDismiss={() => setDismissed(showAlert.key)} />}
       <p className="sim-section">{card.section}</p>
@@ -177,7 +216,8 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
           {i > 0 && <i className={`stage-line ${card.lines[i - 1]}`} />}
           <div className="stage"><span className={`stage-mark ${s.tone}`}>{s.mark}</span><small className={s.tone === 'wait' ? 'muted' : s.tone === 'danger' ? 'danger' : ''}>{s.label}</small></div>
         </div>)}
-      </div> : state !== 'viewing' && <p className="sim-foot">진행 단계 정보 없음</p>}
+      </div> : stepper ? <SimStepper model={stepper} stamp={stepperStamp} />
+        : state !== 'viewing' && <p className="sim-foot">진행 단계 정보 없음</p>}
       <p className="sim-foot">{card.foot}</p>
       {repeatRun && <div className="sim-actions" role="group" aria-label="반복 작업 제어">
         <button type="button" disabled={repeatBusy || repeatRun.state !== 'running'} title={repeatRun.state !== 'running' ? '실행 중인 반복이 아닙니다' : undefined} onClick={() => onRepeat('pause')}>❚❚ 일시정지</button>

@@ -280,6 +280,31 @@ def parse_progress(console: str) -> list[dict]:
     return rows
 
 
+#: 실행기가 단계를 시작하기 전에 남기는 단계 계획 줄(scripts/demo_workcell_pick_place.print_stage_plan, 2026-10-08).
+STAGE_PLAN_PREFIX = "[단계 계획]"
+
+
+def parse_stage_plan(console: str) -> dict | None:
+    """마지막 단계 계획 줄 → {"of": N, "stages": [{"no", "label"}]}. 없거나 형식이 틀리면 None.
+
+    진행 표시용 이름표일 뿐이다 — 단계 **완료**는 `progress`(단계 끝 줄의 도달=)만 근거다.
+    재개·복귀처럼 단계 구성이 다른 실행은 그 실행이 남긴 계획을 쓴다(마지막 줄)."""
+    plan = None
+    for line in console.splitlines():
+        line = line.strip()
+        if not line.startswith(STAGE_PLAN_PREFIX):
+            continue
+        try:
+            data = json.loads(line[len(STAGE_PLAN_PREFIX):].strip())
+            rows = [{"no": int(r["no"]), "label": str(r["label"])} for r in data["stages"]]
+            if int(data["of"]) != len(rows) or not rows:
+                continue
+            plan = {"of": len(rows), "stages": rows}
+        except (ValueError, KeyError, TypeError):
+            continue
+    return plan
+
+
 class SimDemoJobError(Exception):
     def __init__(self, status: int, message: str):
         self.status = status
@@ -942,6 +967,7 @@ class SimDemoJobs:
         except OSError:
             console = ""
         job["progress"] = parse_progress(console)
+        job["stage_plan"] = parse_stage_plan(console)
         job["console_tail"] = [line for line in console.splitlines()
                                if not line.startswith(("[INFO", "[WARN"))][-console_lines:]
         return job

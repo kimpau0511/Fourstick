@@ -46,7 +46,7 @@ function gateReason(bundle) {
 export function useGeneralCommand() {
   const [state, setState] = useState({
     busy: false, sent: '', result: null, pending: null, deadline: null,
-    job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, seq: null, updatedAt: null,
+    job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, seq: null, updatedAt: null, comm: null, stageAt: null,
   });
   const [log, setLog] = useState([]);
   const alive = useRef(true);
@@ -57,6 +57,20 @@ export function useGeneralCommand() {
   const pauseAsked = useRef(false); // 이번 실행에서 '일시정지'를 요청했는가(중단 결과를 일시정지로 표시할지)
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const patch = useCallback((next) => { if (alive.current) setState((s) => ({ ...s, ...next })); }, []);
+  // 진행 조회 결과 기록(2026-10-08, 스테퍼): 통신(조회 성공·실패)과 단계 진행(마지막으로 단계 줄이 늘어난 때)을 따로 둔다.
+  // 조회가 성공했는데 단계가 오래 안 바뀌는 것은 정상 동작일 수 있다 — 연결 끊김으로 보지 않는다.
+  const noteComm = useCallback((ok, job = null) => {
+    if (!alive.current) return;
+    const at = Date.now();
+    setState((s) => {
+      const prev = s.comm || {};
+      const comm = ok ? { okAt: at, failAt: prev.failAt || null, fails: 0 } : { okAt: prev.okAt || null, failAt: at, fails: (prev.fails || 0) + 1 };
+      if (!job) return { ...s, comm };
+      const before = s.job && s.job.job_id === job.job_id && Array.isArray(s.job.progress) ? s.job.progress.length : -1;
+      const count = Array.isArray(job.progress) ? job.progress.length : 0;
+      return { ...s, comm, job, updatedAt: at, stageAt: before !== count || !s.stageAt ? at : s.stageAt };
+    });
+  }, []);
   const addEvent = useCallback((kind, label, detail = '', id = currentId.current) => {
     if (id == null || !alive.current) return;
     const event = { at: Date.now(), kind, label, detail };
@@ -86,7 +100,7 @@ export function useGeneralCommand() {
     currentId.current = id;
     bundleRef.current = null;
     setLog((entries) => [...entries, { id, sentAt: Date.now(), text: utterance, robot, via: stt ? (stt.edited ? '음성(수정)' : '음성') : '텍스트', events: [] }].slice(-LOG_MAX));
-    patch({ busy: true, sent: utterance, result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false, seq: id, updatedAt: null });
+    patch({ busy: true, sent: utterance, result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, statusUnknown: false, seq: id, updatedAt: null, comm: null, stageAt: null });
     let res;
     try {
       const sessionId = await ensureSession();
@@ -139,15 +153,18 @@ export function useGeneralCommand() {
     while (!done.current && alive.current) {
       const st = await call('GET', '/v1/sim-demo').catch(() => null);
       const running = st && st.ok ? st.payload.running_job : null;
+      if (!st || !st.ok) noteComm(false);
+      else if (!running) noteComm(true);
       if (running && !done.current) {
         if (seen !== running.job_id) { seen = running.job_id; addEvent('job', '이송 작업 시작', running.job_id, logId); }
         const jr = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(running.job_id)}`).catch(() => null);
-        if (jr && jr.ok && !done.current) patch({ job: { ...jr.payload, status: 'running' }, updatedAt: Date.now() });
+        if (jr && jr.ok && !done.current) noteComm(true, { ...jr.payload, status: 'running' });
+        else if (!done.current) noteComm(false);
       }
       await sleep(POLL_MS);
     }
     return seen;
-  }, [patch, addEvent]);
+  }, [addEvent, noteComm]);
 
   const answerOnce = useCallback(async (action) => {
     const bundle = bundleRef.current;
@@ -182,7 +199,7 @@ export function useGeneralCommand() {
     addEvent('confirm', '승인', '', id);
     // 서버가 실행 직전에 승인 조건·관문·실행 허가를 다시 본다. 응답이 올 때까지는 '실행 중'이다.
     pauseAsked.current = false;
-    patch({ busy: false, result: { decision: 'RUN', reason: null }, job: { job_id: null, status: 'running', progress: [] }, pauseNote: null, updatedAt: Date.now() });
+    patch({ busy: false, result: { decision: 'RUN', reason: null }, job: { job_id: null, status: 'running', progress: [] }, pauseNote: null, updatedAt: Date.now(), stageAt: Date.now(), comm: null });
     const done = { current: false };
     const watching = watchTransfer(done, id);
     const exec = await call('POST', '/v1/execute', {
@@ -206,14 +223,19 @@ export function useGeneralCommand() {
     // 이송 작업 결과(시연 실행기 코드)가 있으면 그것도 보인다 — 실행 결과의 근거다.
     let report = null;
     let material = null;
+    // 진행 표시(스테퍼)는 끝난 뒤에도 마지막으로 확인된 단계를 그대로 보인다(2026-10-08) — 같은 작업의 서버 값.
+    let run = {};
     if (transferId) {
       const jr = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(transferId)}`).catch(() => null);
-      if (jr && jr.ok) { report = jr.payload.report || null; material = jr.payload.material || null; }
+      if (jr && jr.ok) {
+        report = jr.payload.report || null; material = jr.payload.material || null;
+        run = { progress: jr.payload.progress || [], stage_plan: jr.payload.stage_plan || null, material, action_label: jr.payload.action_label || null };
+      }
     }
     // 일시정지로 멈췄다(이 실행만 취소 → 실행기가 정지 지점을 남김). 재개 가능 여부는 서버 상태(actions.resume)가 정한다.
     const paused = pauseAsked.current && !!e.interrupted && material ? { material } : null;
     patch({
-      job: { job_id: transferId, execution_id: e.execution_id, status: 'finished', report, paused,
+      job: { ...run, job_id: transferId, execution_id: e.execution_id, status: 'finished', report, paused,
         general: { state: final.state, tone, label: paused ? '일시정지됨' : report && RESULT_LABELS[report.status] ? `${label} · ${RESULT_LABELS[report.status][1]}` : label,
           // 오류 안내(시뮬레이션 보기)용 서버 근거 — 표시만 한다.
           code: e.interrupted || final.reason_code || null,
@@ -290,23 +312,26 @@ export function useGeneralCommand() {
     }
     const jobId = res.payload.job_id;
     addEvent('resume', '재개', jobId);
-    patch({ busy: false, job: { job_id: jobId, status: 'running', progress: [], resumed: true }, updatedAt: Date.now() });
+    // 진행 표시: 같은 자재를 멈춘 앞 실행의 **확인된** 단계(이 화면이 본 값)가 있으면 그 뒤에 재개 단계를 잇는다.
+    const prev = state.job && state.job.material === material && Array.isArray(state.job.progress) && state.job.progress.length
+      ? { stage_plan: state.job.stage_plan || null, progress: state.job.progress, material, action_label: state.job.action_label || null } : null;
+    patch({ busy: false, job: { job_id: jobId, status: 'running', progress: [], resumed: true, resumedFrom: prev }, updatedAt: Date.now(), stageAt: Date.now(), comm: null });
     // 재개 작업이 끝날 때까지 진행만 읽는다. 결과는 실행기 보고서(RESULT_LABELS)로 정한다.
     for (;;) {
       await sleep(POLL_MS);
       if (!alive.current) return;
       const jr = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`).catch(() => null);
-      if (!jr || !jr.ok) continue;
-      if (jr.payload.status === 'running') { patch({ job: { ...jr.payload, status: 'running', resumed: true }, updatedAt: Date.now() }); continue; }
+      if (!jr || !jr.ok) { noteComm(false); continue; }
+      if (jr.payload.status === 'running') { noteComm(true, { ...jr.payload, status: 'running', resumed: true, resumedFrom: prev }); continue; }
       const report = jr.payload.report || null;
       const hit = report && RESULT_LABELS[report.status];
       const ok = !!hit && hit[0] === 'ok';
       addEvent('result', hit ? hit[1] : '재개 결과 확인 안 됨', report ? report.status : '');
-      patch({ job: { ...jr.payload, status: 'finished', report, resumed: true,
+      patch({ job: { ...jr.payload, status: 'finished', report, resumed: true, resumedFrom: prev,
         general: { state: ok ? 'completed' : 'failed', tone: hit ? hit[0] : 'warn', label: `재개 · ${hit ? hit[1] : '결과 확인 안 됨'}` } }, updatedAt: Date.now() });
       return;
     }
-  }, [state.job, patch, addEvent]);
+  }, [state.job, patch, addEvent, noteComm]);
 
   /** 복구 — 재개할 수 없는 지점에서 멈춘 자재를 원래 자리로 되돌린다(서버 restore 작업). 끝나면 서버 기록으로 판정한다. */
   const restore = useCallback(async (target = null) => {
@@ -322,13 +347,13 @@ export function useGeneralCommand() {
     }
     const jobId = res.payload.job_id;
     addEvent('restore', '복구', jobId);
-    patch({ busy: false, job: { job_id: jobId, status: 'running', progress: [], resumed: true, restoring: true }, updatedAt: Date.now() });
+    patch({ busy: false, job: { job_id: jobId, status: 'running', progress: [], resumed: true, restoring: true }, updatedAt: Date.now(), stageAt: Date.now(), comm: null });
     for (;;) {
       await sleep(POLL_MS);
       if (!alive.current) return;
       const jr = await call('GET', `/v1/sim-demo/jobs/${encodeURIComponent(jobId)}`).catch(() => null);
-      if (!jr || !jr.ok) continue;
-      if (jr.payload.status === 'running') { patch({ job: { ...jr.payload, status: 'running', resumed: true, restoring: true }, updatedAt: Date.now() }); continue; }
+      if (!jr || !jr.ok) { noteComm(false); continue; }
+      if (jr.payload.status === 'running') { noteComm(true, { ...jr.payload, status: 'running', resumed: true, restoring: true }); continue; }
       // 복구 결과는 실행기 말이 아니라 서버 자재 기록으로 본다: 기록이 비면(원래 자리) 복구됨.
       const st = await call('GET', '/v1/sim-demo').catch(() => null);
       const row = st && st.ok ? (st.payload.materials || []).find((m) => m.model === material) : null;
@@ -338,11 +363,11 @@ export function useGeneralCommand() {
         general: { state: ok ? 'completed' : 'failed', tone: ok ? 'ok' : 'warn', label: ok ? '복구 완료 · 원래 자리' : '복구 결과 확인 안 됨 — 자재 상태를 확인해 주세요' } }, updatedAt: Date.now() });
       return;
     }
-  }, [state.job, patch, addEvent]);
+  }, [state.job, patch, addEvent, noteComm]);
 
   const reset = useCallback(() => {
     bundleRef.current = null;
-    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, updatedAt: null });
+    patch({ sent: '', result: null, pending: null, deadline: null, job: null, goal: null, error: null, stopNote: null, pauseNote: null, statusUnknown: false, updatedAt: null, comm: null, stageAt: null });
   }, [patch]);
 
   return { ...state, log, send, answer, stop, pause, resume, restore, reset, mode: 'general' };

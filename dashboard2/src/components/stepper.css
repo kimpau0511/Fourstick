@@ -1,0 +1,60 @@
+/* 가로 스테퍼(2026-10-08) — 대시보드 밝은 바탕·둥근 모서리·청록 포인트(--cyan·--accent-border)에 맞춘다. */
+.stepper { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 16px; background: var(--panel-2); box-shadow: var(--inset); }
+.stepper-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.stepper-now { margin: 0; color: var(--white); font-size: 14px; font-weight: 600; }
+.stepper-now-key { color: var(--cyan); }
+.stepper-chip { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.stepper-chip.info { color: var(--cyan); background: var(--info-subtle); }
+.stepper-chip.ok { color: var(--green); background: var(--ok-subtle); }
+.stepper-chip.warn { color: var(--amber); background: var(--warn-subtle); }
+.stepper-chip.danger { color: var(--red); background: var(--danger-subtle); }
+.stepper-note { margin: 0; color: var(--muted); font-size: 12px; }
+.stepper-note.warn { color: var(--amber); }
+
+/* 단계가 많거나 화면이 좁으면 글자를 줄이지 않고 가로로 스크롤한다. */
+.stepper-scroll { overflow-x: auto; overflow-y: hidden; padding: 4px 2px 6px; scrollbar-width: thin; }
+.stepper-track { display: flex; margin: 0; padding: 0; list-style: none; min-width: min-content; }
+.stepper-step { position: relative; flex: 1 0 76px; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 76px; }
+.stepper-bar { position: absolute; top: 14px; right: calc(50% + 18px); left: calc(-50% + 18px); height: 3px; border-radius: 2px; background: var(--line); }
+.stepper-bar.filled { background: var(--accent-border); }
+.stepper-dot { position: relative; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; box-sizing: border-box;
+  border: 2px solid var(--line); background: var(--stage-idle); color: var(--muted); font-size: 13px; font-weight: 700; }
+.stepper-label { max-width: 96px; color: var(--muted); font-size: 12px; line-height: 1.3; text-align: center; word-break: keep-all; overflow-wrap: anywhere; }
+.stepper-label.unnamed { font-style: italic; }
+
+.stepper-step.done .stepper-dot { border-color: var(--accent-border); background: var(--accent-border); color: var(--on-accent); }
+.stepper-step.done .stepper-label { color: var(--white); }
+.stepper-step.current .stepper-dot { border-color: var(--accent-border); background: var(--panel); color: var(--cyan); animation: stepper-pulse 1.8s ease-out infinite; }
+.stepper-step.current .stepper-label, .stepper-step.paused .stepper-label { color: var(--cyan); font-weight: 700; }
+/* 일시정지: 같은 자리에 머물고 펄스를 멈춘다. 갱신 중단도 펄스를 멈춘다(살아 있는 것처럼 보이지 않게). */
+.stepper-step.paused .stepper-dot { border-color: var(--accent-border); background: var(--panel); color: var(--cyan); font-size: 10px; }
+.stepper.stale .stepper-step.current .stepper-dot { animation: none; border-style: dashed; }
+.stepper-step.halted .stepper-dot { border-color: var(--red); background: var(--panel); color: var(--red); font-size: 11px; }
+.stepper-step.failed .stepper-dot { border-color: var(--red); background: var(--red); color: var(--on-accent); }
+.stepper-step.halted .stepper-label, .stepper-step.failed .stepper-label { color: var(--red); font-weight: 700; }
+.stepper.cancelled .stepper-step.halted .stepper-dot { border-color: var(--amber); color: var(--amber); }
+.stepper.cancelled .stepper-step.halted .stepper-label { color: var(--amber); }
+
+@keyframes stepper-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(14, 116, 144, .45); }
+  70% { box-shadow: 0 0 0 9px rgba(14, 116, 144, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(14, 116, 144, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .stepper-step.current .stepper-dot { animation: none; } }
+
+.stepper-detail { display: flex; flex-direction: column; gap: 8px; }
+.stepper-toggle { align-self: flex-start; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--cyan); font-size: 12px; font-weight: 600; cursor: pointer; }
+.stepper-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--white); }
+.stepper-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 8px; background: var(--panel); }
+.stepper-list-no { color: var(--muted); text-align: right; }
+.stepper-list-state { color: var(--muted); }
+.stepper-list li.done .stepper-list-state { color: var(--green); }
+.stepper-list li.current .stepper-list-state, .stepper-list li.paused .stepper-list-state { color: var(--cyan); font-weight: 700; }
+.stepper-list li.halted .stepper-list-state, .stepper-list li.failed .stepper-list-state { color: var(--red); font-weight: 700; }
+
+/* 전체화면: 3D를 덮지 않게 영상 아래 자기 줄을 쓴다(SimOverlay의 .sim-stage 그리드). */
+.stepper.compact { padding: 10px 12px; gap: 8px; }
+.sim-stage:fullscreen { grid-template-rows: minmax(0, 1fr) auto; }
+.sim-stage:fullscreen > .stepper { grid-column: 1 / -1; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
