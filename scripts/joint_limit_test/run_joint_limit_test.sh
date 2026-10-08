@@ -11,10 +11,12 @@
 # 사용: bash run_joint_limit_test.sh <forstick 저장소 경로>
 # 외부 FAIRINO 저장소 경로가 기본값(/home/asd/external/frcobot_ros2)과 다르면 FORSTICK2_FR3_REPO로 준다.
 #
-# 비교 실험(기본): 공식 URDF의 <safety_controller>(값이 전부 0인 자리 채움)를 **임시 사본에서만**
-# 지우고 띄운다. 이 태그가 있으면 ros2_control 6.9가 JointSoftLimiter(soft 한계 [0, 0])를 쓰는데,
-# 이전 실행에서 컨트롤러 목표는 맞는데 팔이 따라가지 않았다. 공식 파일은 고치지 않는다.
-# 원래대로(태그 유지) 돌리려면 JLT_KEEP_SOFT=1.
+# 비교 실험 — 원본 파일은 고치지 않고 임시 사본만 바꾼다.
+#   JLT_ENFORCE=0(기본): controller_manager의 enforce_command_limits를 false로 둔 컨트롤러 설정 사본.
+#     명령 한계 강제(JointLimiter)를 빼고 Gazebo 자체 관절 한계만 남긴다.
+#     (safety_controller 제거만으로는 처리기 종류만 바뀌고 증상은 같았다 — 59ccd85 실행)
+#   JLT_ENFORCE=1: 원래 설정(강제 켬).
+#   JLT_STRIP_SOFT=1: 공식 URDF의 <safety_controller>(값 전부 0)를 사본에서 지운다(기본은 원본 그대로).
 set -eo pipefail
 
 REPO="${1:?forstick 저장소 경로를 인자로 주세요}"
@@ -64,6 +66,10 @@ finish() {
     grep -iE 'limit|saturat|clamp|reject|abort|error|warn' "$LOG/gz_sim.log" \
       | sed -E 's/\[[0-9]+\.[0-9]+\]//g; s/-?[0-9]+\.[0-9]+/N/g' \
       | sort | uniq -c | sort -rn | head -30 || true
+    echo "[진단] 한계 초과 오류 원문(실제·명령·제한값, 앞 8줄)"
+    grep 'out of limits' "$LOG/gz_sim.log" | head -8 || true
+    echo "[진단] 시계 경고 원문(앞 2줄)"
+    grep -i 'clock' "$LOG/gz_sim.log" | head -2 || true
   fi
   if [[ $rc -eq 0 ]]; then rm -rf "$LOG"; echo "[정리] 시험 로그 삭제함 — 위 표를 복사해 보내주세요"
   else echo "[정리] 실패(종료 코드 $rc) — 로그를 남겨 둠: $LOG"; fi
@@ -81,9 +87,25 @@ export GZ_SIM_SYSTEM_PLUGIN_PATH="/opt/ros/lyrical/lib${GZ_SIM_SYSTEM_PLUGIN_PAT
 ln -sfn "$FR3_REPO/fairino_description/meshes" "$LOG/meshes"
 mkdir -p "$LOG/urdf"
 URDF_OUT="$LOG/urdf/fr3wms_arm.urdf"
+CTRL_YAML="$CONTROLLERS"
+if [[ "${JLT_ENFORCE:-0}" == 1 ]]; then
+  echo "[비교] 명령 한계 강제: 켬(원래 설정)"
+else
+  CTRL_YAML="$LOG/fr3wms_controllers_no_enforce.yaml"
+  python3 - "$CONTROLLERS" "$CTRL_YAML" <<'PYYAML'
+import sys
+src = open(sys.argv[1], encoding="utf-8").read()
+key = "controller_manager:\n  ros__parameters:\n"
+if src.count(key) != 1 or "enforce_command_limits" in src:
+    sys.exit("[비교] 컨트롤러 설정 형식이 예상과 다르다 — 시험 중단")
+out = src.replace(key, key + "    enforce_command_limits: false\n")
+open(sys.argv[2], "w", encoding="utf-8").write(out)
+print("[비교] 명령 한계 강제: 끔(설정 사본에 enforce_command_limits: false)")
+PYYAML
+fi
 ARM_URDF="$FR3_URDF"
-if [[ "${JLT_KEEP_SOFT:-0}" == 1 ]]; then
-  echo "[비교] 모드: 원본 URDF 그대로(safety_controller 유지)"
+if [[ "${JLT_STRIP_SOFT:-0}" != 1 ]]; then
+  echo "[비교] URDF: 원본 그대로(safety_controller 유지)"
 else
   ARM_URDF="$LOG/FR3WMS_no_safety_controller.urdf"
   python3 - "$FR3_URDF" "$ARM_URDF" <<'PYSTRIP'
@@ -97,7 +119,7 @@ sys.exit(0 if n > 0 and left == 0 else 6)
 PYSTRIP
 fi
 # 메시 경로는 생성된 URDF($URDF_OUT) 기준으로 풀리므로 사본 위치는 상관없다.
-ros2 run xacro xacro "$XACRO_FILE" "fr3_urdf:=$ARM_URDF" "controller_yaml:=$CONTROLLERS" > "$URDF_OUT"
+ros2 run xacro xacro "$XACRO_FILE" "fr3_urdf:=$ARM_URDF" "controller_yaml:=$CTRL_YAML" > "$URDF_OUT"
 echo "[비교] 생성된 모델의 safety_controller 태그 수: $(grep -c safety_controller "$URDF_OUT" || true)"
 
 echo "[1/4] Gazebo 서버(화면 없음)"
@@ -130,7 +152,7 @@ echo "[3/4] 컨트롤러"
 for controller in joint_state_broadcaster arm_trajectory_controller; do
   nice -n 19 ros2 run controller_manager spawner "$controller" \
     --controller-manager /controller_manager --controller-manager-timeout 60 \
-    --param-file "$CONTROLLERS" > "$LOG/spawn_$controller.log" 2>&1
+    --param-file "$CTRL_YAML" > "$LOG/spawn_$controller.log" 2>&1
   echo "  $controller: $(tail -1 "$LOG/spawn_$controller.log")"
 done
 
