@@ -177,6 +177,16 @@ def main() -> int:
             captured["gate_ms"] = (time.perf_counter() - started) * 1000.0
 
     api.gate_for = timed_gate
+
+    # 정지 발화는 10-06(305e4b0)부터 계획 없이 Api.stop() → adapter.stop()으로 간다. 이 평가는 운영 작업 셀
+    # 어댑터에 붙어 돌기 때문에(FORSTICK2_WORKCELL_ROBOT=1) 그대로 두면 **운영 로봇에 실제 정지가 간다**
+    # (2026-10-08 봉인 평가 중 12회 확인). 평가는 "정지 경로로 갔는가"만 보면 되므로 정지를 기록만 한다.
+    def recorded_stop(*, session_id=None):
+        captured["stop_called"] = True
+        return {"ok": True, "evaluation_only": True,
+                "detail": "평가 — 로봇에 정지를 보내지 않고 기록만 했다"}
+
+    api.stop = recorded_stop
     session_id = api.create_session(origin="evaluation")["session_id"]
 
     wanted = PROVIDERS if args.provider == "all" else (args.provider,)
@@ -242,7 +252,11 @@ def main() -> int:
                         "served_model_id": last.served_model_id, "is_mock": last.is_mock,
                     }
                     planning_ms = (sum(a.duration_ms for a in attempts) if attempts else None)
-                    bypassed = bool(run is not None and run.outcome.bypassed_model)
+                    # 정지 발화는 계획 단계(run_planning)를 아예 거치지 않고 decision "STOP"을 준다(305e4b0).
+                    # 예전엔 run.outcome.bypassed_model만 봐서 이 경우를 BLOCK으로 채점했다(2026-10-08).
+                    bypassed = bool((run is not None and run.outcome.bypassed_model)
+                                    or (run is None and payload.get("decision") == "STOP"
+                                        and captured.get("stop_called")))
                     obs = ev.observation_from_payload(
                         payload, bypassed=bypassed, planning_ms=planning_ms,
                         gate_ms=captured.get("gate_ms"), total_ms=total_ms, attempt=attempt,
