@@ -18,19 +18,30 @@ async function setup(page) {
   return calls;
 }
 
-for (const [edited, typed] of [[false, null], [true, 'A 자재를 컨베이어로 옮겨줘']]) {
-  test(`[UI-GEN-VOICE-${edited ? 2 : 1}] 음성 결과 ${edited ? '수정 후' : '그대로'} 보내기 → /v1/plan stt.edited=${edited}`, async ({ page }) => {
-    const calls = await setup(page);
-    await page.goto('/');
-    const panel = page.locator('section.command');
-    await panel.getByRole('button', { name: /음성 입력/ }).click();
-    await panel.getByRole('button', { name: /음성 인식 중/ }).click();
-    await expect(page.getByLabel('자연어 명령')).toHaveValue(FINAL);
-    expect(calls).toHaveLength(0);                                   // 자동으로 계획을 요청하지 않는다
-    if (typed) await page.getByLabel('자연어 명령').fill(typed);
-    await panel.getByRole('button', { name: '보내기' }).click();
-    await expect.poll(() => calls.length).toBe(1);
-    expect(calls[0]).toMatchObject({ utterance: typed || FINAL,
-      stt: { stt_request_id: 'stt-req-9', stt_text: FINAL, stt_confidence: 0.81, edited } });
-  });
-}
+test('[UI-GEN-VOICE-1] 음성 최종 결과 자동 보내기 → /v1/plan stt.edited=false(원문·신뢰도 함께)', async ({ page }) => {
+  const calls = await setup(page);
+  await page.goto('/');
+  const panel = page.locator('section.command');
+  await panel.getByRole('button', { name: /음성 입력/ }).click();
+  await panel.getByRole('button', { name: /음성 인식 중/ }).click();
+  await expect.poll(() => calls.length).toBe(1);
+  expect(calls[0]).toMatchObject({ utterance: FINAL, stt: { stt_request_id: 'stt-req-9', stt_text: FINAL, stt_confidence: 0.81, edited: false } });
+});
+
+test('[UI-GEN-VOICE-2] 되묻기 뒤 문장 수정해 다시 보내기 → /v1/plan stt.edited=true(새 요청, 자동 재시도 없음)', async ({ page }) => {
+  const calls = await setup(page);
+  await page.goto('/');
+  const panel = page.locator('section.command');
+  await panel.getByRole('button', { name: /음성 입력/ }).click();
+  await panel.getByRole('button', { name: /음성 인식 중/ }).click();
+  await expect.poll(() => calls.length).toBe(1);
+  await page.waitForTimeout(600);
+  expect(calls).toHaveLength(1);                                       // 실패·되묻기 뒤 자동으로 다시 보내지 않는다
+  await panel.getByRole('button', { name: '문장 수정해 다시 보내기' }).click();
+  await expect(page.getByLabel('자연어 명령')).toHaveValue(FINAL);
+  await page.getByLabel('자연어 명령').fill('A 자재를 컨베이어로 옮겨줘');
+  await panel.getByRole('button', { name: /보내기/ }).last().click();
+  await expect.poll(() => calls.length).toBe(2);
+  expect(calls[1]).toMatchObject({ utterance: 'A 자재를 컨베이어로 옮겨줘',
+    stt: { stt_request_id: 'stt-req-9', stt_text: FINAL, stt_confidence: 0.81, edited: true } });
+});

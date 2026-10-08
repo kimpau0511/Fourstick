@@ -23,9 +23,9 @@ test('[UI-GEN-CONF] 신뢰도 99%도 승인 없이 실행하지 않는다', asyn
   const panel = page.locator('section.command');
   await panel.getByRole('button', { name: /음성 입력/ }).click();
   await panel.getByRole('button', { name: /음성 인식 중/ }).click();
-  await expect(panel.getByTestId('stt-confidence')).toContainText('99%');
-  await panel.getByRole('button', { name: '보내기' }).click();
+  // 최종 결과는 자동으로 계획만 요청한다(2026-10-08). 승인·실행은 요청하지 않는다.
   await expect(panel.getByRole('button', { name: '실행 승인' })).toBeVisible();
+  await expect(panel.getByTestId('stt-confidence')).toContainText('99%');
   await page.waitForTimeout(500);
   expect(calls).toEqual(['plan']);                      // 승인·실행 요청 없음
   await panel.getByRole('button', { name: '실행 승인' }).click();

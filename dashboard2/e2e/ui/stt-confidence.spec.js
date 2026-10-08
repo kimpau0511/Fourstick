@@ -1,5 +1,6 @@
 // 실시간 STT + 음성 인식 신뢰도(2026-10-08): 말하는 중 중간 결과와 그 점수(없으면 '인식 중…'), 끝나면 최종 점수.
-// 점수는 서버가 준 값만 쓴다(없는 점수를 만들지 않음). 계획 요청은 '보내기'로만, 실행은 승인 뒤에만(기존 그대로).
+// 점수는 서버가 준 값만 쓴다(없는 점수를 만들지 않음). 2026-10-08부터 최종 확정 결과는 자동으로 계획을 요청한다(중간 결과는 보내지 않는다).
+// 보낸 뒤에도 보낸 문장과 그 신뢰도를 결과 카드에 보인다. 실행은 승인 뒤에만(기존 그대로).
 import { expect, test } from '@playwright/test';
 import { mockBackend } from '../mock.js';
 
@@ -31,7 +32,7 @@ async function setup(page, recordings) {
 const startMic = (page) => panel(page).getByRole('button', { name: /음성 입력/ }).click();
 const stopMic = (page) => panel(page).getByRole('button', { name: /음성 인식 중/ }).click();
 
-test('[UI-CONF-01] 말하는 중 중간 결과·중간 점수 → 끝나면 최종 점수, 안내 문구 없음, 자동 전송 없음', async ({ page }) => {
+test('[UI-CONF-01] 말하는 중 중간 결과·중간 점수(전송 없음) → 끝나면 최종 점수, 안내 문구 없음, 최종 결과 1회 자동 전송', async ({ page }) => {
   const { calls } = await setup(page, [{ partial: { text: 'A 자재를', confidence: 0.721 }, end: { kind: 'final', confidence: 0.934 } }]);
   await page.goto('/');
   await expect(score(page)).toHaveCount(0);
@@ -40,13 +41,15 @@ test('[UI-CONF-01] 말하는 중 중간 결과·중간 점수 → 끝나면 최�
   await expect(score(page)).toHaveText('음성 인식 신뢰도 72%');
   await expect(score(page)).toHaveAttribute('data-kind', 'partial');
   await panel(page).screenshot({ path: 'e2e-results/screens/stt-live-partial.png' });
+  await page.waitForTimeout(400);
+  expect(calls.filter((c) => c.path.endsWith('/command'))).toHaveLength(0);                 // 중간 결과는 보내지 않는다
   await stopMic(page);
   await expect(score(page)).toHaveText('음성 인식 신뢰도 93%');
   await expect(score(page)).toHaveAttribute('data-kind', 'final');
-  await expect(page.getByLabel('자연어 명령')).toHaveValue(TEXT);
+  await expect(panel(page).getByTestId('voice-sent')).toHaveText(`음성으로 보낸 문장: “${TEXT}”`);
   await expect(panel(page)).not.toContainText('실제 인식 정확도');
   await page.waitForTimeout(400);
-  expect(calls.filter((c) => c.path.endsWith('/command'))).toHaveLength(0);
+  expect(calls.filter((c) => c.path.endsWith('/command'))).toHaveLength(1);
   await panel(page).screenshot({ path: 'e2e-results/screens/stt-final.png' });
 });
 
@@ -76,12 +79,13 @@ test('[UI-CONF-03] 새 녹음 시작 → 이전 음성 결과 문장·점수 지
   await startMic(page);
   await stopMic(page);
   await expect(score(page)).toHaveText('음성 인식 신뢰도 81%');
-  await expect(page.getByLabel('자연어 명령')).toHaveValue(TEXT);
+  await expect(panel(page).getByTestId('voice-sent')).toContainText(TEXT);
+  await panel(page).getByRole('button', { name: '새 명령 입력' }).click();
+  await expect(score(page)).toHaveCount(0);                                                  // 새 명령: 이전 점수 없음
   await startMic(page);
-  await expect(page.getByLabel('자연어 명령')).toHaveValue('');
   await expect(score(page)).toHaveText('인식 중…');
   await stopMic(page);
-  await expect(page.getByLabel('자연어 명령')).toHaveValue('B 자재를 컨베이어로');
+  await expect(panel(page).getByTestId('voice-sent')).toContainText('B 자재를 컨베이어로');
   await expect(score(page)).toHaveText('음성 인식 신뢰도 66%');
 });
 
@@ -102,14 +106,13 @@ test('[UI-CONF-04] 되묻기(기준 미만)에도 그 점수를 보이고 입력
   await expect(page.getByLabel('자연어 명령')).toHaveValue('');
 });
 
-test('[UI-CONF-05] 보내기는 기존 그대로(수정 가능), 보낸 뒤 점수 사라짐 · 확정 버튼 없음', async ({ page }) => {
+test('[UI-CONF-05] 직접 입력은 기존처럼 보내기로만 보내고, 보낸 뒤 점수는 없다 · 확정 버튼 없음', async ({ page }) => {
   const { calls } = await setup(page, [{ end: { kind: 'final', confidence: 0.99 } }]);
   await page.goto('/');
-  await startMic(page);
-  await stopMic(page);
-  await expect(score(page)).toHaveText('음성 인식 신뢰도 99%');
   await expect(panel(page).getByRole('button', { name: '실제 발화 내용으로 확정' })).toHaveCount(0);
   await page.getByLabel('자연어 명령').fill('B 자재를 컨베이어로 옮겨줘');
+  await page.waitForTimeout(400);
+  expect(calls.filter((c) => c.path.endsWith('/command'))).toHaveLength(0);                 // 쓰는 것만으로는 보내지 않는다
   await panel(page).getByRole('button', { name: '보내기' }).click();
   await expect.poll(() => calls.filter((c) => c.path.endsWith('/command')).length).toBe(1);
   expect(calls.find((c) => c.path.endsWith('/command')).body).toMatchObject({ source: 'text', utterance: 'B 자재를 컨베이어로 옮겨줘' });

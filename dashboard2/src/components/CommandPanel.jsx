@@ -104,6 +104,15 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const [sttScore, setSttScore] = useState(null);
   const sttDraftRef = useRef(null);
   useEffect(() => { sttDraftRef.current = sttDraft; }, [sttDraft]);
+  // 음성 자동 보내기(2026-10-08): 서버가 정상 확정한 최종 STT만 같은 계획 요청(sim.send)으로 바로 보낸다. 실행 승인은 그대로 사람이 한다.
+  // autoSent: 자동으로 보낸 원문(화면에 남겨 확인·수정할 수 있게). voiceNote: 보내지 않은 이유 등 안내.
+  const [autoSent, setAutoSent] = useState(null);
+  const [voiceNote, setVoiceNote] = useState(null);
+  const sentUtterances = useRef(new Set()); // 이미 보낸 발화 id — 같은 최종 결과는 한 번만
+  const sendLock = useRef(false);           // 자동·버튼·스킬 보내기 공통 — 요청이 끝날 때까지 다음 요청을 막는다
+  const editedWhileRecording = useRef(false); // 녹음 중(또는 녹음 전부터) 사용자가 입력칸에 쓴 문장이 있다
+  const textRef = useRef('');
+  const live = useRef({});                   // 최종 결과가 도착한 순간의 화면 상태(렌더 사이 값 대신 최신 값)
   const [picked, setPicked] = useState(null);
   const robots = Object.entries((server && server.robots && server.robots.robots) || {})
     .map(([id, profile]) => ({ id, name: robotName(id, profile), title: profile.profile_id || id }));
@@ -121,26 +130,62 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     server && server.simDemoFailing && '작업 상태 조회가 실패해 자재 버튼을 잠갔습니다 — 연결을 확인해 주세요'].filter(Boolean))];
   // 음성 입력. final(확정 전사)만 입력칸에 넣는다 — partial·clarify는 넣지 않는다. 자동으로 보내지 않는다:
   // 사용자가 문장을 확인·수정한 뒤 보내기를 눌러야 계획을 요청한다(잘못 알아들은 문장이 그대로 계획되지 않게).
+  // 텍스트·음성(자동)·스킬 버튼이 함께 쓰는 보내기. 같은 계획 입구(sim.send) 하나이고, 요청이 끝날 때까지 다음 요청을 막는다.
+  // 실패해도 다시 보내지 않는다(자동 재시도 없음) — 사용자가 직접 다시 보낸다.
+  function dispatch(utterance, stt) {
+    if (sendLock.current) return false;
+    sendLock.current = true;
+    Promise.resolve(sim.send(utterance, target && target.id, stt)).finally(() => { sendLock.current = false; });
+    return true;
+  }
   const voice = useVoice({
     config: server && server.config, health: server && server.health,
-    // 입력을 받는 단계(대기·되묻기)에서만 넣는다 — 녹음 중 확인 카드가 떴으면 그 카드와 섞지 않는다.
+    // 서버가 정상 확정한 최종 결과(final)만 온다 — 중간 결과·되묻기(clarify)·오류·빈 문장은 여기로 오지 않는다.
     onFinal: (utterance, stt) => {
-      if (phase !== 'idle' && phase !== 'ask') return;
-      setText(utterance);
-      // 새 녹음 = 새 발화(새 id). 이전 발화의 점수를 남기지 않는다.
-      const id = `utt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-      setSttDraft({ id, text: utterance, rawText: stt && stt.rawText, confidence: stt && stt.confidence, requestId: stt && stt.requestId,
-        sessionId: stt && stt.sessionId, persisted: stt && stt.persisted });
+      const meta = { text: utterance, rawText: stt && stt.rawText, confidence: stt && stt.confidence, requestId: stt && stt.requestId,
+        sessionId: stt && stt.sessionId, persisted: stt && stt.persisted, utteranceId: stt && stt.utteranceId };
       setSttScore({ value: stt ? stt.confidence : null, kind: 'final' });
-      const box = document.getElementById('command-input');
-      if (box) box.focus();
+      const id = meta.utteranceId;
+      if (id && sentUtterances.current.has(id)) return; // 같은 발화의 최종 결과가 또 왔다 — 한 번만
+      const L = live.current;
+      if (editedWhileRecording.current) {
+        // 사용자가 쓴 문장을 덮어쓰지도 보내지도 않는다 — 수동 보내기로 둔다.
+        setVoiceNote({ tone: 'warn', text: `입력칸에 직접 쓴 문장이 있어 음성 결과를 넣지도 보내지도 않았습니다 — 인식 결과: “${utterance}”. 보낼 문장을 확인한 뒤 보내기를 누르세요` });
+        return;
+      }
+      const waitWhy = L.busy || sendLock.current ? '계획 요청이 진행 중입니다'
+        : L.phase === 'confirm' ? '실행 승인을 기다리는 계획이 있습니다'
+          : L.phase === 'running' ? '작업이 실행 중입니다'
+            : L.phase !== 'idle' && L.phase !== 'ask' ? '이전 명령 결과가 열려 있습니다 — 새 명령 입력을 누른 뒤 다시 말해 주세요'
+              : document.visibilityState === 'hidden' ? '화면이 보이지 않습니다' : null;
+      if (waitWhy) {
+        // 대기열에 쌓지 않는다 — 버리고 이유만 보인다.
+        setVoiceNote({ tone: 'warn', text: `${waitWhy} — 음성 결과를 보내지 않았습니다(인식 결과: “${utterance}”)` });
+        return;
+      }
+      if (L.lockReason) {
+        // 명령을 받을 수 없는 상태(연결·반복 작업 등): 보내지 않고 입력칸에 넣어 둔다 — 풀리면 사용자가 보내기를 누른다.
+        setText(utterance); textRef.current = utterance;
+        setSttDraft({ id: id || `utt_${Date.now().toString(36)}`, ...meta });
+        setVoiceNote({ tone: 'warn', text: `${L.lockReason} — 자동으로 보내지 않고 입력칸에 넣었습니다` });
+        return;
+      }
+      if (id) sentUtterances.current.add(id);
+      if (!dispatch(utterance, { ...meta, edited: false })) {
+        setVoiceNote({ tone: 'warn', text: `다른 요청이 진행 중이라 음성 결과를 보내지 않았습니다(인식 결과: “${utterance}”)` });
+        return;
+      }
+      setText(''); textRef.current = ''; setSttDraft(null);
+      setAutoSent(meta); setVoiceNote(null);
     },
-    // 신뢰도가 기준 미만이라 다시 말해 달라고 할 때도 그 점수를 보인다(입력칸에는 넣지 않는다).
+    // 신뢰도가 기준 미만이라 다시 말해 달라고 할 때도 그 점수를 보인다(입력칸에도 넣지 않고 보내지도 않는다).
     onClarify: (info) => setSttScore({ value: info ? info.confidence : null, kind: 'clarify' }),
-    // 새 녹음 시작: 이전 음성 결과(입력칸 문장·점수)를 지운다. 사용자가 직접 친 문장(음성 결과가 아닌 것)은 그대로 둔다.
+    onEmpty: () => setVoiceNote({ tone: 'warn', text: '인식된 문장이 비어 있어 보내지 않았습니다 — 다시 말해 주세요' }),
+    // 새 녹음 시작: 이전 음성 결과(입력칸 문장·점수)를 지운다. 사용자가 직접 친 문장은 그대로 두고, 그 문장이 있으면 자동 보내기를 하지 않는다.
     onStart: () => {
-      setSttScore(null);
-      if (sttDraftRef.current) { setText(''); setSttDraft(null); }
+      setSttScore(null); setVoiceNote(null);
+      if (sttDraftRef.current) { setText(''); textRef.current = ''; setSttDraft(null); }
+      editedWhileRecording.current = !sttDraftRef.current && !!textRef.current.trim();
     },
   });
   const { result, pending, job, goal } = sim;
@@ -171,6 +216,8 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   const steps = job ? (job.progress || []).map((p) => p.reached) : goal ? (goal.plan || []).map((p) => p.status === 'completed') : [];
   const percent = steps.length ? Math.round((steps.filter(Boolean).length / steps.length) * 100) : 0;
   const cardTone = { confirm: expired ? 'warn' : 'ok', running: 'info', done: resultTone, ask: 'warn', other: statusTone }[phase];
+  // 그린 직후 최신 화면 상태를 남긴다(최종 결과 콜백이 읽는다). 보내는 중 여부는 sendLock이 즉시 막는다.
+  useEffect(() => { live.current = { phase, busy: !!sim.busy, lockReason }; });
 
   // 말하는 중: 중간 결과의 점수(없으면 '인식 중…'). 끝나면: 최종(또는 되묻기) 점수.
   const recording = ['connecting', 'listening', 'finalizing'].includes(voice.status);
@@ -178,11 +225,28 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
 
   function submit(event) {
     event.preventDefault();
-    if (!sim.busy && !lockReason && text.trim()) {
+    if (!sim.busy && !sendLock.current && !lockReason && text.trim()) {
       if (voice.status !== 'idle' && voice.status !== 'error') voice.cancel(); // 텍스트가 이긴다 — 듣던 음성은 버린다
       const stt = sttDraft ? { ...sttDraft, edited: text.trim() !== (sttDraft.text || '').trim() } : null;
-      sim.send(text, target && target.id, stt); setText(''); setSttDraft(null); setSttScore(null);
+      if (!dispatch(text, stt)) return;
+      setText(''); textRef.current = ''; setSttDraft(null); setSttScore(null); setAutoSent(null); setVoiceNote(null);
     }
+  }
+  // 새 명령: 이전 음성 결과(보낸 문장·점수·안내)를 남기지 않는다.
+  function newCommand() { sim.reset(); setAutoSent(null); setSttScore(null); setVoiceNote(null); }
+  // 잘못 인식한 문장 고치기: 승인 대기 계획이면 먼저 취소(서버에 reject)하고, 입력칸에 원문을 넣는다. 고친 문장은 새 계획이 되고
+  // 이전 계획의 승인은 이어지지 않는다(계획마다 승인 id·해시가 따로다).
+  async function editVoice() {
+    const s = autoSent;
+    if (!s) return;
+    if (phase === 'confirm' && !(await sim.answer('cancel'))) return;
+    sim.reset();
+    setText(s.text); textRef.current = s.text;
+    setSttDraft({ id: s.utteranceId || `utt_${Date.now().toString(36)}`, ...s });
+    setAutoSent(null);
+    setVoiceNote({ tone: 'info', text: phase === 'confirm' ? '이전 계획을 취소했습니다 — 문장을 고친 뒤 보내기를 누르세요' : '문장을 고친 뒤 보내기를 누르세요' });
+    const box = document.getElementById('command-input');
+    if (box) box.focus();
   }
 
   // 해석 줄: 서버가 준 요약·사유만 보인다.
@@ -208,8 +272,9 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
       <textarea id="command-input" className="command-input" rows={phase === 'idle' ? 3 : 1} value={text}
         aria-label="자연어 명령" placeholder={phase === 'ask' ? '답을 입력해 다시 보내기' : '예: A 자재를 컨베이어로 옮겨줘'}
         onChange={(e) => {
-          setText(e.target.value);
+          setText(e.target.value); textRef.current = e.target.value;
           if (!e.target.value.trim()) setSttDraft(null);
+          if (recording) editedWhileRecording.current = true; // 녹음 중 직접 고쳤다 — 음성 결과로 덮어쓰거나 보내지 않는다
         }}
         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) submit(e); }} />
       <MicButton voice={voice} locked={!!lockReason} />
@@ -217,6 +282,8 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
     {/* 말하는 동안 STT 중간 결과(입력칸 바로 아래) */}
     {voice.partial && <small className="cmd-partial" aria-live="polite">{voice.partial}</small>}
     {sttDraft && text.trim() && <small className="cmd-stt-hint" role="status">음성 인식 결과입니다 — 문장을 확인·수정한 뒤 {phase === 'ask' ? '답변 보내기' : '보내기'}를 누르세요</small>}
+    {voiceNote && <small className={`cmd-voice-note ${voiceNote.tone}`} role="status">{voiceNote.text}</small>}
+    {voice.notice && <small className="cmd-voice-note warn" role="status">{voice.notice}</small>}
     {(phase === 'idle' || phase === 'ask') && <div className="cmd-actions">
       {/* 음성 인식 신뢰도만 보인다(2026-10-08). 전체·합성 평가 인식률과 정답 확정 점수는 이 영역에 없다
           (평가 데이터·조회 API·정답 확정 API는 평가용으로 그대로 둔다). */}
@@ -235,7 +302,7 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
   </div>;
   const skillChips = (phase === 'idle' || phase === 'ask') && <div className="cmd-chips" role="group" aria-label="스킬 버튼">
     {skills.map((k) => <button key={k.key} type="button" className="chip" title={k.title} disabled={sim.busy || !!lockReason || !!k.blocked}
-      onClick={() => sim.send(k.sentence, target && target.id)}>{k.label}</button>)}
+      onClick={() => { if (dispatch(k.sentence, null)) { setAutoSent(null); setVoiceNote(null); } }}>{k.label}</button>)}
     {skillNotes.map((note) => <small key={note} className="cmd-lock" role="status">{note}</small>)}
   </div>;
 
@@ -256,6 +323,11 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
         {phase === 'running' || phase === 'done'
           ? <img src={shieldCheck} alt="" width="16" height="16" />
           : <span className={`tag ${cardTone}`}>{phase === 'confirm' && expired ? '확인 시간 만료' : sim.error ? '오류' : label}</span>}
+        {/* 자동으로 보낸 원문과 그 음성 인식 신뢰도(입력칸이 사라진 뒤에도 확인할 수 있게) */}
+        {autoSent && phase !== 'idle' && <div className="cmd-sent-row">
+          <small className="cmd-sent" data-testid="voice-sent">음성으로 보낸 문장: “{autoSent.text}”</small>
+          <SttConfidence score={{ value: autoSent.confidence, kind: 'final' }} />
+        </div>}
         {headline && <b className="cmd-title">{headline}</b>}
         {details.map((line) => <small key={line} className="cmd-reason">{line}</small>)}
         {phase === 'confirm' && target && <small className="cmd-target">대상: {target.name}</small>}
@@ -281,13 +353,18 @@ export default function CommandPanel({ now, sim, server, onOpenSimulation }) {
         {phase === 'done' && job && <b className={resultTone}>{resultLabel || `종료 코드 ${job.exit_code}`}</b>}
         {phase === 'done' && goal && !job && <small>목표 상태: {goal.status}</small>}
         {cmdAlert && <SimAlert alert={cmdAlert} inline shown={[headline, ...details, resultLabel]} />}
+        {/* 입력칸이 없는 단계(승인 대기·실행 중 등)에서 음성 결과를 보내지 않았으면 그 이유를 카드에 보인다 */}
+        {phase !== 'ask' && voiceNote && <small className={`cmd-voice-note ${voiceNote.tone}`} role="status">{voiceNote.text}</small>}
+        {phase !== 'ask' && voice.notice && <small className="cmd-voice-note warn" role="status">{voice.notice}</small>}
         {phase === 'ask' && input}
         {phase === 'confirm' && <div className="approve-row">
           <button className="approve" disabled={sim.busy || expired || !!lockReason} title={lockReason || undefined} onClick={() => sim.answer('confirm')}><span className="icon-play" aria-hidden="true" />{pending.kind === 'goal' ? '전체 실행 승인' : '실행 승인'}</button>
           {!expired && <button className="approve-cancel" disabled={sim.busy} onClick={() => sim.answer('cancel')}>취소</button>}
         </div>}
+        {autoSent && ['confirm', 'other', 'ask'].includes(phase) && <button type="button" className="btn-secondary voice-edit" disabled={sim.busy}
+          onClick={editVoice}>{phase === 'confirm' ? '계획 취소 후 문장 수정' : '문장 수정해 다시 보내기'}</button>}
         {(phase === 'done' || phase === 'other' || (phase === 'confirm' && expired)) &&
-          <button className="btn-secondary" onClick={sim.reset}>{phase === 'other' && result && result.decision === 'BLOCK' ? '명령 수정' : '새 명령 입력'}</button>}
+          <button className="btn-secondary" onClick={newCommand}>{phase === 'other' && result && result.decision === 'BLOCK' ? '명령 수정' : '새 명령 입력'}</button>}
       </div>}
     <button type="button" className="btn-secondary" onClick={onOpenSimulation}>시뮬레이션 보기</button>
     <div className="decide">
