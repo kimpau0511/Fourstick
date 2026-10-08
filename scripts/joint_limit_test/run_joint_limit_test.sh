@@ -12,10 +12,10 @@
 # 외부 FAIRINO 저장소 경로가 기본값(/home/asd/external/frcobot_ros2)과 다르면 FORSTICK2_FR3_REPO로 준다.
 #
 # 비교 실험 — 원본 파일은 고치지 않고 임시 사본만 바꾼다.
-#   JLT_ENFORCE=0(기본): controller_manager의 enforce_command_limits를 false로 둔 컨트롤러 설정 사본.
+#   JLT_ENFORCE=1(기본): 원래 설정(명령 한계 강제 켬). 0이면 컨트롤러 설정 사본에 enforce_command_limits: false.
 #     명령 한계 강제(JointLimiter)를 빼고 Gazebo 자체 관절 한계만 남긴다.
 #     (safety_controller 제거만으로는 처리기 종류만 바뀌고 증상은 같았다 — 59ccd85 실행)
-#   JLT_ENFORCE=1: 원래 설정(강제 켬).
+#   JLT_Z(기본 1.0): 팔 생성 높이(m). 0이면 바닥에 붙임 — 0 자세에서 팔이 높이 0.14 m로 수평, 손목 끝 0.04 m라 바닥에 닿는다(5e3106a까지의 실행).
 #   JLT_STRIP_SOFT=1: 공식 URDF의 <safety_controller>(값 전부 0)를 사본에서 지운다(기본은 원본 그대로).
 set -eo pipefail
 
@@ -88,7 +88,7 @@ ln -sfn "$FR3_REPO/fairino_description/meshes" "$LOG/meshes"
 mkdir -p "$LOG/urdf"
 URDF_OUT="$LOG/urdf/fr3wms_arm.urdf"
 CTRL_YAML="$CONTROLLERS"
-if [[ "${JLT_ENFORCE:-0}" == 1 ]]; then
+if [[ "${JLT_ENFORCE:-1}" == 1 ]]; then
   echo "[비교] 명령 한계 강제: 켬(원래 설정)"
 else
   CTRL_YAML="$LOG/fr3wms_controllers_no_enforce.yaml"
@@ -143,9 +143,9 @@ PYGEN
 start rsp ros2 run robot_state_publisher robot_state_publisher --ros-args --params-file "$LOG/rsp_params.yaml"
 sleep 3
 
-echo "[2/4] 팔 모델 생성"
+echo "[2/4] 팔 모델 생성(높이 ${JLT_Z:-1.0} m)"
 nice -n 19 ros2 run ros_gz_sim create -world "$WORLD_NAME" -file "$URDF_OUT" \
-  -name fr3wms -x 0 -y 0 -z 0 > "$LOG/spawn.log" 2>&1
+  -name fr3wms -x 0 -y 0 -z "${JLT_Z:-1.0}" > "$LOG/spawn.log" 2>&1
 tail -1 "$LOG/spawn.log"
 
 echo "[3/4] 컨트롤러"
