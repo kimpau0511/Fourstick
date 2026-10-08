@@ -167,10 +167,12 @@ def main() -> int:
     api_module.run_planning = capturing_run_planning
     original_gate = api.gate_for
 
-    def timed_gate(plan, slots):
+    # gate_for의 인자가 늘어도(a37909d에서 intent 추가) 그대로 넘긴다 — 예전엔 2개만 받아
+    # 모든 문장이 TypeError → BLOCK으로 기록됐다(2026-10-08 확인).
+    def timed_gate(plan, slots, *rest, **kw):
         started = time.perf_counter()
         try:
-            return original_gate(plan, slots)
+            return original_gate(plan, slots, *rest, **kw)
         finally:
             captured["gate_ms"] = (time.perf_counter() - started) * 1000.0
 
