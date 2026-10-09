@@ -104,7 +104,10 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .info { color: var(--cyan); }
 .muted { color: var(--muted); }
 
-.metric { display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+.metric-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.metric { display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; min-width: 0; }
+.metric + .metric { border-left: 1px solid var(--border); }
+@media (max-width: 600px) { .metric-row { grid-template-columns: minmax(0, 1fr); } .metric + .metric { border-left: 0; border-top: 1px solid var(--border); } }
 .metric-label { color: var(--muted); font-size: 13px; font-weight: 500; }
 .metric-value { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 8px; }
 /* 서버 문구(모델 이름 등)가 길면 카드 폭 안에서 줄인다 — 전체 문구는 title로(반응형) */

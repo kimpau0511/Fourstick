@@ -41,6 +41,8 @@ function useHistory() {
 const VERIFY = ['전체', '안전 확인됨', '실행 차단', '추가 확인 필요'];
 const EXEC = ['전체', '성공', '실패', 'STOP'];
 const time = (ms) => new Date(ms).toLocaleString('ko-KR', { hour12: false });
+// 표의 요청 시각: 날짜·시각을 따로 묶어 좁으면 두 줄로만 나뉘게 한다(글자 중간에서 쪼개지지 않게, 2026-10-08)
+const stamp = (ms) => { const d = new Date(ms); return <><span className="nowrap">{dayKey(ms)}</span> <span className="nowrap">{d.toTimeString().slice(0, 8)}</span></>; };
 const dayKey = (ms) => {
   const d = new Date(ms);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -222,14 +224,14 @@ export default function History({ server, log = [], user = null }) {
     {server?.simDemoFailing && <p className="note muted">작업 상태 조회 실패 — 마지막으로 받은 값입니다</p>}
     {history.failing && <p className="note muted">서버 이력 조회 실패{history.data ? ' — 마지막으로 받은 값입니다' : ' — 이 화면에서 보낸 명령만 보입니다'}</p>}
     <div className="card">
-      <table className="data-table" aria-label="명령 기록">
+      <table className="data-table rec-table" aria-label="명령 기록">
         <thead><tr><th>요청 시각</th><th className="col-extra">로봇</th><th>명령 요약</th><th className="col-extra">요청자</th><th className="col-extra">검증 결과</th><th>실행 결과</th></tr></thead>
         <tbody>
           {shown.map((r) => <Fragment key={r.key}>
             <tr tabIndex={0} aria-selected={selected === r.key}
               onClick={() => setSelected(r.key)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(r.key); } }}>
-              <td><ExpandButton open={expand.isOpen(r.key)} onToggle={() => expand.toggle(r.key)} />{time(r.at)}</td>
+              <td><ExpandButton open={expand.isOpen(r.key)} onToggle={() => expand.toggle(r.key)} />{stamp(r.at)}</td>
               <td className="col-extra">{r.robot || '확인 안 됨'}</td><td>{r.text}</td><td className="col-extra">{r.requester}</td><td className="col-extra">{r.verify}</td><td>{r.exec.label}</td>
             </tr>
             <DetailRow open={expand.isOpen(r.key)} span={3} items={[['로봇', r.robot || '확인 안 됨'], ['요청자', r.requester], ['검증 결과', r.verify]]} />
