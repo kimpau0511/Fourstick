@@ -1,25 +1,39 @@
 /* 가로 스테퍼(2026-10-08) — 대시보드 밝은 바탕·둥근 모서리·청록 포인트(--cyan·--accent-border)에 맞춘다. */
 .stepper { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 16px; background: var(--panel-2); box-shadow: var(--inset); }
 .stepper-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
-.stepper-now { margin: 0; color: var(--white); font-size: 14px; font-weight: 600; }
+.stepper-now { margin: 0; color: var(--white); font-size: 14px; font-weight: 600; line-height: 1.4; }
+/* 좁은 화면: '현재' 문구 두 줄 자리 + 상태 칩 한 줄을 미리 잡는다 — 단계 이름이 길어져도 머리 높이가 그대로다. */
+@media (max-width: 640px) {
+  .stepper-head { flex-direction: column; align-items: flex-start; justify-content: flex-start; }
+  .stepper-now { min-height: calc(14px * 1.4 * 2); }
+}
 .stepper-now-key { color: var(--cyan); }
 .stepper-chip { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .stepper-chip.info { color: var(--cyan); background: var(--info-subtle); }
 .stepper-chip.ok { color: var(--green); background: var(--ok-subtle); }
 .stepper-chip.warn { color: var(--amber); background: var(--warn-subtle); }
 .stepper-chip.danger { color: var(--red); background: var(--danger-subtle); }
-.stepper-note { margin: 0; color: var(--muted); font-size: 12px; }
+.stepper-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+/* 안내 줄: 비어 있어도 한 줄(좁은 화면은 두 줄) 자리를 둔다 — 안내가 생기고 없어져도 아래가 움직이지 않는다. */
+.stepper-notes { display: flex; flex-direction: column; gap: 2px; min-height: calc(12px * 1.4); }
+@media (max-width: 640px) { .stepper-notes { min-height: calc(12px * 1.4 * 2); } }
 .stepper-note.warn { color: var(--amber); }
 
 /* 단계가 많거나 화면이 좁으면 글자를 줄이지 않고 가로로 스크롤한다. */
-.stepper-scroll { overflow-x: auto; overflow-y: hidden; padding: 4px 2px 6px; scrollbar-width: thin; }
+.stepper-scroll { overflow-x: auto; overflow-y: hidden; padding: 4px 2px 6px; scrollbar-width: thin;
+  /* 단계 영역 높이를 미리 잡는다: 원 30 + 간격 6 + 이름 세 줄(12px × 1.3 × 3) + 위아래 여백 10. 목록을 기다리는 동안에도 같다. */
+  box-sizing: border-box; min-height: calc(30px + 6px + 12px * 1.3 * 3 + 10px); }
+.stepper-waiting { display: flex; align-items: center; justify-content: center; text-align: center; }
 .stepper-track { display: flex; margin: 0; padding: 0; list-style: none; min-width: min-content; }
 .stepper-step { position: relative; flex: 1 0 76px; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 76px; }
 .stepper-bar { position: absolute; top: 14px; right: calc(50% + 18px); left: calc(-50% + 18px); height: 3px; border-radius: 2px; background: var(--line); }
 .stepper-bar.filled { background: var(--accent-border); }
 .stepper-dot { position: relative; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; box-sizing: border-box;
   border: 2px solid var(--line); background: var(--stage-idle); color: var(--muted); font-size: 13px; font-weight: 700; }
-.stepper-label { max-width: 96px; color: var(--muted); font-size: 12px; line-height: 1.3; text-align: center; word-break: keep-all; overflow-wrap: anywhere; }
+.stepper-label { max-width: 96px; min-width: min-content; min-height: calc(12px * 1.3 * 3); color: var(--muted); font-size: 12px; line-height: 1.3;
+  text-align: center; word-break: keep-all; overflow-wrap: normal; }
+/* 의미 단위(낱말·괄호 묶음)는 한 줄로 — 'pre-grasp'의 하이픈이나 닫는 괄호에서 끊기지 않는다. 폭이 모자라면 칸이 넓어진다(자르지 않는다). */
+.stepper-seg { white-space: nowrap; }
 .stepper-label.unnamed { font-style: italic; }
 
 .stepper-step.done .stepper-dot { border-color: var(--accent-border); background: var(--accent-border); color: var(--on-accent); }
@@ -43,6 +57,7 @@
 @media (prefers-reduced-motion: reduce) { .stepper-step.current .stepper-dot { animation: none; } }
 
 .stepper-detail { display: flex; flex-direction: column; gap: 8px; }
+.stepper-toggle:disabled { color: var(--muted); cursor: default; opacity: .6; }
 .stepper-toggle { align-self: flex-start; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--cyan); font-size: 12px; font-weight: 600; cursor: pointer; }
 .stepper-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--white); }
 .stepper-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 8px; background: var(--panel); }

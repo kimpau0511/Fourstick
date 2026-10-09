@@ -290,3 +290,93 @@ test('[UI-STEP-11] 이송이 아닌 계획(홈 이동)의 결과 카드 제목�
   await expect(card).not.toContainText('undefined');
   await expect(card).toContainText('계획 실행');
 });
+
+// ── 레이아웃(2026-10-09): 안내·단계 영역 자리 고정, 단계 이름은 의미 단위로만 줄바꿈 ─────────────────────
+const RETURN = ['안전 home', '컨베이어 접근', 'pre-grasp(컨베이어)', '그리퍼 열기', '컨베이어 pick 접근', '그리퍼 닫기', 'lift',
+  '원래 팔레트 접근', '원래 슬롯 접근', '그리퍼 열기(해제)', 'retreat', '안전 home 복귀'];
+const SHOTS = process.env.STEPPER_SHOTS || null;
+const waiting = () => ({ job_id: 'simjob-1', action: 'return', action_label: '복귀', material: 'material_a', status: 'running', stage_plan: null, progress: [] });
+const returning = (n, extra = {}) => ({ ...waiting(), stage_plan: stagePlan(RETURN), progress: progress(n, { labels: RETURN }), ...extra });
+
+// 스테퍼 박스 높이와 바로 아래 요소의 위치.
+async function box(page, root) {
+  const got = await page.locator(root).first().evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const next = el.nextElementSibling;
+    const parts = [...el.children].map((c) => `${c.className.split(' ')[0]}:${Math.round(c.getBoundingClientRect().height)}`).join(' ');
+    return { h: Math.round(r.height), below: next ? Math.round(next.getBoundingClientRect().top - r.top) : null, parts };
+  });
+  if (process.env.STEPPER_DEBUG) console.log(root, JSON.stringify(got));
+  return { h: got.h, below: got.below };
+}
+// 단계 이름: 덩어리(낱말·괄호 묶음) 안에서 줄이 바뀌지 않고, 괄호는 한 덩어리 안에서 열고 닫히며, 글자를 자르지 않는다.
+async function labelsIntact(page, root, labels) {
+  const rows = await page.locator(`${root} .stepper-label`).evaluateAll((els) => els.map((el) => ({
+    text: el.textContent,
+    segs: [...el.querySelectorAll('.stepper-seg')].map((s) => ({ t: s.textContent, lines: s.getClientRects().length })),
+    clipped: el.scrollWidth > el.clientWidth + 1,
+  })));
+  expect(rows.map((r) => r.text.replace(/\s+/g, ' '))).toEqual(labels);
+  for (const r of rows) {
+    expect(r.clipped).toBe(false);
+    for (const s of r.segs) {
+      expect(s.lines, `'${s.t}'가 두 줄로 나뉘었다`).toBe(1);
+      expect(s.t.includes('(')).toBe(s.t.includes(')'));
+    }
+  }
+}
+
+for (const view of [{ name: '일반', width: 1440, height: 900, full: false }, { name: '전체화면', width: 1440, height: 900, full: true },
+  { name: '좁은 화면', width: 390, height: 844, full: false }]) {
+  test(`[UI-STEP-12-${view.name}] 대기 → 진행 → 완료에서 스테퍼 높이·아래 UI 위치가 그대로이고 단계 이름이 의미 단위로만 줄바꿈된다`, async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: view.width, height: view.height });
+    const ctl = { job: waiting() };
+    await setup(page, ctl);
+    if (view.width < 800) await page.locator('header').getByRole('button', { name: '명령 패널' }).click();   // 좁은 화면: 명령 패널은 서랍
+    await approve(page);
+    if (view.width < 800) await page.locator('header').getByRole('button', { name: '명령 패널' }).click();   // 서랍을 닫고 시뮬레이션 보기를 본다
+    const root = view.full ? '.sim-stage .stepper' : '.sim-card .stepper';
+    if (view.full) await page.locator('.sim-card').getByRole('button', { name: '전체화면' }).click();
+    await expect(page.locator(`${root} .stepper-waiting`)).toBeVisible({ timeout: 8000 });
+    const shot = async (n) => {
+      if (!SHOTS) return;
+      await page.waitForTimeout(400);                                            // 서랍 애니메이션이 끝난 뒤
+      await page.locator(root).first().scrollIntoViewIfNeeded({ timeout: 1000 }).catch(() => {});
+      await page.screenshot({ path: `${SHOTS}/${view.name}-${n}.png` });
+    };
+    const wait = await box(page, root);
+    await shot('1-대기');
+    ctl.job = returning(2);
+    await expect(page.locator(`${root} .stepper-step`)).toHaveCount(12, { timeout: 8000 });
+    const run = await box(page, root);
+    await shot('2-진행');
+    await labelsIntact(page, root, RETURN);
+    // 같은 단계가 6초 넘게 이어지면 안내 줄('이 단계 N초째…')이 생긴다 — 그래도 움직이지 않는다.
+    await expect(page.locator(`${root} .stepper-note`)).toContainText('초째', { timeout: 12000 });
+    const note = await box(page, root);
+    await shot('3-진행-안내');
+    expect(run).toEqual(wait);
+    expect(note).toEqual(wait);
+    // 완료: 마지막 단계까지 도달 확인 → 실행 완료.
+    ctl.job = returning(12);
+    await expect(page.locator(root)).toContainText('12/12 단계 완료', { timeout: 8000 });
+    await shot('4-모든-단계-완료');
+    expect(await box(page, root)).toEqual(wait);
+    ctl.job = returning(12, { status: 'finished' });
+    ctl.finish({ ok: true, execution_id: 'exec-1', final: { state: 'completed' } });
+    if (!view.full) {
+      const drawer = page.locator('header').getByRole('button', { name: '명령 패널' });
+      if (view.width < 800) await drawer.click();
+      await openView(page);
+      if (view.width < 800) await drawer.click();
+      await expect(page.locator(root)).toContainText('완료 · 12/12 단계 완료', { timeout: 8000 });
+      await shot('5-실행-완료');
+      expect((await box(page, root)).h).toBe(wait.h);
+      await labelsIntact(page, root, RETURN);
+    } else {
+      await page.waitForTimeout(3000);
+      await shot('5-실행-완료');
+    }
+  });
+}
