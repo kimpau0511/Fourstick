@@ -62,9 +62,12 @@ test.describe('현황(홈)', () => {
     for (const t of titles) expect(t).not.toMatch(/UR5e|FR3/);
   });
 
-  test('[UI-HOME-03][②·§2] 안전 3종(비상정지·보호정지·가드) 개별 표시 영역이 있다', async ({ page }) => {
+  // 2026-10-09 사용자 결정: 서버에 안전 신호 값이 없어 늘 '확인 안 됨'이던 안내 줄을 뺐다. 로봇 상태 판정·즉시 정지는 그대로다.
+  test('[UI-HOME-03][②·§2] 값이 없는 안전 신호(비상정지·보호정지·가드) 안내 줄은 보이지 않고, 로봇 상태 카드는 그대로', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('.col-main')).toContainText(/보호정지|가드/);
+    await expect(page.locator('.card.robot')).toBeVisible();
+    await expect(page.locator('.col-main')).not.toContainText(/보호정지|가드/);
+    await expect(page.locator('header').getByRole('button', { name: /즉시 정지/ })).toBeVisible();
   });
 
   test('[UI-HOME-04][③·§3] 정상 범위 연속값은 원시 수치 없이 "정상" 배지만', async ({ page }) => {

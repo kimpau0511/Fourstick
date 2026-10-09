@@ -60,7 +60,6 @@ export default function Home({ server, cmdJob }) {
             <div><span>그리퍼</span><b>{gripperText(simState)}</b></div>
             {robotStatus.reasons.length > 0 && <div><span>사유</span><b>{robotStatus.reasons.join(' · ')}</b></div>}
           </div>
-          <div className="safety-line">안전 신호(비상정지·보호정지·가드): 확인 안 됨</div>
         </div> : <div className="card robot muted">로봇 미설정</div>}
       </div>
     </section>
