@@ -8,5 +8,6 @@
 .state-shape[data-level="WARNING"] { background: var(--warn-subtle); color: var(--amber); }
 .state-shape[data-level="CRITICAL"] { background: var(--danger-subtle); color: var(--red); }
 .state-shape[data-level="NO_DATA"] { background: var(--panel-2); color: var(--muted); }
-.safety-line { padding: 8px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); color: var(--muted); font-size: 12px; }
+/* 안전 신호는 서버 값이 없어 늘 '확인 안 됨' — 옅은 회색이면 정상처럼 스쳐 읽혀 경고 톤으로 둔다(설계원칙 4, 2026-10-08) */
+.safety-line { padding: 8px 10px; border: 1px solid var(--warn-border); border-radius: 10px; background: var(--warn-subtle); color: var(--amber); font-size: 12px; font-weight: 600; }
 .alert-ack { align-self: flex-start; padding: 2px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }

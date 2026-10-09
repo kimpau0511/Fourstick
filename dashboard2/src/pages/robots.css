@@ -6,10 +6,12 @@
 .robots-list .data-table tbody tr { cursor: pointer; }
 /* 선택 표시는 고를 게 있을 때(2대 이상)만 — 1대면 늘 선택이라 다른 표와 달리 줄이 회색으로만 보인다. */
 .robots-list .data-table tbody tr[aria-selected="true"]:not(:only-child) { background: var(--nav-active); }
-.detail-fixed { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
-.detail-fixed > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); box-shadow: var(--inset); font-size: 13px; }
-.detail-fixed span { color: var(--muted); font-size: 11px; }
-.detail-fixed b { font-weight: 600; }
+/* 상세 위쪽 값은 '항목 : 값' 줄로(2026-10-08 — 안쪽 칸을 겹치면 내용보다 용기가 두드러졌다). 운용 불가 사유만 경고 칸 */
+.detail-fixed { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 8px 12px; font-size: 13px; }
+.detail-fixed > div { display: contents; }
+.detail-fixed span { color: var(--muted); }
+.detail-fixed b { font-weight: 600; overflow-wrap: anywhere; }
+.detail-fixed > .wide { display: flex; flex-direction: column; gap: 2px; grid-column: 1 / -1; padding: 8px 10px; border: 1px solid var(--warn-border); border-radius: 10px; background: var(--warn-subtle); }
 .detail-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
 .detail-tabs [role="tab"] { padding: 8px 12px; white-space: nowrap; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
 .detail-tabs [role="tab"][aria-selected="true"] { border-bottom-color: var(--cyan); color: var(--white); font-weight: 600; }
@@ -17,7 +19,6 @@
 .detail-body dl { margin: 0; display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 8px 12px; }
 .detail-body dt { color: var(--muted); }
 .detail-body dd { margin: 0; overflow-wrap: anywhere; }
-.detail-fixed > .wide { grid-column: 1 / -1; }
 .detail-more { display: flex; flex-direction: column; gap: 14px; }
 
 /* 화면 탭(로봇 목록 / 구성 · 작업 셀) — 상세 탭과 같은 밑줄 모양 */

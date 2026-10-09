@@ -69,7 +69,13 @@ function Personal({ server }) {
     </div>
     <div className="rec-split">
       <div className="card" style={{ flex: 1, minWidth: 0 }}>
-        {shown.length === 0 ? <p className="rec-empty">{!routines.length ? '저장한 루틴이 없습니다' : needle ? '검색 결과가 없습니다' : '즐겨찾기한 루틴이 없습니다'}</p> : <table className="data-table" aria-label="저장 루틴 목록">
+        {shown.length === 0 ? (!routines.length
+          ? <div className="rec-empty routine-empty">
+            <b>저장한 루틴이 없습니다</b>
+            <span>자주 보내는 명령을 이름을 붙여 저장해 두면 다시 쓸 수 있습니다. 이 브라우저에만 저장됩니다.</span>
+            <button type="button" className="rec-btn" onClick={add}>첫 루틴 만들기</button>
+          </div>
+          : <p className="rec-empty">{needle ? '검색 결과가 없습니다' : '즐겨찾기한 루틴이 없습니다'}</p>) : <table className="data-table" aria-label="저장 루틴 목록">
           <thead><tr><th>이름</th><th>명령</th><th className="col-extra">사용 스킬</th><th className="col-extra">적용 가능 로봇</th><th className="col-extra">즐겨찾기</th></tr></thead>
           <tbody>{shown.map((r) => {
             const skill = skillGuess(r.text, materials);
