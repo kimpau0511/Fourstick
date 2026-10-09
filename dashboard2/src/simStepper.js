@@ -120,3 +120,21 @@ function currentText(src, phase, open, names) {
   if (open.placeholder) return `${head} · 재개 단계 목록을 기다리는 중(실행기 사전 확인)`;
   return `${head} · ${open.index}단계 ${open.named ? open.label : '(이름은 단계가 끝나면 표시)'}`;
 }
+
+/** 진행 안내 문구(긴 설명). 일반 화면은 상세 보기 팝업에서, 전체화면은 스테퍼 안에서 보인다. */
+export function stepperNotes(model, stamp) {
+  if (!model) return [];
+  const out = [];
+  if (model.stale) out.push({ tone: 'warn', key: 'stale', text: `진행 조회가 연속으로 실패했습니다 — 마지막 확인 상태${stamp ? `(${stamp})` : ''}를 그대로 보입니다. 완료로 처리하지 않습니다.` });
+  if (model.link === 'delayed') out.push({ tone: 'warn', key: 'delayed', text: `최근 진행 조회 응답이 늦습니다(실패는 확인되지 않음) — 마지막 확인 상태${stamp ? `(${stamp})` : ''}를 보입니다.` });
+  if (model.link === 'ok' && model.stageSec != null && model.stageSec >= 6) out.push({ tone: '', key: 'stage', text: `이 단계 ${model.stageSec}초째 진행 중 · 서버 조회 정상` });
+  if (model.phase === 'completed' && !model.allConfirmed) out.push({ tone: '', key: 'partial', text: '실행은 완료로 끝났지만 일부 단계의 진행 기록을 받지 못했습니다.' });
+  return out;
+}
+
+export function stepperChip(model) {
+  const { steps } = model;
+  const tone = model.stale || model.link === 'delayed' ? 'warn' : { completed: 'ok', failed: 'danger', stopped: 'danger', stopping: 'danger', cancelled: 'warn', paused: 'warn', unknown: 'warn' }[model.phase] || 'info';
+  const text = `${model.stale ? '통신 확인 안 됨' : model.link === 'delayed' ? '갱신 지연' : model.phaseLabel}${steps ? (model.total ? ` · ${model.done}/${model.total} 단계 완료` : ` · ${model.done}단계 완료 · 남은 단계 확인 중`) : ''}`;
+  return { tone, text };
+}

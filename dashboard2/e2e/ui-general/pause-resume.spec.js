@@ -193,3 +193,29 @@ test('[UI-PAUSE-05] 재개 확인 카드를 취소하면 작업을 시작하지 
   await expect(paused).toContainText('재개를 취소했습니다 — 움직이지 않았습니다');
   expect(calls.filter((c) => c.path === 'confirm').map((c) => c.body.action)).toEqual(['cancel']);
 });
+
+test('[UI-PAUSE-06] 재개 승인 카드는 진행 칸 밖 팝업으로 뜨고, 시뮬레이션 화면 위치·크기와 진행 칸을 바꾸지 않는다', async ({ page }) => {
+  await setup(page);
+  const view = page.getByRole('dialog', { name: '가상 동작 확인 중' });
+  await view.getByRole('button', { name: /일시정지/ }).click();
+  const paused = page.getByRole('dialog', { name: '일시정지됨' });
+  await expect(paused).toBeVisible({ timeout: 8000 });
+  const geom = () => page.evaluate(() => {
+    const card = document.querySelector('.sim-card');
+    const c = card.getBoundingClientRect();
+    const v = document.querySelector('.sim-video').getBoundingClientRect();
+    const p = document.querySelector('.sim-progress');
+    return { video: [v.left, v.top - c.top + card.scrollTop, v.width, v.height].map(Math.round),
+      progress: Math.round(document.querySelector('.sim-progress-wrap').getBoundingClientRect().height),
+      progressScrolls: p.scrollHeight > p.clientHeight + 1 };
+  });
+  const before = await geom();
+  await paused.getByRole('button', { name: /재개/ }).click();
+  const card = page.getByRole('group', { name: '재개 승인' });
+  await expect(card).toBeVisible();
+  expect(await card.evaluate((el) => !el.closest('.sim-progress'))).toBe(true);                 // 진행 칸(스크롤 영역) 밖
+  expect(await geom()).toEqual(before);
+  expect(before.progressScrolls).toBe(false);
+  await card.getByRole('button', { name: '취소' }).click();
+  await expect(card).toHaveCount(0);
+});

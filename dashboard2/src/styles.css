@@ -192,7 +192,7 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .sim-head strong.danger { color: var(--red); }
 .sim-head small { color: var(--muted-2); font-size: 12px; line-height: 1.4; }
 /* 머리 글자 칸은 높이를 고정한다(제목 한 줄 + 설명 두 줄, 좁으면 제목 두 줄) — 상태 문구가 길어져도 시뮬레이션 화면이 내려가지 않는다. 넘치면 칸 안에서 스크롤. */
-.sim-head > div:not(.sim-head-actions) { height: calc(18px * 1.35 + 2px + 12px * 1.4 * 2); overflow-y: auto; }
+.sim-head > div:not(.sim-head-actions) { height: calc(18px * 1.35 + 2px + 12px * 1.4); overflow-y: auto; }
 .sim-head strong { line-height: 1.35; }
 @container (max-width: 760px) { .sim-head > div:not(.sim-head-actions) { height: calc(18px * 1.35 * 2 + 2px + 12px * 1.4 * 2); } }
 /* 머리 오른쪽 아이콘 버튼(전체화면·창 닫기). 이름은 마우스를 올리거나 키보드로 고르면 아래에 뜬다(data-tip) — 위에 띄우면 창 테두리를 가린다. */
@@ -202,24 +202,57 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .sim-icon-btn:focus-visible { outline: 3px solid var(--accent-border); outline-offset: 2px; }
 .sim-icon-btn::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); z-index: 3; left: 50%; transform: translateX(-50%); padding: 4px 8px; border-radius: 6px; background: var(--white); color: var(--on-accent); font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s; }
 .sim-icon-btn:hover::after, .sim-icon-btn:focus-visible::after { opacity: 1; }
-.sim-video { position: relative; height: 420px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--video); }
+.sim-video { position: relative; height: var(--sim-video-h, 420px); display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--video); }
 .sim-card.stopping .sim-video, .sim-card.danger .sim-video { border-color: var(--danger-border); }
 .sim3d-frame { position: absolute; inset: 0; }
 /* 시뮬레이션 화면 전체화면(SimOverlay). 전체화면에서는 화면을 꽉 채우고, 상태와 즉시 정지를 위에 띄운다. */
 .sim-fullscreen-exit { position: absolute; right: 10px; bottom: 10px; z-index: 2; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .88); font-size: 12px; font-weight: 600; cursor: pointer; }
 /* 시뮬레이션 보기 묶음(2026-10-07): 왼쪽 관절 상태 · 오른쪽 실시간 시뮬레이션. 좁으면 관절 상태가 시뮬레이션 아래로. 전체화면은 묶음 전체. */
 .sim-stage { display: grid; grid-template-columns: 184px minmax(0, 1fr); gap: 12px; align-items: stretch; }
-.sim-stage > .joint-panel { max-height: 420px; }
+.sim-stage > .joint-panel { max-height: var(--sim-video-h, 420px); }
+/* 일반 화면: 3D 높이는 화면 높이로만 정한다(상태와 무관) — 머리·3D·동작 세부 진행이 창 안에 들어가 창이 세로로 스크롤되지 않게. */
+.sim-card { --sim-video-h: clamp(260px, calc(100vh - 460px), 420px); }
 .sim-stage:fullscreen { width: 100vw; height: 100vh; padding: 12px; box-sizing: border-box; background: var(--panel); grid-template-columns: 200px minmax(0, 1fr); }
 .sim-stage:fullscreen > .joint-panel { max-height: none; }
 .sim-stage:fullscreen .sim-video { height: 100%; }
-/* 동작 세부 진행(2026-10-09): 상태와 관계없이 같은 높이. 내용이 넘치면 이 칸 안에서 스크롤하고, 상세 보기는 칸 위 팝업. */
-.sim-progress-wrap { position: relative; flex: none; height: var(--sim-progress-h, 340px); }
-.sim-progress { height: 100%; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
-.sim-progress > * { flex: none; }
-.sim-pop-host { position: absolute; inset: 0; pointer-events: none; }
-.sim-pop-host > * { pointer-events: auto; }
-@container (max-width: 760px) { .sim-progress-wrap { --sim-progress-h: 420px; } }
+/* 동작 세부 진행(2026-10-09): 상태와 관계없이 같은 높이, 칸 안 세로 스크롤 없음 — 머리 한 줄(제목·현재 작업·상태) + 단계 + 상태 한 줄 + 조작.
+   긴 설명·실행 로그·오류 상세는 '상세 보기' 팝업, 승인 카드는 별도 팝업(둘 다 칸 밖에 떠서 칸 높이를 바꾸지 않는다). */
+.sim-progress-wrap { flex: none; height: var(--sim-progress-h, 220px); }
+.sim-progress { height: 100%; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto var(--sim-status-h, 18px) var(--sim-actions-h, 36px); gap: 8px; align-content: start; }
+.stepper.panel { padding: 10px 14px; gap: 8px; }
+.stepper-title { margin-right: 8px; color: var(--muted-2); font-size: 12px; font-weight: 600; }
+/* 넓은 화면: 현재 작업은 한 줄(전체 문장은 상세 보기·마우스 올림). */
+.stepper.panel .stepper-head { flex-wrap: nowrap; }
+.stepper.panel .stepper-now { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.stepper.panel .stepper-now .stepper-seg { white-space: inherit; }
+.sim-progress-status { margin: 0; min-width: 0; color: var(--muted-2); font-size: 12px; line-height: 1.4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sim-progress-status.warn { color: var(--amber); }
+.sim-progress-status.danger { color: var(--red); font-weight: 600; }
+.sim-progress-status.ok { color: var(--green); }
+.sim-progress-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.sim-progress-actions > .sim-actions { flex: 1; min-width: 0; }
+.sim-detail-btn, .sim-pop-head > button { flex: none; padding: 10px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text); box-shadow: var(--btn); font-size: 14px; font-weight: 600; cursor: pointer; }
+.sim-pop-head > button { padding: 6px 14px; font-size: 13px; }
+@container (max-width: 760px) {
+  .sim-progress-wrap { --sim-progress-h: 352px; --sim-status-h: calc(12px * 1.4 * 2); --sim-actions-h: 84px; }
+  .stepper.panel .stepper-head { flex-wrap: wrap; }
+  .stepper.panel .stepper-now { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .sim-progress-status { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .sim-progress-actions { flex-wrap: wrap; align-content: flex-start; align-items: flex-start; }
+  .sim-progress-actions > .sim-actions { flex-basis: 100%; }
+}
+/* 팝업: 화면 위에 뜬다(창·칸 높이를 바꾸지 않는다). 상세는 가운데, 승인 카드는 아래쪽 — 3D 화면을 되도록 덜 가린다. */
+.sim-pop { position: fixed; z-index: 30; left: 50%; width: min(720px, calc(100vw - 32px)); box-sizing: border-box; display: flex; flex-direction: column; gap: 10px;
+  padding: 16px 18px; border: 1px solid var(--accent-border); border-radius: 16px; background: var(--panel); box-shadow: var(--card-raised); }
+.sim-detail-pop { top: 50%; transform: translate(-50%, -50%); max-height: min(80vh, 640px); overflow-y: auto; }
+.sim-approval-pop { bottom: 24px; transform: translateX(-50%); z-index: 31; padding: 0; border: 0; background: none; box-shadow: none; }
+.sim-approval-pop > .sim-recovery { box-shadow: var(--card-raised); background: var(--panel); }
+.sim-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--white); font-size: 15px; }
+.sim-pop-now { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--white); font-size: 14px; }
+.sim-pop-notes { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--muted-2); font-size: 12px; }
+.sim-pop-notes .warn { color: var(--amber); }
+.sim-pop-notes .ok { color: var(--green); }
 /* 전체화면: 3D 아래 진행 줄도 높이를 고정한다(넘치면 줄 안에서 스크롤) — 3D 화면 크기가 상태에 따라 바뀌지 않는다. */
 .sim-stage:fullscreen { grid-template-rows: minmax(0, 1fr) var(--sim-fs-progress-h, 176px); }
 .sim-stage:fullscreen > .sim-fs-progress { grid-column: 1 / -1; min-height: 0; overflow-y: auto; }

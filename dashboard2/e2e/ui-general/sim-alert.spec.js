@@ -14,6 +14,9 @@ test('[UI-GSAL-01] 계획 모델 없음(503 plan.llm_unavailable): 서버 사유
     detail: '계획 생성을 사용할 수 없다: 모델 서버를 확인할 수 없다: [plan.llm_timeout] 응답이 60.0s를 넘겼다' } }));
   await page.goto('/');
   await send(page, 'A자재를 컨베이어로 옮겨줘');
+  // 본문에는 오류 여부와 핵심 사유 한 줄, 원인·조치·코드는 상세 보기 팝업(2026-10-09).
+  await expect(page.locator('.sim-card .sim-progress-status')).toContainText('계획 생성을 사용할 수 없다');
+  await page.locator('.sim-card .sim-detail-btn').click();
   const box = page.getByRole('alert', { name: '오류 안내' });
   await expect(box).toContainText('원인계획 생성을 사용할 수 없다: 모델 서버를 확인할 수 없다');
   await expect(box).toContainText('조치계획 모델 서버 상태를 확인해 주세요');
@@ -30,6 +33,9 @@ test('[UI-GSAL-02] 기하 검사 확인 필요(geometry.environment_unavailable)
   await page.goto('/');
   await send(page, 'A자재를 컨베이어로 옮겨줘');
   await page.getByRole('button', { name: '시뮬레이션 보기', exact: true }).click();
+  await expect(page.locator('.sim-card .sim-progress-status')).toContainText('기하 검사를 완료하지 못했다');
+  await expect(page.locator('.sim-card .sim-progress-status')).toHaveClass(/warn/);
+  await page.locator('.sim-card .sim-detail-btn').click();
   const box = page.getByRole('alert', { name: '오류 안내' });
   await expect(box).toContainText('확인 필요');
   await expect(box).toContainText('원인기하 검사를 완료하지 못했다');

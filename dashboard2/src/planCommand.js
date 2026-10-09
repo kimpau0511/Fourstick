@@ -291,7 +291,8 @@ export function useGeneralCommand() {
     }
     pauseAsked.current = true;
     addEvent('pause', '일시정지 요청', res.payload.detail || '');
-    patch({ pauseNote: { tone: 'ok', text: res.payload.detail || '일시정지를 요청했습니다' } });
+    // kind 'ack': 요청 접수 알림일 뿐이다 — 시뮬레이션 보기의 상태 한 줄에서 재개 가능 여부 안내보다 뒤에 둔다.
+    patch({ pauseNote: { tone: 'ok', kind: 'ack', text: res.payload.detail || '일시정지를 요청했습니다' } });
   }, [patch, addEvent, ensureSession]);
 
   // 재개·복구 진행 따라가기(승인 뒤 시작된 작업). 결과는 실행기 보고서·서버 자재 기록으로 정한다.

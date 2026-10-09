@@ -4,10 +4,10 @@ import SimView3D from '../SimView3D.jsx';
 import { commandLock } from '../server.js';
 import { simLabel } from '../simLabel.js';
 import { simAlertOf } from '../simPanels.js';
-import { stepperOf } from '../simStepper.js';
+import { stepperChip, stepperNotes, stepperOf } from '../simStepper.js';
 import JointPanel from './JointPanel.jsx';
 import SimAlert from './SimAlert.jsx';
-import SimStepper from './SimStepper.jsx';
+import SimStepper, { StepperList } from './SimStepper.jsx';
 import dotSimDanger from '../assets/dot-sim-danger.svg';
 import dotSimRunning from '../assets/dot-sim-running.svg';
 import dotSimStopping from '../assets/dot-sim-stopping.svg';
@@ -68,8 +68,8 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   const onJoints = useCallback((data) => setJoints(data), []);
   const alert = simAlertOf({ cmd, server });
   const [dismissed, setDismissed] = useState(null);
-  // 상세 보기 팝업이 뜨는 자리(동작 세부 진행 칸 위). 콜백 ref로 받아 처음 그릴 때부터 쓴다.
-  const [popHost, setPopHost] = useState(null);
+  // 동작 세부 진행의 상세 보기 팝업(긴 설명·실행 로그·오류 상세·단계 목록).
+  const [detailOpen, setDetailOpen] = useState(false);
   const showAlert = alert && alert.key !== dismissed ? alert : null;
   // 시뮬레이션 화면 전체화면. 브라우저 전체화면 API를 쓰고, Esc로도 나온다. 화면 크기가 바뀌면
   // SimView3D가 ResizeObserver로 다시 그린다. 전체화면에서는 헤더가 가려지므로 같은 정지(cmd.stop)를 안에 둔다.
@@ -184,6 +184,21 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
       foot: `${overlay.confirmed && stamp ? `정지 확인 · ${stamp}   ·   ` : ''}${HEADER_STOP}`,
     };
   }
+  // 상세 보기에 모으는 안내(긴 설명). 본문 상태 한 줄은 그중 가장 중요한 하나 — 오류면 제목·핵심 사유.
+  const controlNote = controls && !repeatRun && (stoppedRow || moving) ? (canPause ? '일시정지: 이 작업만 멈춥니다(전체 정지는 헤더)'
+    : canResume ? `${stoppedName}: 정지 지점에서 이어서 옮길 수 있습니다` : canRestore ? `${stoppedName}: ${resumeWhy}` : resumeWhy) : null;
+  const notes = [
+    ...stepperNotes(stepper, stepperStamp),
+    cmd.pauseNote && cmd.pauseNote.tone !== 'danger' && { key: cmd.pauseNote.kind === 'ack' ? 'pause-ack' : 'pause', tone: cmd.pauseNote.tone, text: cmd.pauseNote.text },
+    repeatRun && { key: 'repeat', tone: '', text: `반복 작업: ${repeatRun.label}${repeatNote ? ` — ${repeatNote}` : ''}` },
+    controlNote && { key: canPause ? 'control' : 'stopped', tone: '', text: controlNote },
+    { key: 'foot', tone: '', text: card.foot },
+  ].filter(Boolean);
+  const status = showAlert ? { alert: true, tone: showAlert.tone === 'warn' ? 'warn' : 'danger', text: `${showAlert.title} — ${showAlert.cause}` }
+    : notes.find((n) => n.key === 'stale' || n.key === 'delayed') || notes.find((n) => n.key === 'pause') || notes.find((n) => n.key === 'stopped')
+      || notes.find((n) => n.key === 'pause-ack')
+      || notes.find((n) => n.key === 'repeat') || notes.find((n) => n.key === 'stage') || notes.find((n) => n.key === 'control')
+      || notes.find((n) => n.key === 'partial') || notes[notes.length - 1];
   // 창 바깥(어두운 덮개)을 눌러도 닫는다 — 창은 보기만 하는 곳이라 닫아도 로봇 동작에는 영향이 없다.
   // 덮개는 헤더 아래부터라 헤더의 즉시 정지를 누르는 것은 여기로 오지 않는다.
   return <div className="scrim" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -226,41 +241,52 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
       {full && <div className="sim-fs-progress">{stepper ? <SimStepper model={stepper} stamp={stepperStamp} compact />
         : <p className="sim-foot">진행 단계 정보 없음</p>}</div>}
       </div>
-      {/* 동작 세부 진행(2026-10-09): 제목·현재 작업·대기 안내·스테퍼·보조 문구·제어를 고정 높이 한 칸에 둔다.
-          문구가 길면 이 칸 안에서 줄바꿈·스크롤하고, 상세 보기는 이 칸 위에 뜨는 팝업이다 — 바깥 창과 시뮬레이션 화면은 움직이지 않는다. */}
-      <div className="sim-progress-wrap">
-      <div className="sim-progress">
-      {!full && showAlert && <SimAlert alert={showAlert} onDismiss={() => setDismissed(showAlert.key)} />}
-      <p className="sim-section">{card.section}</p>
-      {card.stages ? <div className="stages">
-        {card.stages.map((s, i) => <div key={i} className="stage-wrap">
-          {i > 0 && <i className={`stage-line ${card.lines[i - 1]}`} />}
-          <div className="stage"><span className={`stage-mark ${s.tone}`}>{s.mark}</span><small className={s.tone === 'wait' ? 'muted' : s.tone === 'danger' ? 'danger' : ''}>{s.label}</small></div>
-        </div>)}
-      </div> : stepper ? <SimStepper model={stepper} stamp={stepperStamp} popupHost={popHost} />
-        : state !== 'viewing' && <p className="sim-foot">진행 단계 정보 없음</p>}
-      <p className="sim-foot">{card.foot}</p>
-      {repeatRun && <div className="sim-actions" role="group" aria-label="반복 작업 제어">
-        <button type="button" disabled={repeatBusy || repeatRun.state !== 'running'} title={repeatRun.state !== 'running' ? '실행 중인 반복이 아닙니다' : undefined} onClick={() => onRepeat('pause')}>❚❚ 일시정지</button>
-        <button type="button" disabled={repeatBusy || repeatRun.state !== 'paused' || !!lock} title={repeatRun.state !== 'paused' ? '일시정지된 반복이 아닙니다' : lock || undefined} onClick={() => onRepeat('resume')}>▶ 재개</button>
-        {repeatRun.state === 'paused' && <button type="button" disabled={repeatBusy} onClick={() => onRepeat('cancel')}>반복 취소</button>}
+      {/* 동작 세부 진행(2026-10-09): 고정 높이 칸 — 현재 작업 한 줄·스테퍼·상태 한 줄·조작 버튼. 칸 안에 세로 스크롤이 없다.
+          긴 설명·실행 로그·오류 상세·단계 목록은 '상세 보기' 팝업, 승인 카드는 별도 팝업 — 시뮬레이션 화면은 움직이지 않는다. */}
+      {!full && <div className="sim-progress-wrap">
+        <div className="sim-progress">
+          {stepper ? <SimStepper model={stepper} stamp={stepperStamp} title={card.section} />
+            : <div className="stepper panel" aria-label="작업 진행">
+              <div className="stepper-head"><p className="stepper-now"><span className="stepper-title">{card.section}</span>
+                {card.stages ? '서버 판정 결과' : state === 'viewing' ? '진행 중인 작업 없음' : '진행 단계 정보 없음'}</p></div>
+              {card.stages ? <div className="stepper-scroll stepper-waiting"><div className="stages">
+                {card.stages.map((st, i) => <div key={i} className="stage-wrap">
+                  {i > 0 && <i className={`stage-line ${card.lines[i - 1]}`} />}
+                  <div className="stage"><span className={`stage-mark ${st.tone}`}>{st.mark}</span><small className={st.tone === 'wait' ? 'muted' : st.tone === 'danger' ? 'danger' : ''}>{st.label}</small></div>
+                </div>)}
+              </div></div> : <div className="stepper-scroll stepper-waiting"><p className="stepper-note">{state === 'viewing' ? 'Gazebo 작업 셀을 관측하고 있습니다' : '진행 단계 정보 없음'}</p></div>}
+            </div>}
+          <p className={`sim-progress-status ${status.tone}`} role={status.alert ? 'alert' : 'status'} aria-label={status.alert ? '오류 요약' : '진행 상태'}
+            title={status.text}>{status.text}</p>
+          <div className="sim-progress-actions">
+            {repeatRun ? <div className="sim-actions" role="group" aria-label="반복 작업 제어">
+              <button type="button" disabled={repeatBusy || repeatRun.state !== 'running'} title={repeatRun.state !== 'running' ? '실행 중인 반복이 아닙니다' : undefined} onClick={() => onRepeat('pause')}>❚❚ 일시정지</button>
+              <button type="button" disabled={repeatBusy || repeatRun.state !== 'paused' || !!lock} title={repeatRun.state !== 'paused' ? '일시정지된 반복이 아닙니다' : lock || undefined} onClick={() => onRepeat('resume')}>▶ 재개</button>
+              {repeatRun.state === 'paused' && <button type="button" disabled={repeatBusy} onClick={() => onRepeat('cancel')}>반복 취소</button>}
+            </div> : controls ? <div className="sim-actions" role="group" aria-label="이 작업 제어">
+              <button type="button" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>
+              <button type="button" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>
+              {canRestore && <button type="button" disabled={cmd.busy} onClick={() => cmd.restore(stoppedRow && stoppedRow.model)}>↺ 복구(원래 자리로)</button>}
+            </div> : state === 'danger' ? <div className="sim-actions">
+              {/* 위험 판정에서는 판정을 덮어쓰는 승인 버튼을 두지 않는다(피그마 메모). 다시 보내면 서버가 다시 판정한다. */}
+              <button type="button" onClick={cmd.reset}>명령 수정</button>
+              <button type="button" disabled={cmd.busy || !!lock} title={lock || undefined} onClick={() => cmd.send(cmd.sent)}>다시 보내기</button>
+            </div> : <div className="sim-actions" />}
+            <button type="button" className="sim-detail-btn" aria-haspopup="dialog" aria-expanded={detailOpen} onClick={() => setDetailOpen(true)}>상세 보기</button>
+          </div>
+        </div>
+        {detailOpen && <div className="sim-pop sim-detail-pop" role="dialog" aria-label="동작 세부 진행 상세"
+          onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setDetailOpen(false); } }}>
+          <div className="sim-pop-head"><strong>{card.section} · 상세</strong>
+            <button type="button" autoFocus onClick={() => setDetailOpen(false)}>상세 닫기</button></div>
+          <p className="sim-pop-now"><b>현재</b> {stepper ? stepper.current || '진행 정보 없음' : card.sub}
+            {stepper && <span className={`stepper-chip ${stepperChip(stepper).tone}`}>{stepperChip(stepper).text}</span>}</p>
+          {showAlert && <SimAlert alert={showAlert} onDismiss={() => setDismissed(showAlert.key)} />}
+          {notes.length > 0 && <ul className="sim-pop-notes">{notes.map((n) => <li key={n.key} className={n.tone}>{n.text}</li>)}</ul>}
+          {stepper && stepper.steps && <StepperList steps={stepper.steps} />}
+        </div>}
+        {recoveryCard && <div className="sim-pop sim-approval-pop">{recoveryCard}</div>}
       </div>}
-      {repeatRun && <p className="sim-foot" role="status">반복 작업: {repeatRun.label}{repeatNote ? ` — ${repeatNote}` : ''}</p>}
-      {!full && recoveryCard}
-      {controls && !repeatRun && <div className="sim-actions" role="group" aria-label="이 작업 제어">
-        <button type="button" disabled={!canPause || cmd.busy} title={pauseWhy || undefined} onClick={cmd.pause}>❚❚ 일시정지</button>
-        <button type="button" disabled={!canResume || cmd.busy} title={resumeWhy || undefined} onClick={() => cmd.resume(stoppedRow && stoppedRow.model)}>▶ 재개</button>
-        {canRestore && <button type="button" disabled={cmd.busy} onClick={() => cmd.restore(stoppedRow && stoppedRow.model)}>↺ 복구(원래 자리로)</button>}
-      </div>}
-      {controls && !repeatRun && (stoppedRow || moving) && <p className="sim-foot" role="status">{canPause ? '일시정지: 이 작업만 멈춥니다(전체 정지는 헤더)'
-        : canResume ? `${stoppedName}: 정지 지점에서 이어서 옮길 수 있습니다`
-          : canRestore ? `${stoppedName}: ${resumeWhy}` : resumeWhy}</p>}
-      {cmd.pauseNote && cmd.pauseNote.tone !== 'danger' && <p className={`sim-foot ${cmd.pauseNote.tone}`} role="status">{cmd.pauseNote.text}</p>}
-      {/* 위험 판정에서는 판정을 덮어쓰는 승인 버튼을 두지 않는다(피그마 메모). 다시 보내면 서버가 다시 판정한다. */}
-      {state === 'danger' && <div className="sim-actions"><button type="button" onClick={cmd.reset}>명령 수정</button><button type="button" disabled={cmd.busy || !!lock} title={lock || undefined} onClick={() => cmd.send(cmd.sent)}>다시 보내기</button></div>}
-      </div>
-      <div className="sim-pop-host" ref={setPopHost} />
-      </div>
     </section>
   </div>;
 }

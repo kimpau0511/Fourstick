@@ -122,19 +122,22 @@ test.describe('시뮬레이션 보기 — 오류 안내', () => {
     await mockView(page);
     await page.goto('/');
     await sendCommand(page, '금지 구역에 놓아줘');
+    await expect(page.getByRole('dialog').first()).toContainText('실행 불가 — 서버가 차단했습니다');
+    // 본문: 오류 여부와 핵심 사유 한 줄(2026-10-09). 원인·조치·코드 전체는 상세 보기 팝업.
+    await expect(page.locator('.sim-card .sim-progress-status')).toContainText('목적지가 사용 금지 자리라 이 계획을 실행할 수 없습니다');
+    await page.locator('.sim-card .sim-detail-btn').click();
     const box = alertBox(page);
     await expect(box).toBeVisible();
-    await expect(page.getByRole('dialog').first()).toContainText('실행 불가 — 서버가 차단했습니다');
     await expect(box).toContainText('원인목적지가 사용 금지 자리라 이 계획을 실행할 수 없습니다');
     await expect(box).toContainText('조치원인 확인 필요');
-    // 사유는 한 곳(안내)에만 — 카드 머리·발에 중복하지 않는다
+    // 사유를 카드 머리에 되풀이하지 않는다
     await expect(page.locator('.sim-head')).not.toContainText('목적지가 사용 금지 자리라');
-    await expect(page.locator('.sim-progress > .sim-foot')).not.toContainText('목적지가 사용 금지 자리라');
     await box.getByText('상세 보기').click();
     await expect(box).toContainText('코드없음');
     const before = calls.length;
     await box.getByRole('button', { name: '안내 닫기' }).click();
     await expect(alertBox(page)).toHaveCount(0);
+    await expect(page.locator('.sim-card .sim-progress-status')).not.toContainText('목적지가 사용 금지 자리라');   // 본문 요약도 함께 숨는다
     await page.waitForTimeout(300);
     expect(calls.slice(before).filter((c) => c.method === 'POST')).toHaveLength(0);   // 정지·복구·잠금 해제를 보내지 않는다
   });
@@ -155,6 +158,8 @@ test.describe('시뮬레이션 보기 — 오류 안내', () => {
     const calls = await mockBackend(page, { overrides: { simDemo: recovery } });
     await mockView(page);
     await openView(page);
+    await expect(page.locator('.sim-card .sim-progress-status')).toContainText('작업 셀 복구 필요 — 활성 작업 기록을 읽을 수 없다');
+    await page.locator('.sim-card .sim-detail-btn').click();
     const box = alertBox(page);
     await expect(box).toContainText('작업 셀 복구 필요');
     await expect(box).toContainText('원인활성 작업 기록을 읽을 수 없다: OSError');
@@ -163,6 +168,7 @@ test.describe('시뮬레이션 보기 — 오류 안내', () => {
     await box.getByRole('button', { name: '안내 닫기' }).click();
     await page.waitForTimeout(2500);
     await expect(alertBox(page)).toHaveCount(0);
+    await expect(page.locator('.sim-card .sim-progress-status')).not.toContainText('작업 셀 복구 필요');
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
   });
 

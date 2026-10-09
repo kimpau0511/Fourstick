@@ -79,10 +79,10 @@ test('[UI-STEP-01] 서버 단계 목록·진행 줄대로 전환한다 — 진�
   await expect(step(page, 3).locator('.stepper-bar')).toHaveClass(/filled/);                     // 2→3 완료 구간
   await expect(step(page, 4).locator('.stepper-bar')).not.toHaveClass(/filled/);                 // 3→4는 진행 중 — 채우지 않는다
   await expect(step(page, 5)).toHaveClass(/wait/);
-  // 상세 목록은 접혀 있다가 '상세 보기'로 연다.
-  await expect(stepper(page).locator('.stepper-list')).toHaveCount(0);
-  await stepper(page).getByRole('button', { name: '상세 보기' }).click();
-  await expect(page.locator('.sim-card .stepper-pop .stepper-list li').nth(3)).toContainText('진행 중');   // 칸 위 팝업(2026-10-09)
+  // 단계 목록은 본문에 없고 '상세 보기' 팝업에서 본다(2026-10-09 — 진행 칸에 세로 스크롤을 두지 않는다).
+  await expect(page.locator('.sim-card .stepper-list')).toHaveCount(0);
+  await page.locator('.sim-card .sim-detail-btn').click();
+  await expect(page.locator('.sim-detail-pop .stepper-list li').nth(3)).toContainText('진행 중');
   // 표시 전용: 단계는 버튼이 아니다.
   await expect(stepper(page).locator('.stepper-track button')).toHaveCount(0);
   ctl.finish({ ok: true, execution_id: 'exec-1', final: { state: 'completed' } });
@@ -155,8 +155,9 @@ for (const [name, interrupted, final, chip, failAt] of [
     await expect(step(page, 5)).toHaveClass(failAt ? /failed/ : /halted/);
     await expect(step(page, 6)).toHaveClass(/wait/);
     if (name === '실패') {
-      await expect(page.locator('.sim-card')).toContainText('실행 실패');                                     // 기존 오류 안내 유지
-      await expect(page.locator('.sim-card')).toContainText('exec.goal_not_reached');
+      await expect(page.locator('.sim-card .sim-progress-status')).toContainText('실행 실패');                // 오류 여부·핵심 사유는 본문
+      await page.locator('.sim-card .sim-detail-btn').click();                                                  // 오류 상세(코드)는 상세 보기
+      await expect(page.locator('.sim-detail-pop')).toContainText('exec.goal_not_reached');
       await expect(stepper(page)).toContainText('현재: A자재 이송 실패 · 5단계 pick 접근');
     }                 // 기존 오류 원인·조치 안내 유지
   });
@@ -183,7 +184,7 @@ test('[UI-STEP-06] 진행 조회가 연속 실패하면 마지막 확인 상태�
   await expect(step(page, 6)).toHaveClass(/current/, { timeout: 8000 });
   ctl.jobDown = true;
   await expect(stepper(page).locator('.stepper-chip')).toContainText('통신 확인 안 됨 · 5/12 단계 완료', { timeout: 12000 });
-  await expect(stepper(page)).toContainText('진행 조회가 연속으로 실패했습니다');
+  await expect(page.locator('.sim-card .sim-progress-status')).toContainText('진행 조회가 연속으로 실패했습니다');   // 본문 상태 한 줄
   await expect(step(page, 6)).toHaveClass(/current/);                                            // 그대로, 완료로 넘기지 않음
   await expect(step(page, 6)).not.toHaveClass(/done/);
   const anim = await step(page, 6).locator('.stepper-dot').evaluate((el) => getComputedStyle(el).animationName);
@@ -196,7 +197,7 @@ test('[UI-STEP-06B] 조회는 정상인데 단계가 오래 안 바뀌면 끊김
   await setup(page, ctl);
   await approve(page);
   await expect(step(page, 6)).toHaveClass(/current/, { timeout: 8000 });
-  await expect(stepper(page)).toContainText(/이 단계 \d+초째 진행 중 · 서버 조회 정상/, { timeout: 12000 });
+  await expect(page.locator('.sim-card .sim-progress-status')).toContainText(/이 단계 \d+초째 진행 중 · 서버 조회 정상/, { timeout: 12000 });
   await expect(stepper(page).locator('.stepper-chip')).toContainText('진행 중 · 5/12 단계 완료');
   await expect(stepper(page)).not.toContainText('통신 확인 안 됨');
   await expect(stepper(page)).not.toContainText('갱신 지연');
@@ -353,7 +354,7 @@ for (const view of [{ name: '일반', width: 1440, height: 900, full: false }, {
     await shot('2-진행');
     await labelsIntact(page, root, RETURN);
     // 같은 단계가 6초 넘게 이어지면 안내 줄('이 단계 N초째…')이 생긴다 — 그래도 움직이지 않는다.
-    await expect(page.locator(`${root} .stepper-note`)).toContainText('초째', { timeout: 12000 });
+    await expect(page.locator(view.full ? `${root} .stepper-note` : '.sim-card .sim-progress-status')).toContainText('초째', { timeout: 12000 });
     const note = await box(page, root);
     await shot('3-진행-안내');
     expect(run).toEqual(wait);
@@ -390,8 +391,14 @@ async function geom(page, full) {
     const c = card.getBoundingClientRect();
     const prog = document.querySelector(isFull ? '.sim-fs-progress' : '.sim-progress-wrap').getBoundingClientRect();
     const oy = isFull ? 0 : card.scrollTop - c.top;
+    const inner = isFull ? null : document.querySelector('.sim-progress');
     return { video: [Math.round(v.left), Math.round(v.top + oy), Math.round(v.width), Math.round(v.height)], progress: Math.round(prog.height),
-      card: isFull ? null : Math.round(card.scrollHeight) };
+      card: isFull ? null : Math.round(card.scrollHeight),
+      // 일반 화면: 진행 칸 안에 세로 스크롤이 생기지 않는다(2026-10-09).
+      progressScrolls: inner ? inner.scrollHeight > inner.clientHeight + 1 : false,
+      progressWider: inner ? inner.scrollWidth > inner.clientWidth + 1 || inner.getBoundingClientRect().right > c.right + 1 : false,
+      // 넓은 일반 화면(1440×900): 창(머리·3D·진행 칸)도 세로로 스크롤되지 않는다.
+      cardScrolls: !isFull && window.innerWidth >= 1000 ? card.scrollHeight > card.clientHeight + 1 : false };
   }, full);
 }
 
@@ -430,17 +437,20 @@ for (const view of [{ name: '일반', width: 1440, height: 900, full: false }, {
     await start(page, ctl);
     await expect(page.locator(`${root} .stepper-waiting`)).toBeVisible();
     const base = await geom(page, view.full);
+    expect(base.progressScrolls).toBe(false);
+    expect(base.progressWider).toBe(false);
+    expect(base.cardScrolls).toBe(false);
     await shot(page, '1-대기');
     ctl.job = returning(3);
     await expect(page.locator(`${root} .stepper-step`)).toHaveCount(12, { timeout: 8000 });
     expect(await geom(page, view.full)).toEqual(base);
     await shot(page, '2-실행');
     if (!view.full) {
-      await page.locator('.sim-card .stepper').getByRole('button', { name: '상세 보기' }).click();
-      await expect(page.locator('.sim-card .stepper-pop')).toBeVisible();
+      await page.locator('.sim-card .sim-detail-btn').click();
+      await expect(page.locator('.sim-detail-pop')).toBeVisible();
       expect(await geom(page, view.full)).toEqual(base);
       await shot(page, '3-상세-팝업');
-      await page.locator('.sim-card .stepper-pop').getByRole('button', { name: '상세 닫기' }).click();
+      await page.locator('.sim-detail-pop').getByRole('button', { name: '상세 닫기' }).click();
     }
     // 전체화면에서는 헤더가 가려진다 — 화면 안 막대의 즉시 정지를 쓴다.
     await (view.full ? page.locator('.sim-fs-stop') : page.locator('header').getByRole('button', { name: '즉시 정지' }).first()).click();
