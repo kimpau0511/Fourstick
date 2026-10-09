@@ -12,6 +12,8 @@
 .data-table tbody tr[tabindex][aria-selected="true"] { background: var(--nav-active); }
 .data-table tbody tr[tabindex]:focus-visible { outline: 2px solid var(--accent-border); outline-offset: -2px; }
 .rec-empty { padding: 20px; color: var(--muted); font-size: 13px; margin: 0; }
+.routine-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.routine-empty b { color: var(--soft); font-size: 14px; }
 .rec-detail { padding: 16px 20px; }
 .rec-detail h2 { margin-bottom: 12px; font-size: 15px; }
 .timeline { list-style: none; margin: 0; padding: 0 0 0 20px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 14px; }
@@ -46,3 +48,11 @@
 .widget-switch[aria-checked="true"] { color: var(--cyan); }
 .widget-switch[aria-checked="true"] i::after { background: var(--cyan); transform: translateX(12px); }
 .widget-switch:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+/* 기록·진단 표: 왼쪽 정렬, 짧은 값(상태·시각·결과) 칸은 줄바꿈하지 않는다 — '정/상', '기록 없/음'처럼 쪼개졌다(2026-10-08).
+   긴 글(명령 요약·오류 사유)만 줄바꿈한다. 공용 .data-table은 그대로. */
+.data-table.rec-table :is(th, td), .data-table.svc-table :is(th, td) { text-align: left; } /* 공용 .data-table th/td보다 우선하게 */
+.nowrap { white-space: nowrap; }
+.rec-table td:nth-child(n+4) { white-space: nowrap; }
+/* 상태·최근 점검·지속만 한 줄. '마지막 정상'(이 화면이 본 적 없음)과 오류 칸은 줄바꿈해야 표가 카드 밖으로 넘치지 않는다 */
+.svc-table td:is(:nth-child(2), :nth-child(3), :nth-child(5)) { white-space: nowrap; }

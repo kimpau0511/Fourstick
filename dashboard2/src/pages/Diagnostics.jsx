@@ -207,7 +207,7 @@ export default function Diagnostics({ server }) {
       </table>
     </div>}
     <div className="card">
-      <table className="data-table" aria-label="서비스 목록">
+      <table className="data-table svc-table" aria-label="서비스 목록">
         <thead><tr><th>서비스</th><th>상태</th><th className="col-extra">최근 점검</th><th className="col-extra">마지막 정상</th><th className="col-extra">지속(이 화면 기준)</th><th>최근 오류</th></tr></thead>
         <tbody>{sorted.map((s) => {
           const lastOkText = s.status === 'ok' ? '지금' : track.lastOk[s.id] ? clock(track.lastOk[s.id]) : '이 화면이 본 적 없음';
