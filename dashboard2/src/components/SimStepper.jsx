@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './stepper.css';
 
 // 가로 스테퍼(2026-10-08) — 원형 체크포인트 + 연결 바 + 아래 단계명. 표시 전용(단계를 눌러 이동·재실행하지 않는다).
@@ -20,7 +21,8 @@ function StepLabel({ label }) {
   </Fragment>);
 }
 
-export default function SimStepper({ model, compact = false, stamp = null }) {
+// popupHost: 상세 목록을 띄울 자리(DOM 요소). 주면 목록이 그 자리 위의 팝업으로 떠서 스테퍼·바깥 칸 높이를 늘리지 않는다.
+export default function SimStepper({ model, compact = false, stamp = null, popupHost = null }) {
   const [detail, setDetail] = useState(false);
   const scroller = useRef(null);
   const modelKey = model ? model.key : null;
@@ -42,6 +44,13 @@ export default function SimStepper({ model, compact = false, stamp = null }) {
   }, [focusIndex, modelKey]);
   if (!model) return null;
   const { steps } = model;
+  const list = steps && <ol className="stepper-list">
+    {steps.map((s) => <li key={`d-${s.index}-${s.no}`} className={s.status}>
+      <span className="stepper-list-no">{s.index}</span>
+      <span className="stepper-list-label"><StepLabel label={s.label} />{s.prior ? ' · 앞 실행에서 완료' : ''}</span>
+      <span className="stepper-list-state">{{ done: '완료(실행기 도달 확인)', current: '진행 중', paused: '일시정지', halted: '여기서 멈춤', failed: '도달 실패', wait: '대기' }[s.status]}</span>
+    </li>)}
+  </ol>;
   const tone = model.stale || model.link === 'delayed' ? 'warn' : { completed: 'ok', failed: 'danger', stopped: 'danger', stopping: 'danger', cancelled: 'warn', paused: 'warn', unknown: 'warn' }[model.phase] || 'info';
   return <div className={`stepper ${compact ? 'compact' : ''} ${model.phase} ${model.stale ? 'stale' : ''}`} aria-label="작업 진행">
     <div className="stepper-head">
@@ -69,13 +78,12 @@ export default function SimStepper({ model, compact = false, stamp = null }) {
     </div> : <div className="stepper-scroll stepper-waiting"><p className="stepper-note">단계 목록을 기다리는 중 — 실행기가 사전 확인을 마치면 단계가 표시됩니다</p></div>}
     {!compact && <div className="stepper-detail">
       <button type="button" className="stepper-toggle" aria-expanded={!!steps && detail} disabled={!steps} onClick={() => setDetail((v) => !v)}>{steps && detail ? '상세 닫기' : '상세 보기'}</button>
-      {steps && detail && <ol className="stepper-list">
-        {steps.map((s) => <li key={`d-${s.index}-${s.no}`} className={s.status}>
-          <span className="stepper-list-no">{s.index}</span>
-          <span>{s.label}{s.prior ? ' · 앞 실행에서 완료' : ''}</span>
-          <span className="stepper-list-state">{{ done: '완료(실행기 도달 확인)', current: '진행 중', paused: '일시정지', halted: '여기서 멈춤', failed: '도달 실패', wait: '대기' }[s.status]}</span>
-        </li>)}
-      </ol>}
+      {steps && detail && (popupHost ? createPortal(<div className="stepper-pop" role="dialog" aria-label="단계 상세"
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setDetail(false); } }}>
+        <div className="stepper-pop-head"><strong>단계 상세</strong>
+          <button type="button" className="stepper-toggle" autoFocus onClick={() => setDetail(false)}>상세 닫기</button></div>
+        {list}
+      </div>, popupHost) : list)}
     </div>}
   </div>;
 }

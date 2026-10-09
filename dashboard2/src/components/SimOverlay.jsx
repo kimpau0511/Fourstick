@@ -68,6 +68,8 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
   const onJoints = useCallback((data) => setJoints(data), []);
   const alert = simAlertOf({ cmd, server });
   const [dismissed, setDismissed] = useState(null);
+  // 상세 보기 팝업이 뜨는 자리(동작 세부 진행 칸 위). 콜백 ref로 받아 처음 그릴 때부터 쓴다.
+  const [popHost, setPopHost] = useState(null);
   const showAlert = alert && alert.key !== dismissed ? alert : null;
   // 시뮬레이션 화면 전체화면. 브라우저 전체화면 API를 쓰고, Esc로도 나온다. 화면 크기가 바뀌면
   // SimView3D가 ResizeObserver로 다시 그린다. 전체화면에서는 헤더가 가려지므로 같은 정지(cmd.stop)를 안에 둔다.
@@ -220,8 +222,14 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
           <button type="button" className="sim-fs-stop" onClick={cmd.stop}>■ 즉시 정지</button>
         </div>}
       </div>
-      {full && stepper && <SimStepper model={stepper} stamp={stepperStamp} compact />}
+      {/* 전체화면: 진행 줄은 늘 같은 높이로 둔다(단계 정보가 없어도 자리 유지) — 3D 화면 크기가 상태에 따라 바뀌지 않는다. */}
+      {full && <div className="sim-fs-progress">{stepper ? <SimStepper model={stepper} stamp={stepperStamp} compact />
+        : <p className="sim-foot">진행 단계 정보 없음</p>}</div>}
       </div>
+      {/* 동작 세부 진행(2026-10-09): 제목·현재 작업·대기 안내·스테퍼·보조 문구·제어를 고정 높이 한 칸에 둔다.
+          문구가 길면 이 칸 안에서 줄바꿈·스크롤하고, 상세 보기는 이 칸 위에 뜨는 팝업이다 — 바깥 창과 시뮬레이션 화면은 움직이지 않는다. */}
+      <div className="sim-progress-wrap">
+      <div className="sim-progress">
       {!full && showAlert && <SimAlert alert={showAlert} onDismiss={() => setDismissed(showAlert.key)} />}
       <p className="sim-section">{card.section}</p>
       {card.stages ? <div className="stages">
@@ -229,7 +237,7 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
           {i > 0 && <i className={`stage-line ${card.lines[i - 1]}`} />}
           <div className="stage"><span className={`stage-mark ${s.tone}`}>{s.mark}</span><small className={s.tone === 'wait' ? 'muted' : s.tone === 'danger' ? 'danger' : ''}>{s.label}</small></div>
         </div>)}
-      </div> : stepper ? <SimStepper model={stepper} stamp={stepperStamp} />
+      </div> : stepper ? <SimStepper model={stepper} stamp={stepperStamp} popupHost={popHost} />
         : state !== 'viewing' && <p className="sim-foot">진행 단계 정보 없음</p>}
       <p className="sim-foot">{card.foot}</p>
       {repeatRun && <div className="sim-actions" role="group" aria-label="반복 작업 제어">
@@ -250,6 +258,9 @@ export default function SimOverlay({ overlay, cmd, server, onClose }) {
       {cmd.pauseNote && cmd.pauseNote.tone !== 'danger' && <p className={`sim-foot ${cmd.pauseNote.tone}`} role="status">{cmd.pauseNote.text}</p>}
       {/* 위험 판정에서는 판정을 덮어쓰는 승인 버튼을 두지 않는다(피그마 메모). 다시 보내면 서버가 다시 판정한다. */}
       {state === 'danger' && <div className="sim-actions"><button type="button" onClick={cmd.reset}>명령 수정</button><button type="button" disabled={cmd.busy || !!lock} title={lock || undefined} onClick={() => cmd.send(cmd.sent)}>다시 보내기</button></div>}
+      </div>
+      <div className="sim-pop-host" ref={setPopHost} />
+      </div>
     </section>
   </div>;
 }

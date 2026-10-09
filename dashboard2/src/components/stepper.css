@@ -67,9 +67,13 @@
 .stepper-list li.current .stepper-list-state, .stepper-list li.paused .stepper-list-state { color: var(--cyan); font-weight: 700; }
 .stepper-list li.halted .stepper-list-state, .stepper-list li.failed .stepper-list-state { color: var(--red); font-weight: 700; }
 
-/* 전체화면: 3D를 덮지 않게 영상 아래 자기 줄을 쓴다(SimOverlay의 .sim-stage 그리드). */
+/* 전체화면: 3D를 덮지 않게 영상 아래 자기 줄(.sim-fs-progress, 높이 고정)을 쓴다 — styles.css의 .sim-stage:fullscreen. */
 .stepper.compact { padding: 10px 12px; gap: 8px; }
-.sim-stage:fullscreen { grid-template-rows: minmax(0, 1fr) auto; }
-.sim-stage:fullscreen > .stepper { grid-column: 1 / -1; }
+
+/* 상세 보기 팝업: 동작 세부 진행 칸 위에 뜬다(칸·창 높이를 늘리지 않는다). 목록이 길면 팝업 안에서 스크롤. */
+.stepper-pop { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; box-sizing: border-box;
+  border: 1px solid var(--accent-border); border-radius: 16px; background: var(--panel); box-shadow: var(--card-raised); }
+.stepper-pop-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--white); font-size: 14px; }
+.stepper-pop .stepper-list { flex: 1; min-height: 0; overflow-y: auto; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }

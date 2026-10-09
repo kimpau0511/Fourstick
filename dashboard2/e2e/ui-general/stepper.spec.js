@@ -82,7 +82,7 @@ test('[UI-STEP-01] 서버 단계 목록·진행 줄대로 전환한다 — 진�
   // 상세 목록은 접혀 있다가 '상세 보기'로 연다.
   await expect(stepper(page).locator('.stepper-list')).toHaveCount(0);
   await stepper(page).getByRole('button', { name: '상세 보기' }).click();
-  await expect(stepper(page).locator('.stepper-list li').nth(3)).toContainText('진행 중');
+  await expect(page.locator('.sim-card .stepper-pop .stepper-list li').nth(3)).toContainText('진행 중');   // 칸 위 팝업(2026-10-09)
   // 표시 전용: 단계는 버튼이 아니다.
   await expect(stepper(page).locator('.stepper-track button')).toHaveCount(0);
   ctl.finish({ ok: true, execution_id: 'exec-1', final: { state: 'completed' } });
@@ -379,4 +379,99 @@ for (const view of [{ name: '일반', width: 1440, height: 900, full: false }, {
       await shot('5-실행-완료');
     }
   });
+}
+
+// ── 동작 세부 진행 칸 고정(2026-10-09): 상태가 바뀌어도 시뮬레이션 화면의 위치·크기와 진행 칸 높이가 그대로 ───────────
+// 3D 화면 위치는 창 안 내용 기준(창 스크롤과 무관)으로 잰다.
+async function geom(page, full) {
+  return page.evaluate((isFull) => {
+    const card = document.querySelector('.sim-card');
+    const v = document.querySelector('.sim-video').getBoundingClientRect();
+    const c = card.getBoundingClientRect();
+    const prog = document.querySelector(isFull ? '.sim-fs-progress' : '.sim-progress-wrap').getBoundingClientRect();
+    const oy = isFull ? 0 : card.scrollTop - c.top;
+    return { video: [Math.round(v.left), Math.round(v.top + oy), Math.round(v.width), Math.round(v.height)], progress: Math.round(prog.height),
+      card: isFull ? null : Math.round(card.scrollHeight) };
+  }, full);
+}
+
+for (const view of [{ name: '일반', width: 1440, height: 900, full: false }, { name: '전체화면', width: 1440, height: 900, full: true },
+  { name: '좁은 화면', width: 390, height: 844, full: false }]) {
+  const drawer = (page) => page.locator('header').getByRole('button', { name: '명령 패널' });
+  const narrow = view.width < 800;
+  const root = view.full ? '.sim-fs-progress' : '.sim-progress';                 // 보이는 스테퍼
+  async function start(page, ctl) {
+    await page.setViewportSize({ width: view.width, height: view.height });
+    await setup(page, ctl);
+    if (narrow) await drawer(page).click();
+    await approve(page);
+    if (narrow) await drawer(page).click();
+    if (view.full) await page.locator('.sim-card').getByRole('button', { name: '전체화면' }).click();
+    await expect(page.locator(`${root} .stepper`)).toBeVisible({ timeout: 8000 });
+    await page.waitForTimeout(400);
+  }
+  // 실행이 끝나면 창이 닫힌다(기존 규칙) — 다시 열고(전체화면이면 다시 전체화면) 같은 자리를 잰다.
+  async function reopen(page) {
+    // 정지로 끝나면 창이 정지 확인 화면으로 남는다 — 그때는 다시 열지 않는다.
+    const closed = await expect(page.locator('.sim-card')).toHaveCount(0, { timeout: 4000 }).then(() => true, () => false);
+    if (!closed) { await page.waitForTimeout(400); return; }
+    if (narrow) await drawer(page).click();
+    await page.getByRole('button', { name: '시뮬레이션 보기' }).click();
+    if (narrow) await drawer(page).click();
+    if (view.full) await page.locator('.sim-card').getByRole('button', { name: '전체화면' }).click();
+    await page.waitForTimeout(400);
+  }
+  const shotDir = process.env.STEPPER_SHOTS;
+  const shot = (page, n) => shotDir && page.screenshot({ path: `${shotDir}/고정-${view.name}-${n}.png` });
+
+  test(`[UI-STEP-13-${view.name}] 대기→실행→상세 보기→정지 요청→정지: 시뮬레이션 화면 위치·크기와 진행 칸 높이가 그대로`, async ({ page }) => {
+    test.setTimeout(60_000);
+    const ctl = { job: waiting() };
+    await start(page, ctl);
+    await expect(page.locator(`${root} .stepper-waiting`)).toBeVisible();
+    const base = await geom(page, view.full);
+    await shot(page, '1-대기');
+    ctl.job = returning(3);
+    await expect(page.locator(`${root} .stepper-step`)).toHaveCount(12, { timeout: 8000 });
+    expect(await geom(page, view.full)).toEqual(base);
+    await shot(page, '2-실행');
+    if (!view.full) {
+      await page.locator('.sim-card .stepper').getByRole('button', { name: '상세 보기' }).click();
+      await expect(page.locator('.sim-card .stepper-pop')).toBeVisible();
+      expect(await geom(page, view.full)).toEqual(base);
+      await shot(page, '3-상세-팝업');
+      await page.locator('.sim-card .stepper-pop').getByRole('button', { name: '상세 닫기' }).click();
+    }
+    // 전체화면에서는 헤더가 가려진다 — 화면 안 막대의 즉시 정지를 쓴다.
+    await (view.full ? page.locator('.sim-fs-stop') : page.locator('header').getByRole('button', { name: '즉시 정지' }).first()).click();
+    await expect(page.locator(`${root} .stepper-chip`)).toContainText('즉시 정지 요청됨', { timeout: 8000 });
+    expect(await geom(page, view.full)).toEqual(base);
+    await shot(page, '4-정지-요청');
+    ctl.job = returning(3, { status: 'finished' });
+    ctl.finish({ ok: false, execution_id: 'exec-1', interrupted: 'exec.stopped', final: { state: 'stopped' } });
+    await reopen(page);
+    await expect(page.locator(`${root} .stepper-step`).nth(3)).toHaveClass(/halted/, { timeout: 8000 });
+    expect(await geom(page, view.full)).toEqual(base);
+    await shot(page, '5-정지');
+  });
+
+  for (const [what, finalBody, job, text] of [
+    ['실패', { ok: false, execution_id: 'exec-1', final: { state: 'failed', reason_code: 'exec.goal_not_reached' } },
+      () => returning(5, { status: 'finished', progress: progress(5, { failAt: 5, labels: RETURN }) }), '실패'],
+    ['완료', { ok: true, execution_id: 'exec-1', final: { state: 'completed' } }, () => returning(12, { status: 'finished' }), '12/12 단계 완료'],
+  ]) {
+    test(`[UI-STEP-13-${view.name}-${what}] 실행 → ${what}에서도 시뮬레이션 화면 위치·크기와 진행 칸 높이가 그대로`, async ({ page }) => {
+      test.setTimeout(60_000);
+      const ctl = { job: returning(4) };
+      await start(page, ctl);
+      await expect(page.locator(`${root} .stepper-step`)).toHaveCount(12, { timeout: 8000 });
+      const base = await geom(page, view.full);
+      ctl.job = job();
+      ctl.finish(finalBody);
+      await reopen(page);
+      await expect(page.locator(`${root} .stepper-chip`)).toContainText(text, { timeout: 8000 });
+      expect(await geom(page, view.full)).toEqual(base);
+      await shot(page, `6-${what}`);
+    });
+  }
 }

@@ -129,7 +129,7 @@ test.describe('시뮬레이션 보기 — 오류 안내', () => {
     await expect(box).toContainText('조치원인 확인 필요');
     // 사유는 한 곳(안내)에만 — 카드 머리·발에 중복하지 않는다
     await expect(page.locator('.sim-head')).not.toContainText('목적지가 사용 금지 자리라');
-    await expect(page.locator('.sim-card > .sim-foot')).not.toContainText('목적지가 사용 금지 자리라');
+    await expect(page.locator('.sim-progress > .sim-foot')).not.toContainText('목적지가 사용 금지 자리라');
     await box.getByText('상세 보기').click();
     await expect(box).toContainText('코드없음');
     const before = calls.length;
