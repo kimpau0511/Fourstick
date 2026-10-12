@@ -16,4 +16,24 @@ html/임시.txt
 
 # 측정 산출물 — 스크립트로 재생성된다
 reports/
-config/local.env
+
+# 이 PC 전용 설정·백업·예시 — 비밀값이 들어갈 수 있어 올리지 않는다
+config/local.env*
+
+# 공개 화면 빌드 산출물 — dashboard2에서 빌드해 만든다(README 8장)
+html/static/app/
+
+# 생성 파일 — scripts/build_workcell_world.py가 만든다
+config/gazebo/meshes/
+
+# 이 PC의 외부 저장소 링크(README '전제' — 저장소 밖에 따로 받는다)
+third_party/
+
+# 발표·참고 자료와 임시 파일(코드가 쓰지 않는다)
+output/
+tmp/
+tests/*.mp3
+tests/*.pdf
+
+# Windows 다운로드 표시 파일
+*:Zone.Identifier

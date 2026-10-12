@@ -25,6 +25,54 @@ FR3-WMS 로봇 팔과 Robotiq 2F-85 그리퍼로 구성한 **Gazebo 작업 셀**
 팔레트·자재·컨베이어), 장면 카메라, MoveIt2·Gazebo 구성은 **현재 시뮬레이션 기준
 기능**이며, 실기 지원 대상이 아니다.
 
+## 전체 흐름
+
+```
+음성(마이크) ─ 실시간 STT ─┐
+                          ├─ 명령 해석 ─ 계획 생성 ─ 안전 검증 ─ 사용자 승인 ─ 시뮬레이션 실행 ─ 관측으로 결과 판정
+텍스트 입력 ──────────────┘
+```
+
+1. **입력** — 관제 대시보드(`dashboard2`)의 입력칸이나 마이크. 음성은 서버의 실시간 STT
+   (faster-whisper)가 받아 중간 결과를 보이고, 발화가 끝나면 확정 문장 하나를 만든다.
+2. **명령 해석** — 정지 표현은 먼저 규칙으로 본다(모델을 거치지 않고 바로 전체 정지).
+   자재 이송·복귀 문장은 Qwen이 의도(자재·출발지·목적지)를 읽고, 서버가 작업 셀 기록·
+   등록 정보로 다시 확인한다. 애매하면 되묻고(ASK), 할 수 없으면 차단(BLOCK), 이미 그 상태면
+   할 일 없음(NOOP)으로 끝내며 계획을 만들지 않는다.
+3. **계획·안전 검증** — 계획(move·pick·place·home 단계)을 만든 뒤 스킬·Profile·안전 규칙,
+   요청–계획 일치, MoveIt 기하(도달·충돌), 공통 이송 계약, 자재 기록과 Gazebo 관측(위치·부착)을
+   함께 본다. 판정은 허용·확인 필요·차단 셋이다.
+4. **사용자 승인** — 허용된 계획만 화면에 '실행 승인' 버튼이 생긴다. 승인은 그 세션의 그 계획에
+   **한 번만** 쓰인다. 재개·복구도 승인 카드를 거친다.
+5. **시뮬레이션 실행** — 실행 직전 승인·관문·실행 허가(환경 버전·세션·관측 신선도)를 다시 본 뒤
+   Gazebo 작업 셀에서 움직인다. 도착·놓기는 Gazebo 관측으로만 판정해 기록한다.
+
+## 현재 기능 (관제 대시보드 기준)
+
+- **음성 입력** — 실시간 STT 중간 결과 표시, 발화가 끝나면 **음성 인식 신뢰도**(아래 '제한' 참고)를
+  보이고 확정 문장을 **자동으로 계획 요청**한다(한 번만). 신뢰도가 기준(0.6) 미만이거나 빈 문장이면
+  보내지 않고 다시 말하게 한다. 녹음 중 입력칸을 고치면 자동으로 보내지 않는다. 승인은 언제나 사람이
+  버튼으로 한다.
+- **이송·복귀** — "A자재를 컨베이어로 옮겨줘", "컨베이어에 있는 B자재를 2번 팔레트로 돌려놔",
+  색 이름("초록자재…")·원래 자리·팔레트 간 이송. 컨베이어 칸(3개)은 서버가 배정한다. 자재 버튼
+  (A·B·C → 컨베이어 / 원래 자리)도 같은 계획 경로를 쓴다.
+- **반복 작업** — 자재와 횟수를 고르면 확인 뒤 이송·복귀를 번갈아 반복한다. 회차 끝내기·일시정지·
+  재개·취소, 서버 재시작으로 중단된 반복의 상태 확인 후 잠금 해제.
+- **정지·일시정지·재개·복구**
+  - 헤더 **즉시 정지**: 확인 없이 바로 전체 정지. 정지 표현("정지", "멈춰", "긴급 정지", "작업을 중지해",
+    "그만해" 등)도 같다. 정지는 **헤더의 정지 해제로만** 풀린다(새 명령으로 풀리지 않는다).
+  - 시뮬레이션 보기의 **일시정지**: 지금 실행만 멈추고 정지 지점(체크포인트)을 남긴다.
+  - **재개**: 놓기 접근 중에 자재를 든 채 멈췄을 때만. 승인 카드를 거친다.
+  - **복구**: 재개할 수 없는 지점이면 자재를 원래 자리로 되돌린다(고정 장치 — 아래 '제한'). 승인 카드를 거친다.
+- **진행 표시** — 실행기가 시작 전에 남긴 단계 목록(12단계 등)대로 가로 스테퍼가 넘어간다. 진행 중 단계는
+  완료로 보이지 않고, 최종 확인 전에는 완료로 바꾸지 않는다. 통신이 끊기면 마지막 확인 상태를 둔다.
+- **관절 상태** — 관절별 현재 각도와 한계 범위(Gazebo 관측).
+- **시뮬레이션 보기** — Gazebo 관측만 그리는 3D 화면(전체화면 가능). 3D 모델을 못 받으면 Gazebo 영상.
+- **오류 안내** — 서버가 준 사유 그대로 원인을 적고, 사유 코드나 실행기가 남긴 다음 조치를 보인다.
+  실행기가 시작 전에 거절하면 "이송 시작 안 함 · 로봇 이동 없음"으로 구분한다.
+- **기록·진단** — 기록 및 로그, 실시간 진단, 로봇 관리, 관제 설정 화면(서버 값).
+- **로그인** — 구글 로그인(서버 설정 `FORSTICK2_REQUIRE_LOGIN`, 아래 1장).
+
 ## 전제
 
 - ROS 2 lyrical · gz-sim 10.5.0 · MoveIt 2.15.0 · ros2_control 6.9.0 (WSL2에서 확인)
@@ -39,6 +87,17 @@ FR3-WMS 로봇 팔과 Robotiq 2F-85 그리퍼로 구성한 **Gazebo 작업 셀**
     Balance.onnx, Git LFS). 희소 복제 + LFS 파일 직접 받기, sha256 확인
   - 파이썬 환경(별도 venv): torch(CPU)·mujoco·numpy·pyyaml·onnxruntime. gz 파이썬 바인딩은 ROS에서,
     protobuf는 시스템 4.21을 링크해 쓴다(`humanoid/g1/run_controller.sh` 주석)
+- 파이썬 3.12 이상(확인: 3.14). 시스템 파이썬은 PEP 668로 보호되므로 저장소의 `.venv`를
+  `--system-site-packages`로 만들고, 서버 의존성(uvicorn·wsproto·pydantic·jsonschema·numpy·pytest)은
+  배포판 패키지를 쓴다. 실시간 STT 의존성만 venv에 넣는다([`md/STT_모델_구성.md`](md/STT_모델_구성.md)).
+
+  ```bash
+  python3 -m venv --system-site-packages .venv
+  .venv/bin/pip install -r requirements-stt.txt     # faster-whisper·ctranslate2·onnxruntime (torch 불필요)
+  ```
+
+  정적 검사 도구는 `requirements-dev.txt`(ruff·pyright, `scripts/check.sh`)다.
+- 관제 대시보드는 Node.js가 필요하다(확인: Node 22.22.1, WSL). 8장 참고.
 - 계획 생성을 쓰려면 vLLM 서버가 필요하다 (기본 `localhost:8000`)
   - WSL2에서는 두 가지를 맞춰야 뜬다(실측). pinned memory가 꺼져 있으면
     `UVA is not available`로 엔진이 죽고, venv의 `bin`이 PATH에 없으면 컴파일
@@ -67,8 +126,23 @@ FORSTICK2_ASSEMBLY_YAW_RAD=0 ./scripts/run_gazebo_fr3_2f85_workcell_gui.sh
 ./scripts/run_web_workcell.sh
 ```
 
-웹 페이지에서 "1번 팔레트로 가"처럼 입력하면 계획이 생성되고, 검증 결과와
-판정(허용·확인·차단)이 화면에 표시된다. 포트는 `FORSTICK2_PORT`로 바꾼다.
+웹 서버(8092)는 API와 함께 `html/`을 서빙한다. `html/index.html`은 관제 대시보드(`dashboard2`)
+빌드이고(8장), 예전 화면은 `/static/legacy.html`에 남아 있다. "1번 팔레트로 가"처럼 입력하면
+계획이 생성되고, 검증 결과와 판정(허용·확인·차단)이 화면에 표시된다. 포트는 `FORSTICK2_PORT`로 바꾼다.
+
+`scripts/run_web.sh`는 `config/local.env`가 있으면 먼저 읽는다(이 PC 전용 값 — 저장소에 올리지 않는다).
+주요 설정(환경변수):
+
+| 환경변수 | 기본값 | 뜻 |
+|---|---|---|
+| `FORSTICK2_REQUIRE_LOGIN` | `1` | 구글 로그인 필수. 구글 설정 전 개발 PC에서만 `0` |
+| `FORSTICK2_GOOGLE_CLIENT_ID` · `FORSTICK2_GOOGLE_CLIENT_SECRET` | (없음) | 구글 OAuth. 비밀값은 저장소·문서에 넣지 않는다 |
+| `FORSTICK2_PUBLIC_ORIGIN` · `FORSTICK2_ADDITIONAL_PUBLIC_ORIGINS` | (없음) | 로그인 허용 출처([`docs/login-origins.md`](docs/login-origins.md)) |
+| `FORSTICK2_LLM_BASE_URL` | 설정 파일 값 | 계획 모델 서버 주소 덮어쓰기 |
+| `FORSTICK2_STT` | `1` | 실시간 STT 사용 |
+| `FORSTICK2_STT_MODEL_CONFIG` | `valid_stt_model_lowspec.json` | STT 모델(small·CPU). GPU는 `valid_stt_model_turbo_gpu.json`(large-v3-turbo) + `FORSTICK2_CUDA_LIB_DIR`(cuBLAS·cuDNN·NVRTC 폴더) |
+| `FORSTICK2_DB` | `reports/web.sqlite3` | 요청·계획·승인·실행 기록 DB(시작할 때 스키마를 올린다) |
+| `FORSTICK2_PLAN_TTL_SEC` | `600` | 계획 유효 시간 |
 
 같은 네트워크의 다른 기기에서 쓰려면(인증 없음 — 믿을 수 있는 사설망에서만):
 
@@ -87,8 +161,9 @@ FORSTICK2_ASSEMBLY_YAW_RAD=0 ./scripts/run_gazebo_fr3_2f85_workcell_gui.sh
 ### 2. pick/place 시뮬레이션 시연 (명령줄)
 
 Gazebo 안에서 팔레트 → 컨베이어 이송 전체를 돌려 본다. 개발용 설정을 명시해야
-들어간다. **일반 계획 생성(`/v1/plan`)과 일반 API의 집기·놓기는 이 경로와 무관하게
-계속 차단된다**(`capability.profile_incomplete`).
+들어간다. 웹의 일반 계획(`/v1/plan`)에 든 집기·놓기도 이 실행기가 맡지만, **시뮬레이션 작업 셀에서
+시뮬레이션 Profile·적재 범위·공통 이송 계약을 통과할 때만** 열린다(`server/sim_pick_place.py`).
+그 밖에서는 계속 차단된다(`capability.profile_incomplete`).
 
 ```bash
 # 이송(끝나면 자재를 원래 자리로 되돌린다 — 종단 간 시험과 같은 기본 정책)
@@ -114,11 +189,13 @@ FORSTICK2_SIM_PICK_PLACE_DEMO=1 ./scripts/demo_workcell_pick_place.sh \
 **시뮬레이터 시연이다.** 물체는 시뮬레이션 고정 장치로 움직이며 마찰 파지가
 아니다. 모든 기록은 `is_simulated=true`다.
 
-### 3. 웹에서 쓰는 시뮬레이션 명령
+### 3. 시연 명령 경로 (`/v1/sim-demo/*`)
 
-작업 셀(시뮬레이터)에 붙어 있으면 웹에서도 같은 시연을 돌릴 수 있다. 서버는
-활성 작업 셀이 시뮬레이션일 때만 이 경로를 연다(`FORSTICK2_SIM_DEMO_WEB=0`으로
-끈다). **일반 명령의 집기·놓기 차단은 그대로다.**
+관제 대시보드의 명령 경로는 둘이다. `VITE_COMMAND_MODE=general`이면 위 '전체 흐름'의 일반 경로
+(계획·안전 검증·승인 — 현재 공개 화면), 지정하지 않으면 이 시연 명령 경로다. 작업 셀(시뮬레이터)에
+붙어 있을 때만 서버가 이 경로를 연다(`FORSTICK2_SIM_DEMO_WEB=0`으로 끈다). 움직이는 동작은
+**확인 카드만** 만들고, 같은 세션이 확인해야 작업이 시작된다(세션 필수, 한 번만, 만료·상태 변경·정지
+재검사).
 
 - **텍스트·음성(최종 전사)** — 아래 발화는 시뮬레이션 명령으로 간다. 그 밖의
   발화("안전 위치로 복귀해줘" 등)는 기존 계획 생성으로 간다. 음성의 중간 전사
@@ -128,10 +205,13 @@ FORSTICK2_SIM_PICK_PLACE_DEMO=1 ./scripts/demo_workcell_pick_place.sh \
   |---|---|
   | "A 자재를 컨베이어로 옮겨줘" | 이송(자재를 컨베이어에 둔다) |
   | "A 자재를 원래 자리로 돌려놔" · "돌려놔" | 원래 슬롯 복귀(생략하면 컨베이어에 하나일 때) |
-  | "멈춰" · "정지" · "스톱" | 즉시 정지 — 계획·LLM을 거치지 않는다 |
+  | "멈춰" · "정지" · "스톱" · "작업을 중지해" · "그만해" | 즉시 정지 — 계획·LLM을 거치지 않는다 |
   | "이어서 해줘" | STOP 체크포인트에서 이어서(체크포인트가 하나일 때) |
 
   자재가 모호하거나 지금 할 수 없으면 ASK/BLOCK만 돌려주고 작업을 만들지 않는다.
+  정지 판정은 낱말 경계·부정·인용을 본다(`planning/stop_intent.py`): "스톱워치"·"정지하지 마"·
+  "'정지'라는 말이 뭐야?"는 정지가 아니고, "정지 버튼 어디 있어?"처럼 애매하면 이동 계획 없이 되묻는다.
+  "A 옮겨, 아니 멈춰"처럼 정지가 하나라도 분명하면 정지가 먼저다.
 
   이후 추가된 것:
   - **색 이름으로 자재 지정** — "초록자재를 컨베이어로 옮겨줘"(색은 작업 셀 설정의 자재 색에서만).
@@ -174,9 +254,10 @@ FORSTICK2_SIM_PICK_PLACE_DEMO=1 ./scripts/demo_workcell_pick_place.sh \
   분류기는 계획 생성과 **같은 모델 서버**(vLLM, `qwen3-8b-awq`)를 쓴다. 서버가
   없으면 분류기가 붙지 않고 ASK로 끝난다 — 추측해서 실행하지 않는다.
 
-- **시연 카드** — 자재별로 이송·복귀·resume 사전검증·resume·복구 버튼과 진행
-  단계·체크포인트·마지막 결과를 보여준다. 로봇이 움직이는 동작은 한 번 더 확인을
-  받는다.
+- **시연 카드(예전 화면)** — 자재별로 이송·복귀·resume 사전검증·resume·복구 버튼과 진행
+  단계·체크포인트·마지막 결과를 보여준다. 직접 작업 요청(`POST /v1/sim-demo/jobs`)은 이제 확인 카드만
+  돌려주므로, 확인 카드를 그리지 못하는 예전 화면의 이 버튼으로는 작업이 시작되지 않는다. 관제
+  대시보드를 쓴다.
 
 - **정지** — 시연 정지와 헤더의 전체 정지는 실행 중인 시연에 **정지 요청**을
   보낸다. 프로세스를 죽이지 않는다. 시연은 기존 STOP 절차(취소 → 정지 확인 →
@@ -188,7 +269,10 @@ FORSTICK2_SIM_PICK_PLACE_DEMO=1 ./scripts/demo_workcell_pick_place.sh \
   통과할 때만 움직이며, 중단된 궤적을 재생하지 않고 현재 자세에서 새 접근을
   만든다.
 
-### 4. 웹 화면에서 보이는 것
+### 4. 예전 웹 화면(`/static/legacy.html`)에서 보이는 것
+
+지금 기본 화면은 관제 대시보드(8장)다. 아래는 보존한 예전 화면의 설명이다(음성 안내 TTS는 이
+화면에만 있다).
 
 - **`SIM` 배지** — 장면 영상 위와 명령 카드 머리말에 **항상** 있다. 마우스를
   올리면 "Gazebo 시뮬레이션 · 실제 로봇 아님"이 나온다. 화면에는 실기 준비도나
@@ -241,10 +325,18 @@ python3 scripts/derive_grasp_poses.py --pallet-place --materials mat_a mat_c
 ### 6. 테스트
 
 ```bash
-./scripts/run_tests.sh                              # 기본 제한 60초
-FORSTICK_TEST_TIMEOUT_SEC=120 ./scripts/run_tests.sh
-node --test tests/web/*.test.mjs                    # 웹 화면(JS)
+FORSTICK_TEST_TIMEOUT_SEC=120 ./scripts/run_tests.sh   # 파이썬 전체(약 2,470건, 약 1분 — 기본 제한 60초는 빠듯하다)
+.venv/bin/python -m pytest -q tests                    # 같은 시험을 pytest로
+node --test tests/web/*.test.mjs                       # 예전 웹 화면(JS)
+cd dashboard2 && npm run lint && npm run qa:ui && npm run qa:general   # 관제 대시보드(가짜 응답, 서버·로봇 없이)
 ```
+
+- 시험은 가짜 로봇·가짜 계획 공급자·임시 DB로 돈다. Gazebo·vLLM 없이 돈다.
+- 알려진 실패(d1d89b0 기준): `tests/integration/test_web_screen.py`의 목업 원본 확인 1건(`html/목업/src`가
+  저장소에 없음), `test_sim_pick_place`의 속도 스냅숏 기대값 1건, `tests/web`의 2건(`html/index.html`이
+  관제 대시보드 빌드로 바뀌어 예전 화면 컨테이너가 없다).
+- 명령 해석 평가: `scripts/run_workcell_command_eval.sh`(개발·봉인 평가셋, 봉인 문장은 시험·프롬프트에
+  옮겨 적지 않는다), STT 평가: `scripts/run_stt_eval.sh`.
 
 실제 브라우저 종단 간 확인(Playwright, 화면 없는 Chromium — 프로젝트 의존성이 아니다):
 `scripts/verify_web_fr3_e2e.py`(일반 계획·이송·복귀), `scripts/verify_web_g1_e2e.py`
@@ -288,7 +380,7 @@ humanoid/g1/run_nav.sh verify_roundtrip.py --trips 5 --stops 5
 백엔드 코드는 가져다 쓰지 않고 HTTP·WebSocket API만 부른다. 다만 3D 화면이 옛 웹 화면의
 보간 계산 파일 `html/static/js/sim-view-core.js`를 그대로 import하므로, `dashboard2`만 따로
 떼어 내면 빌드되지 않는다(저장소 전체가 필요하다).
-Node.js가 필요하다(확인한 환경: Node 26.7.0 · npm 11.19.0, Windows).
+Node.js가 필요하다(확인한 환경: Node 26.7.0 · npm 11.19.0, Windows / Node 22.22.1, WSL).
 
 ```bash
 cd dashboard2
@@ -296,16 +388,17 @@ npm install                 # 처음 한 번, 의존성이 바뀐 뒤에도
 npm run dev                 # http://localhost:5175
 ```
 
-- **백엔드 주소** — 기본값은 작업 셀 PC `https://192.168.0.175:8443`이다. 다른 서버에 붙이려면
-  `FORSTICK2_BACKEND_URL=https://주소:포트 npm run dev`. 개발 서버가 `/v1/sim-view`·`/v1/scene`·
-  `/v1/sim-demo`를 그 주소로 넘기므로 백엔드에 CORS를 열 필요가 없다(자체 서명 인증서 허용).
-- **이 PC에서만 열린다(`localhost`).** 백엔드에 인증이 없고 대시보드가 명령·확인·정지 API를
-  넘기기 때문이다. LAN이나 외부 데모로 열려면 인증부터 붙여야 한다.
-- **실제 서버 값을 쓰는 곳**
-  - 시뮬레이션 창: 3D 관측 화면(`/v1/sim-view/*`). 3D 모델을 받지 못하면 Gazebo 영상
-    (`/v1/scene/stream`)으로 대신한다. 화면 아래 DEMO 바의 "안전 검사 중"을 누르면 열린다.
-  - 명령 패널: 시연 명령 API(`/v1/sim-demo/*`)
-  - 나머지 카드(지표·로봇 목록·이력·알림 등)는 아직 목업 데이터다(`dashboard2/src/data.js`).
+- **백엔드 주소** — 기본값은 같은 PC의 `http://127.0.0.1:8092`(1장의 웹 서버)다. 다른 서버에 붙이려면
+  `FORSTICK2_BACKEND_URL=https://주소:포트 npm run dev`. 개발 서버가 `/v1/*`를 그 주소로 넘기므로
+  백엔드에 CORS를 열 필요가 없다(자체 서명 인증서 허용).
+- **설정 파일** — `dashboard2/.env`(팀 공통, 공개 값: 구글 클라이언트 ID 등), `dashboard2/.env.local`(이 PC
+  전용, 저장소에 올리지 않는다). `VITE_COMMAND_MODE=general`이면 일반 경로(계획·승인·실행), 없으면 시연
+  명령 경로(3장).
+- **개발 서버는 이 PC에서만 열린다(`localhost`).** 외부 공개는 로그인을 켠 8092가 빌드한 화면을
+  서빙하는 방식으로 한다(아래 '서버가 서빙하는 화면 빌드').
+- **서버 값을 쓰는 곳** — 명령 패널(일반 경로 `/v1/plan`·`/v1/decision`·`/v1/execute`·`/v1/stop`, 또는
+  시연 명령 `/v1/sim-demo/*`), 실시간 STT(`/v1/stt`), 반복 작업(`/v1/sim-demo/repeat`), 시뮬레이션 창
+  (3D 관측 `/v1/sim-view/*`, 대신 Gazebo 영상 `/v1/scene/stream`), 관절 상태, 기록·진단·로봇 관리·설정 화면.
 - **검사·빌드**
 
   ```bash
@@ -315,6 +408,63 @@ npm run dev                 # http://localhost:5175
   npm run qa:report           # 요구사항 ID별 결과 표
   QA_ROBOT=1 npm run qa:api   # 로봇을 실제로 움직이는 검사(E2E·정지 반응) — 작업 셀 PC 담당 팀원 허락 뒤에만
   ```
+
+  화면 QA의 개발 서버는 5181·5182 포트를 쓰고, 가짜 응답을 빠뜨린 요청이 실제 서버로 새지 않게 백엔드를
+  닫힌 포트로 둔다(`playwright.config.js`).
+
+- **서버가 서빙하는 화면 빌드** — 8092가 내보내는 `html/index.html`·`html/static/app/`을 만든다.
+
+  ```bash
+  cd dashboard2
+  npx vite build --base=/static/app/ --outDir ../html/static/app --emptyOutDir
+  cp ../html/static/app/index.html ../html/index.html
+  ```
+
+## 주요 폴더
+
+| 폴더 | 내용 |
+|---|---|
+| `server/` | 웹·API 서버(ASGI). `api.py`(계획·승인·실행·정지), `routes/`(경로별 처리), `plan_intent.py`(이송 의도 검증), `sim_demo_*`(시연 작업·확인 카드·목표), `sim_pick_place.py`(일반 경로 이송), `material_check.py`(기록·관측 확인), `repeat_runs.py`(반복), `sim_view.py`(3D 관측) |
+| `planning/` | 계획 생성(vLLM·Qwen 공급자, 프롬프트, 출력 해석), 슬롯 추출, 정지 표현 판정(`stop_intent.py`), 의도 해석기 |
+| `validation/` | 안전 검증·실행 허가·이송 단계·시연 상태 기록·컨베이어 칸 |
+| `core/` | 계획·스킬·Profile·사유 코드 등 공통 계약 |
+| `robots/` | 로봇 어댑터 — `fr3_gazebo/`(작업 셀: ROS·Gazebo 전송, 고정 장치, 붙임 관절 관측), `moveit/`, `fake/`(개발·시험용) |
+| `stt/` | 실시간 STT(faster-whisper·Silero VAD), 세션, 평가 |
+| `storage/` | SQLite 기록(요청·계획·승인·실행, 스키마 마이그레이션) |
+| `config/` | 작업 셀·Profile·MoveIt·Gazebo 설정(`config/workcell/active.json`이 활성 셀) |
+| `examples/config/` | 서버가 읽는 정책·모델 설정(`valid_*.json`)과 잘못된 설정 예(시험용) |
+| `scripts/` | 실행·시연·측정·평가·검증 스크립트 |
+| `dashboard2/` | 관제 대시보드(React + Vite)와 화면 QA(`e2e/`) |
+| `html/` | 8092가 서빙하는 화면(대시보드 빌드, 예전 화면 `static/legacy.html`) |
+| `tests/` | `unit`·`integration`·`contract`·`model`, `web`(예전 화면 JS) |
+| `fixtures/` | 평가셋(명령 해석·STT) |
+| `md/`, `docs/` | 설계·작업 기록·실행 계획 |
+
+## 시뮬레이션의 제한
+
+- **Gazebo 시뮬레이션 전용**이다. 모든 실행 기록은 `is_simulated=true`이고 실기 실행 경로는 없다.
+- **강제 부착 방식** — 집은 자재는 마찰 파지가 아니라 Gazebo 분리 관절(DetachableJoint)로 그리퍼에
+  고정된다. 붙임·떼기는 Gazebo의 붙임 상태 알림으로 확인해 `fixture_joints.json`에 남긴다. 이미 떨어진
+  관절에 떼기를 보내면 알림이 없어 기록이 `unknown`이 될 수 있는데, 이때는 월드 상태의 붙임 관절을
+  (별도 프로세스에서) 관측해 확인한다. 관측으로도 확인되지 않으면 그 자재의 이송을 시작하지 않는다.
+- **복구는 순간 이동**이다 — 고정 장치가 자재를 원래 자리에 옮겨 놓고 로봇은 움직이지 않는다. 그리퍼를
+  닫는 중에 멈췄다 복구하면 팔이 집기 자세에 남아, 다음 이송이 첫 경로(→ 안전 home) 충돌 검사에서
+  시작되지 않을 수 있다. 화면이 알려 주는 대로 "로봇을 홈 위치로 이동해"를 보낸 뒤 다시 요청한다.
+- **재개 조건** — 자재를 든 채 놓기 접근 중에 확인된 정지로 멈춘 경우만 재개한다. 그 밖은 복구 대상이다.
+- **기록과 관측을 함께 본다** — 이송·복귀 시작 전에 서버 기록, Gazebo 위치(허용 0.02 m), 부착 상태를
+  같이 확인한다. 둘이 다르면 차단하고 정합 확인(복구)을 안내하며, 관측이 없거나 오래됐으면 시작하지 않는다.
+- **음성 인식 신뢰도 ≠ 실제 인식률** — 화면의 '음성 인식 신뢰도'는 STT 모델이 그 발화에 대해 낸 추정치
+  (세그먼트 평균 로그확률의 지수를 길이로 가중 평균, 0~1)다. 맞게 알아들었다는 뜻이 아니며, 기준값 0.6은
+  실제 분포를 보고 다시 정할 값이다. 글자 기준 인식률은 평가 도구로만 재며(`scripts/run_stt_eval.sh`,
+  합성 음성 위주), 실제 마이크 녹음과의 비교는 아직 하지 않았다. 화면에 인식률은 보이지 않는다.
+- **정지** — 정지 요청은 실행 중인 작업에 바로 전달되고, 정지 확인(어댑터·실행기)은 그 뒤에 따로 보고된다.
+  실행 중인 것이 없을 때 응답은 확인을 기다려 수 초 걸릴 수 있다. 정지 표현 판정은 규칙 기반이라 등록되지
+  않은 말투는 되묻거나 일반 명령으로 처리될 수 있다.
+- **입력 상한** — 명령 200자, HTTP 본문 64 KB, STT 오디오 프레임 32,000바이트. 넘으면 이유와 함께 거절한다.
+- **계획 모델 의존** — 이송 의도 해석과 계획 생성은 vLLM 서버가 있어야 한다. 없으면 이유와 함께 실행하지
+  않는다(추측해서 실행하지 않는다).
+- **승인 범위** — 승인은 그 세션·그 계획에 한 번만 쓰이고, 실행 직전 환경이 바뀌었거나 관측이 오래됐으면
+  다시 승인해야 한다.
 
 ## 경로 설정 — 본인 환경에 맞게 바꿔야 한다
 
