@@ -12,6 +12,8 @@
 - 로그인 요청은 `X-Requested-With` 헤더와 Origin(화면 주소)을 확인한다 — 다른 사이트가 남의 인가 코드로
   피해자 브라우저를 로그인시키는 것(로그인 CSRF)을 막는다. 구글 팝업 코드 흐름 지침이 요구한다.
 - 구글 교환(네트워크)은 이벤트 루프 밖 스레드에서 한다 — 느린 구글 응답이 정지 요청을 늦추면 안 된다.
+- 계정 추가·삭제는 **최고 관리자만** 한다(2026-10-12). 판정은 서버가 매 요청 다시 한다 — 화면이 관리 칸을
+  숨기는 것은 표시일 뿐이다. 삭제는 사용 중지이고, 최고 관리자는 화면에서 지우지 못한다.
 
 ID 토큰 서명 검사를 하지 않는 이유:
 - 토큰을 브라우저에서 받지 않고 서버가 구글 토큰 엔드포인트에서 TLS로 직접 받는다. OpenID Connect Core
@@ -25,6 +27,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import secrets
 import time
 import urllib.error
@@ -177,7 +180,17 @@ def link_ids(body: bytes) -> dict:
 
 
 def public_user(account: AccountRecord) -> dict:
-    return {"email": account.email, "name": account.name, "picture": account.picture}
+    return {"email": account.email, "name": account.name, "picture": account.picture, "is_admin": account.is_admin}
+
+
+def account_row(account: AccountRecord) -> dict:
+    """계정 관리 목록 한 줄. 구글 고유 ID(google_sub)는 화면에 내보내지 않는다."""
+    return {**public_user(account), "created_at": account.created_at,
+            "first_login_at": account.first_login_at, "last_login_at": account.last_login_at}
+
+
+#: 계정 추가 때 받는 이메일 모양. 구글 계정인지는 그 사람이 로그인할 때 구글이 확인한다 — 여기서는 오타만 거른다.
+EMAIL_PATTERN = re.compile(r"[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+")
 
 
 @dataclass
@@ -237,6 +250,58 @@ class AuthService:
         if account is None or not account.enabled:
             return None, ReasonCode.SESSION_ACCOUNT_DISABLED
         return account, ReasonCode.SESSION_UNAUTHENTICATED
+
+    def admin_of(self, token: str | None) -> tuple[AccountRecord | None, int, ReasonCode]:
+        """최고 관리자 확인 → (계정, 거절 시 HTTP 상태, 이유). 계정 관리 경로는 출입 검사를 거치지 않아 여기서 한다."""
+        account, reason = self.resolve(token)
+        if account is None:
+            return None, 401, reason
+        if not account.is_admin:
+            return None, 403, ReasonCode.SESSION_ADMIN_REQUIRED
+        return account, 200, reason
+
+    def active_accounts(self) -> list[AccountRecord]:
+        """사용 중인 계정. 삭제(사용 중지)한 계정은 목록에서 빠진다."""
+        return [a for a in self.repository.list_accounts() if a.enabled]
+
+    def add_accounts(self, emails: list[str]) -> list[dict]:
+        """여러 이메일을 한 번에 등록한다. 항목마다 결과를 돌려준다 — 하나가 틀려도 나머지는 등록한다.
+
+        삭제(사용 중지)했던 계정을 다시 추가하면 다시 켠다(2026-10-12 결정 Q3).
+        """
+        results: list[dict] = []
+        for email in dict.fromkeys(e.strip().lower() for e in emails):
+            if not EMAIL_PATTERN.fullmatch(email):
+                results.append({"email": email, "ok": False, "reason_code": ReasonCode.SESSION_ACCOUNT_EMAIL_INVALID.value})
+                continue
+            existing = self.repository.get_account(email)
+            if existing is not None and existing.enabled:
+                results.append({"email": email, "ok": False, "reason_code": ReasonCode.SESSION_ACCOUNT_ALREADY_REGISTERED.value})
+            elif existing is not None:
+                self.repository.set_account_enabled(email, True)
+                results.append({"email": email, "ok": True, "result": "reenabled"})
+            else:
+                self.repository.add_account(email, at=self.now())
+                results.append({"email": email, "ok": True, "result": "added"})
+        return results
+
+    def delete_accounts(self, emails: list[str]) -> list[dict]:
+        """여러 계정을 한 번에 삭제(사용 중지)한다. 로그인 세션도 지워져 바로 로그아웃된다.
+
+        행을 지우지 않는다 — 명령 기록(command_actors)의 보낸 사람이 남아 있어야 한다.
+        최고 관리자는 지우지 않는다(자기 자신 포함) — 관리자가 0명이면 화면으로 되돌릴 수 없다.
+        """
+        results: list[dict] = []
+        for email in dict.fromkeys(e.strip().lower() for e in emails):
+            # 관리자 여부 확인과 중지를 한 번의 조건부 갱신으로 한다 — 사이에 관리자로 지정돼도 지우지 않게.
+            if self.repository.disable_account_unless_admin(email):
+                results.append({"email": email, "ok": True, "result": "deleted"})
+                continue
+            account = self.repository.get_account(email)
+            protected = account is not None and account.enabled and account.is_admin
+            reason = ReasonCode.SESSION_ACCOUNT_PROTECTED if protected else ReasonCode.SESSION_ACCOUNT_NOT_REGISTERED
+            results.append({"email": email, "ok": False, "reason_code": reason.value})
+        return results
 
     def refusal(self, method: str, path: str, token: str | None) -> tuple[int, list, bytes] | None:
         """출입 검사. 로그인이 필요한데 없으면 401 응답, 통과면 None(`server/asgi.py`가 모든 요청에 부른다)."""

@@ -56,3 +56,31 @@
 .rec-table td:nth-child(n+4) { white-space: nowrap; }
 /* 상태·최근 점검·지속만 한 줄. '마지막 정상'(이 화면이 본 적 없음)과 오류 칸은 줄바꿈해야 표가 카드 밖으로 넘치지 않는다 */
 .svc-table td:is(:nth-child(2), :nth-child(3), :nth-child(5)) { white-space: nowrap; }
+
+/* 계정 관리(설정 > 운영, 피그마 "계정 관리 /" 프레임). 위험 버튼은 즉시 정지와 같은 action/danger-bg. */
+.btn-danger { padding: 6px 16px; border-radius: 12px; background: var(--danger-bg); color: var(--on-accent); box-shadow: var(--btn); font-size: 13px; font-weight: 700; white-space: nowrap; }
+.btn-danger:disabled { opacity: .45; }
+.acct { display: flex; flex-direction: column; gap: 14px; }
+.acct h2 { margin: 0; font-size: 15px; }
+.acct-head, .acct-list li { display: flex; align-items: center; gap: 14px; }
+.acct-head { padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.acct-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.acct-text b { font-size: 14px; overflow-wrap: anywhere; }
+.acct-text small { color: var(--muted); font-size: 12px; }
+.acct-check { flex: none; width: 18px; height: 18px; accent-color: var(--cyan); }
+.acct-check:disabled { opacity: .35; }
+.acct-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.acct-list li { padding: 12px 8px; }
+.acct-list li + li { border-top: 1px solid var(--line); }
+.acct-list li[aria-selected="true"] { background: var(--nav-active); }
+.acct-field { display: flex; flex-direction: column; gap: 8px; }
+.acct-field > b { color: var(--white); font-size: 13px; }
+.acct-email { display: flex; flex-direction: column; gap: 4px; }
+.acct-email-row { display: flex; align-items: center; gap: 8px; }
+.acct-input { flex: 1; min-width: 0; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: var(--inset); color: var(--white); font: inherit; font-size: 13px; }
+.acct-input.invalid { border: 1.5px solid var(--danger-border); }
+.acct-x { flex: none; width: 32px; height: 32px; border-radius: 8px; color: var(--muted); font-size: 20px; line-height: 1; }
+.acct-plus { align-self: flex-start; padding: 6px 12px; border: 1px dashed var(--accent-border); border-radius: 999px; color: var(--cyan); font-size: 13px; font-weight: 700; }
+.acct-del-list { margin: 0; padding-left: 18px; color: var(--white); font-size: 14px; font-weight: 500; max-height: 160px; overflow: auto; }
+.acct-x:focus-visible, .acct-plus:focus-visible, .acct-check:focus-visible { outline: 3px solid var(--accent-border); outline-offset: 2px; }
+@media (max-width: 819px) { .acct-head { flex-wrap: wrap; } .acct-head .acct-text { flex-basis: calc(100% - 32px); } }

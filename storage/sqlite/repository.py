@@ -231,6 +231,7 @@ class SqliteRepository(Repository):
                 email=row["email"], enabled=bool(row["enabled"]), created_at=row["created_at"],
                 google_sub=row["google_sub"], name=row["name"], picture=row["picture"],
                 first_login_at=row["first_login_at"], last_login_at=row["last_login_at"],
+                is_admin=bool(row["is_admin"]),
             )
         except ValueError as exc:
             raise CorruptedRecord(ReasonCode.CONFIG_INVALID, f"계정 기록이 계약에 어긋난다: {exc}") from exc
@@ -264,6 +265,26 @@ class SqliteRepository(Repository):
                 raise StorageError(ReasonCode.SESSION_ACCOUNT_NOT_REGISTERED, f"등록되지 않은 계정: {email!r}")
             if not enabled:
                 conn.execute("DELETE FROM login_sessions WHERE email = ?", (email,))
+        return self.get_account(email)
+
+    def disable_account_unless_admin(self, email: str) -> bool:
+        email = email.strip().lower()
+        with self._tx() as conn:
+            changed = conn.execute(
+                "UPDATE accounts SET enabled = 0 WHERE email = ? AND enabled = 1 AND is_admin = 0", (email,)
+            ).rowcount
+            if changed:
+                conn.execute("DELETE FROM login_sessions WHERE email = ?", (email,))
+        return bool(changed)
+
+    def set_account_admin(self, email: str, is_admin: bool) -> AccountRecord:
+        email = email.strip().lower()
+        with self._tx() as conn:
+            changed = conn.execute(
+                "UPDATE accounts SET is_admin = ? WHERE email = ?", (1 if is_admin else 0, email)
+            ).rowcount
+            if not changed:
+                raise StorageError(ReasonCode.SESSION_ACCOUNT_NOT_REGISTERED, f"등록되지 않은 계정: {email!r}")
         return self.get_account(email)
 
     def open_login_session(

@@ -1044,7 +1044,7 @@ class AccountRecord:
     """로그인할 수 있는 사람 하나(구글 계정, 2026-10-06 결정 Q1·Q10).
 
     **미리 등록된 이메일만 로그인한다** — 구글 계정이 있다는 것만으로 들이지 않는다.
-    등록은 `scripts/auth_accounts.py`가 한다(관리 화면은 나중).
+    등록은 최고 관리자가 설정 화면에서 하거나 `scripts/auth_accounts.py`로 한다(2026-10-12).
     `google_sub`는 첫 로그인 때 묶고, 그 뒤 다른 sub로 같은 이메일이 오면 거절한다
     (이메일 주소가 다른 구글 계정에 재할당되는 경우를 막는다).
     """
@@ -1057,6 +1057,8 @@ class AccountRecord:
     picture: str | None = None
     first_login_at: float | None = None
     last_login_at: float | None = None
+    #: 최고 관리자 — 화면에서 계정을 추가·삭제한다(2026-10-12). 지정은 스크립트로만.
+    is_admin: bool = False
 
     def __post_init__(self) -> None:
         if not self.email or self.email != self.email.strip().lower():

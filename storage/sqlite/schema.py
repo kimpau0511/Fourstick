@@ -823,6 +823,12 @@ CREATE TABLE approval_uses (
 ALTER TABLE plan_approvals ADD COLUMN environment_session TEXT;
 """
 
+#: 최고 관리자 표시(2026-10-12 결정). 화면에서 계정을 추가·삭제할 수 있는 사람이다.
+#: 지정은 `scripts/auth_accounts.py admin`으로만 한다(관리자 지정 화면은 나중).
+MIGRATION_0021 = """
+ALTER TABLE accounts ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1));
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (1, "요청·계획·검증·허가·실행·이력 초기 스키마", MIGRATION_0001),
     (2, "확정 요청의 STT 메타데이터 컬럼 추가", MIGRATION_0002),
@@ -844,6 +850,7 @@ MIGRATIONS: tuple[tuple[int, str, str], ...] = (
     (18, "로그인 계정·로그인 세션 추가", MIGRATION_0018),
     (19, "명령을 보낸 사람 기록 추가", MIGRATION_0019),
     (20, "승인 1회 사용 기록과 승인 시점 환경 세션 추가", MIGRATION_0020),
+    (21, "최고 관리자 표시 추가", MIGRATION_0021),
 )
 
 

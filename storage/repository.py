@@ -85,6 +85,17 @@ class Repository(ABC):
         """사용 가능 여부를 바꾼다. 끄면 그 계정의 로그인 세션도 지운다."""
         raise NotImplementedError
 
+    def disable_account_unless_admin(self, email: str) -> bool:
+        """사용 중인 일반 계정이면 한 트랜잭션에서 끄고 로그인 세션을 지운다. 끈 경우만 True.
+
+        최고 관리자·없는 계정·이미 꺼진 계정은 건드리지 않는다(확인과 변경 사이에 관리자로 지정되는 경우까지).
+        """
+        raise NotImplementedError
+
+    def set_account_admin(self, email: str, is_admin: bool) -> AccountRecord:
+        """최고 관리자 표시를 바꾼다(스크립트 전용 — 화면에는 지정 기능이 없다)."""
+        raise NotImplementedError
+
     def open_login_session(
         self, email: str, *, google_sub: str, name: str | None, picture: str | None,
         token_hash: str, at: float, expires_at: float,

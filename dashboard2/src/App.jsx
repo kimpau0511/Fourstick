@@ -122,7 +122,7 @@ function DashboardView({ auth, server, cmd, now, page, preview = false }) {
           {page === 'robots' && <Robots server={server} />}
           {page === 'history' && <History server={server} log={cmd.log} user={auth.user} />}
           {page === 'diagnostics' && <Diagnostics server={server} />}
-          {page === 'settings' && <Settings server={server} />}
+          {page === 'settings' && <Settings server={server} user={auth.user} />}
         </div>
         <PanelSeparator width={panelW} onChange={setPanelW} />
         <div className={drawerOpen ? 'col-side open' : 'col-side'} id="command-drawer">

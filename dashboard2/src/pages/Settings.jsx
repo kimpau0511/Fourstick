@@ -2,9 +2,10 @@ import { Fragment, useState } from 'react';
 import { DetailRow, ExpandButton } from '../components/ExpandRow.jsx';
 import { useExpand } from '../components/useExpand.js';
 import Spinner from '../components/Spinner.jsx';
+import Accounts from './Accounts.jsx';
 import './records.css';
 
-// 설정 3구역. 개인 = 이 브라우저(localStorage)에만 저장하는 루틴, 운영 = 인증 도입 전 빈 상태,
+// 설정 3구역. 개인 = 이 브라우저(localStorage)에만 저장하는 루틴, 운영 = 로그인 계정 관리(최고 관리자만),
 // 안전·권한 = 서버 정책 조회 전용(편집 UI 없음).
 const SECTIONS = ['개인', '운영', '안전·권한'];
 const STORE_KEY = 'forstick.routines';
@@ -116,13 +117,6 @@ function Personal({ server }) {
   </>;
 }
 
-function Operations() {
-  return <div className="card rec-pad">
-    <h2>운영</h2>
-    <p className="rec-empty">사용자 계정은 인증 도입 뒤 제공합니다.</p>
-  </div>;
-}
-
 function Policies({ server }) {
   const policies = server?.config?.policies;
   return <>
@@ -148,7 +142,7 @@ function Policies({ server }) {
   </>;
 }
 
-export default function Settings({ server }) {
+export default function Settings({ server, user }) {
   const [section, setSection] = useState('개인');
   return <div className="rec-split">
     <nav className="card rec-nav" aria-label="설정 구역">
@@ -156,7 +150,7 @@ export default function Settings({ server }) {
     </nav>
     <div className="rec-body">
       {section === '개인' && <Personal server={server} />}
-      {section === '운영' && <Operations />}
+      {section === '운영' && <Accounts user={user} />}
       {section === '안전·권한' && <Policies server={server} />}
     </div>
   </div>;

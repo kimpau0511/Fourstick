@@ -161,6 +161,15 @@ class ReasonCode(str, Enum):
     SESSION_ACCOUNT_DISABLED = "session.account_disabled"
     #: 구글 인가 코드 교환·ID 토큰 확인에 실패했다(구글 오류·네트워크·토큰 값 불일치).
     SESSION_LOGIN_FAILED = "session.login_failed"
+    # 계정 관리(최고 관리자만 — 2026-10-12 결정).
+    #: 로그인은 됐지만 최고 관리자가 아니다.
+    SESSION_ADMIN_REQUIRED = "session.admin_required"
+    #: 이메일 형식이 아니다.
+    SESSION_ACCOUNT_EMAIL_INVALID = "session.account_email_invalid"
+    #: 이미 등록돼 사용 중인 계정이다.
+    SESSION_ACCOUNT_ALREADY_REGISTERED = "session.account_already_registered"
+    #: 최고 관리자 계정은 화면에서 지울 수 없다(관리자가 0명이 되는 사고를 막는다).
+    SESSION_ACCOUNT_PROTECTED = "session.account_protected"
 
     # ── 로봇 ────────────────────────────────────────────────────────────
     ROBOT_NOT_REGISTERED = "robot.not_registered"

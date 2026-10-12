@@ -57,7 +57,7 @@ export default function Sidebar({ page, server, user, onLogout, logoutFailed, in
         <button type="button" className="profile-btn" aria-expanded={menuOpen} aria-controls="profile-actions"
           aria-label={`${user.name || user.email} 계정`} onClick={() => setMenuOpen((v) => !v)}>
           <Avatar user={user} />
-          <div className="rail-hide"><strong>{user.name || user.email}</strong><small>{user.email}</small></div>
+          <div className="rail-hide"><strong>{user.name || user.email}</strong><small>{user.is_admin ? '최고 관리자' : user.email}</small></div>
         </button>
         {menuOpen && <div className="profile-actions" id="profile-actions">
           <button type="button" className="profile-logout" onClick={() => { setMenuOpen(false); onLogout(); }}>로그아웃</button>

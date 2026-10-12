@@ -98,7 +98,7 @@ class AuthApiTest(_AuthBase):
         self.repo.add_account("Operator@Example.com", at=NOW)
         res = await self.login()
         self.assertEqual(res.status, 200)
-        self.assertEqual(res.json()["user"], {"email": "operator@example.com", "name": "김민우", "picture": "https://example.com/p.png"})
+        self.assertEqual(res.json()["user"], {"email": "operator@example.com", "name": "김민우", "picture": "https://example.com/p.png", "is_admin": False})
         self.assertEqual(self.codes, [("qa-code", "https://foursticks.example")])  # 교환 redirect_uri = 화면 origin
         token, raw = self.cookie_of(res)
         for attr in ("HttpOnly", "SameSite=Lax", "Secure", "Max-Age=43200", "Path=/"):
@@ -343,6 +343,80 @@ class LinkIdsTest(unittest.TestCase):
         # 명령 응답에 같이 실린 다른 작업(진행 중·최근 목록)에 이 사람을 붙이지 않는다
         body = b'{"job": null, "running_job": {"job_id": "simjob_other"}, "recent_jobs": [{"job_id": "simjob_x"}]}'
         self.assertEqual(link_ids(body), {})
+
+
+class AccountAdminTest(_AuthBase):
+    """계정 관리(최고 관리자만, 2026-10-12) — `/v1/auth/accounts`."""
+
+    async def session_for(self, email, sub, *, admin=False):
+        self.repo.add_account(email, at=NOW)
+        if admin:
+            self.repo.set_account_admin(email, True)
+        self.next_claims = claims(email=email, sub=sub)
+        return self.cookie_of(await self.login())[0]
+
+    async def call(self, method, path, token, emails=None, headers=None):
+        hdrs = self.with_cookie(token) + (self.BROWSER if headers is None else headers)
+        return await self.client.request(method, path, None if emails is None else {"emails": emails}, headers=hdrs)
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.admin = await self.session_for("boss@example.com", "sub-boss", admin=True)
+        self.user = await self.session_for("worker@example.com", "sub-worker")
+
+    async def test_only_admin_can_manage_accounts(self):
+        for path, method in (("/v1/auth/accounts", "GET"), ("/v1/auth/accounts", "POST"), ("/v1/auth/accounts/delete", "POST")):
+            res = await self.call(method, path, self.user, None if method == "GET" else ["new@example.com"])
+            self.assertEqual((res.status, res.json()["reason_code"]), (403, "session.admin_required"), path)
+            res = await self.call(method, path, "unknown-token", None if method == "GET" else ["new@example.com"])
+            self.assertEqual(res.status, 401, path)
+        self.assertIsNone(self.repo.get_account("new@example.com"))
+        me = await self.client.request("GET", "/v1/auth/me", headers=self.with_cookie(self.admin))
+        self.assertTrue(me.json()["user"]["is_admin"])
+
+    async def test_add_many_reports_each_email(self):
+        res = await self.call("POST", "/v1/auth/accounts", self.admin,
+                              [" New1@Example.com ", "new2@example.com", "new1@example.com", "worker@example.com", "abc@"])
+        self.assertEqual(res.status, 200)
+        self.assertEqual(res.json()["results"], [
+            {"email": "new1@example.com", "ok": True, "result": "added"},
+            {"email": "new2@example.com", "ok": True, "result": "added"},
+            {"email": "worker@example.com", "ok": False, "reason_code": "session.account_already_registered"},
+            {"email": "abc@", "ok": False, "reason_code": "session.account_email_invalid"},
+        ])
+        listed = [a["email"] for a in res.json()["accounts"]]
+        self.assertEqual(listed, ["boss@example.com", "new1@example.com", "new2@example.com", "worker@example.com"])
+        self.assertNotIn("google_sub", res.json()["accounts"][0])
+
+    async def test_delete_many_disables_and_logs_out_but_keeps_admins(self):
+        self.repo.add_account("other@example.com", at=NOW)
+        res = await self.call("POST", "/v1/auth/accounts/delete", self.admin,
+                              ["worker@example.com", "other@example.com", "boss@example.com", "ghost@example.com"])
+        self.assertEqual([(r["email"], r["ok"], r.get("reason_code")) for r in res.json()["results"]], [
+            ("worker@example.com", True, None), ("other@example.com", True, None),
+            ("boss@example.com", False, "session.account_protected"),
+            ("ghost@example.com", False, "session.account_not_registered"),
+        ])
+        self.assertEqual([a["email"] for a in res.json()["accounts"]], ["boss@example.com"])
+        self.assertFalse(self.repo.disable_account_unless_admin("boss@example.com"))  # 저장소도 관리자를 끄지 않는다
+        self.assertTrue(self.repo.get_account("boss@example.com").enabled)
+        # 바로 로그아웃되고, 행은 남는다(명령 기록의 보낸 사람 유지)
+        self.assertEqual((await self.client.request("GET", "/health", headers=self.with_cookie(self.user))).status, 401)
+        self.assertFalse(self.repo.get_account("worker@example.com").enabled)
+        # 다시 추가하면 다시 켜진다
+        again = await self.call("POST", "/v1/auth/accounts", self.admin, ["worker@example.com"])
+        self.assertEqual(again.json()["results"], [{"email": "worker@example.com", "ok": True, "result": "reenabled"}])
+        self.assertTrue(self.repo.get_account("worker@example.com").enabled)
+
+    async def test_changes_need_browser_headers_and_email_list(self):
+        for headers in ([], [(b"x-requested-with", b"XMLHttpRequest")],  # Origin 없음도 거절(로그인과 다르다)
+                        [(b"x-requested-with", b"XMLHttpRequest"), (b"origin", b"https://evil.example")]):
+            res = await self.call("POST", "/v1/auth/accounts", self.admin, ["new@example.com"], headers=headers)
+            self.assertEqual(res.status, 403, headers)
+        self.assertIsNone(self.repo.get_account("new@example.com"))
+        for bad in ([], "new@example.com", [1]):
+            res = await self.call("POST", "/v1/auth/accounts", self.admin, bad)
+            self.assertEqual(res.status, 400, bad)
 
 
 class IdTokenCheckTest(unittest.TestCase):

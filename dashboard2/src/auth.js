@@ -29,7 +29,8 @@ const rawFetch = window.fetch.bind(window);
 window.fetch = async (input, init) => {
   const res = await rawFetch(input, init);
   const url = String(input instanceof Request ? input.url : input);
-  if (res.status === 401 && onUnauthorized && !url.includes('/v1/auth/')) onUnauthorized();
+  // 로그인 자체(me·google·logout)의 401은 '로그인 안 됨'이라 뺀다. 계정 관리(/v1/auth/accounts)의 401은 세션 만료다.
+  if (res.status === 401 && onUnauthorized && !/\/v1\/auth\/(me|google|logout)\b/.test(url)) onUnauthorized();
   return res;
 };
 

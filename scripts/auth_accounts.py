@@ -6,6 +6,10 @@
   python scripts/auth_accounts.py list
   python scripts/auth_accounts.py disable operator@example.com   # 그 계정의 로그인 세션도 지운다
   python scripts/auth_accounts.py enable operator@example.com
+  python scripts/auth_accounts.py admin operator@example.com     # 최고 관리자 지정(화면에서 계정 추가·삭제)
+  python scripts/auth_accounts.py unadmin operator@example.com
+
+최고 관리자 지정은 화면에 없다(2026-10-12 결정 Q4 — 나중). 처음 한 번은 이 스크립트로 지정한다.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from storage.sqlite.repository import SqliteRepository  # noqa: E402
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="로그인 계정 관리")
-    parser.add_argument("action", choices=("add", "list", "disable", "enable"))
+    parser.add_argument("action", choices=("add", "list", "disable", "enable", "admin", "unadmin"))
     parser.add_argument("email", nargs="?")
     args = parser.parse_args(argv)
     if args.action != "list" and not args.email:
@@ -39,10 +43,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action in ("disable", "enable"):
             account = repo.set_account_enabled(args.email, args.action == "enable")
             print(f"{account.email}: 사용 {'가능' if account.enabled else '중지'}")
+        elif args.action in ("admin", "unadmin"):
+            account = repo.set_account_admin(args.email, args.action == "admin")
+            print(f"{account.email}: 최고 관리자 {'예' if account.is_admin else '아니오'}")
         else:
             for a in repo.list_accounts():
                 last = time.strftime("%Y-%m-%d %H:%M", time.localtime(a.last_login_at)) if a.last_login_at else "-"
-                print(f"{a.email}\t{'가능' if a.enabled else '중지'}\t마지막 로그인 {last}\t{a.name or ''}")
+                print(f"{a.email}\t{'가능' if a.enabled else '중지'}\t{'최고 관리자' if a.is_admin else '일반'}\t마지막 로그인 {last}\t{a.name or ''}")
         print(f"DB: {db}")
     finally:
         repo.close()
