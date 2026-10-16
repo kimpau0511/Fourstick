@@ -217,6 +217,6 @@ export default function SimView3D({ onView, onJoints }) {
   if (mode === 'camera') return <SceneView onView={onCameraView} />;
   return <div ref={frameRef} className="sim3d-frame">
     <canvas ref={canvasRef} className="scene-canvas" />
-    {!observed && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', background: 'var(--video)' }}><Spinner size={28} label="3D 화면 연결 중" /></div>}
+    {!observed && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none' }}><Spinner size={28} label="3D 화면 연결 중" /></div>}
   </div>;
 }

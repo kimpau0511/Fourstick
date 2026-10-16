@@ -201,9 +201,6 @@ section h2 { margin-bottom: 12px; font-size: 15px; font-weight: 700; }
 .sim-video { position: relative; height: 420px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--video); }
 .sim-card.stopping .sim-video, .sim-card.danger .sim-video { border-color: var(--danger-border); }
 .sim3d-frame { position: absolute; inset: 0; }
-/* 3D 화면이 깔리면 어두운 영상 칸 배경을 뺀다 — 둥근 모서리 경계에서 배경이 비쳐 모서리에만 진한 선이 생겼다.
-   연결 중 어두운 칸은 SimView3D의 스피너 덮개가 대신 칠한다. */
-.sim-video:has(> .sim3d-frame) { background: transparent; }
 /* 시뮬레이션 화면 전체화면(SimOverlay). 전체화면에서는 화면을 꽉 채우고, 상태와 즉시 정지를 위에 띄운다. */
 .sim-fullscreen-exit { position: absolute; right: 10px; bottom: 10px; z-index: 2; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .88); font-size: 12px; font-weight: 600; cursor: pointer; }
 /* 시뮬레이션 보기 묶음(2026-10-07): 왼쪽 관절 상태 · 오른쪽 실시간 시뮬레이션. 좁으면 관절 상태가 시뮬레이션 아래로. 전체화면은 묶음 전체. */
